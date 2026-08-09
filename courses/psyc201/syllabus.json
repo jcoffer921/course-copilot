@@ -1,0 +1,26 @@
+{
+  "course_id": "psyc201",
+  "course_name": "Cognitive Psychology",
+  "dates": [],
+  "grading": [
+    {
+      "component": "Paper 2",
+      "weight_pct": 25
+    },
+    {
+      "component": "Final Exam",
+      "weight_pct": 35
+    },
+    {
+      "component": "Weekly Response Memos",
+      "weight_pct": 15
+    }
+  ],
+  "topics": [
+    "Attention and Perception",
+    "Memory Systems",
+    "Language Processing",
+    "Judgment and Decision-Making",
+    "Problem Solving"
+  ]
+}

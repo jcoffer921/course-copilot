@@ -1,0 +1,92 @@
+{
+  "course_id": "cs101",
+  "course_name": "Intro to Computer Science",
+  "dates": [
+    {
+      "date": "2026-09-04",
+      "title": "First day of class",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-18",
+      "title": "Homework 1 due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-10-02",
+      "title": "Homework 2 due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-10-14",
+      "title": "Midterm Exam",
+      "type": "exam"
+    },
+    {
+      "date": "2026-10-16",
+      "title": "Homework 3 due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-10-30",
+      "title": "Homework 4 due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-11-13",
+      "title": "Homework 5 due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-11-20",
+      "title": "Final Project proposal due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-12-04",
+      "title": "Homework 6 due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-12-11",
+      "title": "Final Project due",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-12-16",
+      "title": "Final Exam",
+      "type": "exam"
+    }
+  ],
+  "grading": [
+    {
+      "component": "Homework (6 assignments)",
+      "weight_pct": 30
+    },
+    {
+      "component": "Midterm Exam",
+      "weight_pct": 25
+    },
+    {
+      "component": "Final Exam",
+      "weight_pct": 30
+    },
+    {
+      "component": "Class Participation",
+      "weight_pct": 5
+    },
+    {
+      "component": "Final Project",
+      "weight_pct": 10
+    }
+  ],
+  "topics": [
+    "Variables, control flow, and functions",
+    "Lists, dictionaries, and strings",
+    "Recursion",
+    "Sorting and searching algorithms",
+    "Basic object-oriented programming",
+    "Big-O notation and algorithmic complexity",
+    "File I/O and error handling"
+  ]
+}

@@ -1,0 +1,40 @@
+PSYC 201: Cognitive Psychology
+Department of Psychology
+
+Instructor: Prof. L. Okonkwo
+Term: this semester
+
+Course Overview:
+This course surveys core topics in cognitive psychology including memory,
+attention, perception, language, and decision-making. We will read primary
+research literature and discuss experimental methods throughout.
+
+Unit Schedule:
+  Unit 1 - Attention and Perception
+  Unit 2 - Memory Systems
+  Unit 3 - Language Processing
+  Unit 4 - Judgment and Decision-Making
+  Unit 5 - Problem Solving
+
+Grading:
+Participation matters and will be considered as part of your final grade.
+Two papers are required this term.
+  Paper 1 ................. worth a significant portion of the grade
+  Paper 2 ................. 25%
+Final exam ................ 35%
+Weekly response memos ..... 15%
+
+Schedule (illustrative, subject to change):
+
+Week | Topic                      | Notes
+-----|----------------------------|------------------------------
+ 1   | Intro / Attention          |
+ 3   | Memory I                   | Paper 1 topic proposal due
+ 6   | Memory II                  | Paper 1 due Oct 9
+ 8   | Language                   |
+ 10  | Decision-Making            | Paper 2 due week 10
+ 13  | Problem Solving            |
+ 15  | Review                     |
+ 16  | Final Exam                 | Dec 18, cumulative
+
+Note: no textbook required, all readings posted to course site weekly.

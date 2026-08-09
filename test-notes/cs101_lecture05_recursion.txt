@@ -1,0 +1,55 @@
+CS101 — Lecture 5: Recursion
+Date: 2026-09-25
+
+What is recursion?
+A function that calls itself is recursive. Every recursive function needs
+two parts: a base case that stops the recursion, and a recursive case that
+breaks the problem into a smaller version of itself. Without a base case,
+the function calls itself forever and the program crashes with a stack
+overflow (RecursionError in Python).
+
+Example: factorial
+def factorial(n):
+    if n == 0:          # base case
+        return 1
+    return n * factorial(n - 1)   # recursive case
+
+Each call waits on the result of the next call before it can return. This
+builds up a "call stack" — factorial(4) calls factorial(3), which calls
+factorial(2), and so on down to factorial(0), then the results multiply
+back up on the way out.
+
+Example: Fibonacci and why naive recursion can be slow
+def fib(n):
+    if n <= 1:
+        return n
+    return fib(n - 1) + fib(n - 2)
+
+This works but recomputes the same values many times — fib(5) calls fib(3)
+twice, fib(2) three times, etc. This is a preview of why we'll care about
+Big-O later in the course: naive recursive fib is O(2^n), which gets slow
+fast. One fix (not required for this course, but worth knowing) is
+memoization — caching results you've already computed so you never redo
+the same subproblem. We are not covering memoization in this course.
+
+Recursion vs. iteration
+Anything you can write recursively you can also write with a loop, and vice
+versa. Recursion tends to read more naturally for problems that are already
+defined in terms of smaller versions of themselves (tree traversal, nested
+data structures). Loops tend to be more memory-efficient since they don't
+build up a call stack.
+
+Common mistakes
+- Forgetting the base case (infinite recursion).
+- Base case that's never actually reached because the recursive case
+  doesn't move toward it (e.g. calling factorial(n) instead of
+  factorial(n - 1)).
+- Off-by-one base cases (using n == 1 as the base case for factorial
+  instead of n == 0 still works, but only because factorial(1) is
+  defined as 1 too — worth being deliberate about which base case you pick).
+
+Practice problem discussed in class
+Write a recursive function that reverses a string. Base case: an empty
+string or single character reverses to itself. Recursive case: take the
+first character off, recursively reverse the rest, and append the first
+character to the end.

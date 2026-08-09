@@ -1,0 +1,39 @@
+CS 101 — Introduction to Computer Science
+Fall 2026
+Instructor: Dr. A. Reyes
+
+COURSE DESCRIPTION
+An introduction to computational thinking, programming fundamentals in Python,
+and basic data structures. No prior programming experience required.
+
+TOPICS COVERED
+1. Variables, control flow, and functions
+2. Lists, dictionaries, and strings
+3. Recursion
+4. Sorting and searching algorithms
+5. Basic object-oriented programming
+6. Big-O notation and algorithmic complexity
+7. File I/O and error handling
+
+GRADING BREAKDOWN
+Homework (6 assignments): 30%
+Midterm Exam: 25%
+Final Exam: 30%
+Class Participation: 5%
+Final Project: 10%
+
+IMPORTANT DATES
+- Sept 4, 2026: First day of class
+- Sept 18, 2026: Homework 1 due
+- Oct 2, 2026: Homework 2 due
+- Oct 14, 2026: Midterm Exam (in class)
+- Oct 16, 2026: Homework 3 due
+- Oct 30, 2026: Homework 4 due
+- Nov 13, 2026: Homework 5 due
+- Nov 20, 2026: Final Project proposal due
+- Dec 4, 2026: Homework 6 due
+- Dec 11, 2026: Final Project due
+- Dec 16, 2026: Final Exam, 9:00–11:00 AM
+
+READING
+Chapters 1–3 of "Python for Everybody" are assigned before the first class.

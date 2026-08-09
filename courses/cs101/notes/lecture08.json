@@ -1,0 +1,30 @@
+{
+  "lecture_id": "lecture08",
+  "source": "slides",
+  "date": "2026-10-16",
+  "topics": [
+    "Sorting and searching algorithms"
+  ],
+  "chunks": [
+    {
+      "id": "bubble-sort",
+      "topic": "Sorting and searching algorithms",
+      "text": "Bubble Sort repeatedly compares adjacent elements and swaps them if they are out of order. The largest unsorted element 'bubbles' to the end each pass. Worst and average case: O(n^2) comparisons. Best case (already sorted): O(n) if you add an early-exit flag."
+    },
+    {
+      "id": "merge-sort",
+      "topic": "Sorting and searching algorithms",
+      "text": "Merge Sort divides the list in half, recursively sorts each half, then merges the results. It is O(n log n) in all cases \u2014 the divide step produces log n levels, and merging is O(n) per level. It is not in-place: merging requires O(n) extra space."
+    },
+    {
+      "id": "linear-search",
+      "topic": "Sorting and searching algorithms",
+      "text": "Linear Search checks each element in order until the target is found or the list is exhausted. Worst case is O(n). It works on unsorted data."
+    },
+    {
+      "id": "binary-search",
+      "topic": "Sorting and searching algorithms",
+      "text": "Binary Search requires a sorted list. It compares the target to the middle element: if the target is smaller, search the left half; if larger, search the right half. This is O(log n) because each comparison cuts the remaining search space in half."
+    }
+  ]
+}

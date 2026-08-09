@@ -1,0 +1,40 @@
+{
+  "lecture_id": "lecture05",
+  "source": "notes",
+  "date": "2026-09-25",
+  "topics": [
+    "Recursion"
+  ],
+  "chunks": [
+    {
+      "id": "recursion-definition-and-structure",
+      "topic": "Recursion",
+      "text": "A function that calls itself is recursive. Every recursive function needs two parts: a base case that stops the recursion, and a recursive case that breaks the problem into a smaller version of itself. Without a base case, the function calls itself forever and the program crashes with a stack overflow (RecursionError in Python)."
+    },
+    {
+      "id": "recursion-factorial-example",
+      "topic": "Recursion",
+      "text": "Example: factorial\n\ndef factorial(n):\n    if n == 0:          # base case\n        return 1\n    return n * factorial(n - 1)   # recursive case\n\nEach call waits on the result of the next call before it can return. This builds up a 'call stack' \u2014 factorial(4) calls factorial(3), which calls factorial(2), and so on down to factorial(0), then the results multiply back up on the way out."
+    },
+    {
+      "id": "recursion-fibonacci-and-complexity",
+      "topic": "Recursion",
+      "text": "Example: Fibonacci and why naive recursion can be slow\n\ndef fib(n):\n    if n <= 1:\n        return n\n    return fib(n - 1) + fib(n - 2)\n\nThis works but recomputes the same values many times \u2014 fib(5) calls fib(3) twice, fib(2) three times, etc. Naive recursive fib is O(2^n), which gets slow fast. One fix (not required for this course, but worth knowing) is memoization \u2014 caching results you've already computed so you never redo the same subproblem. Memoization is not covered in this course."
+    },
+    {
+      "id": "recursion-vs-iteration",
+      "topic": "Recursion",
+      "text": "Anything you can write recursively you can also write with a loop, and vice versa. Recursion tends to read more naturally for problems that are already defined in terms of smaller versions of themselves (tree traversal, nested data structures). Loops tend to be more memory-efficient since they don't build up a call stack."
+    },
+    {
+      "id": "recursion-common-mistakes",
+      "topic": "Recursion",
+      "text": "Common mistakes in recursion:\n- Forgetting the base case (infinite recursion).\n- Base case that's never actually reached because the recursive case doesn't move toward it (e.g. calling factorial(n) instead of factorial(n - 1)).\n- Off-by-one base cases (using n == 1 as the base case for factorial instead of n == 0 still works, but only because factorial(1) is defined as 1 too \u2014 worth being deliberate about which base case you pick)."
+    },
+    {
+      "id": "recursion-string-reversal-problem",
+      "topic": "Recursion",
+      "text": "Practice problem: Write a recursive function that reverses a string. Base case: an empty string or single character reverses to itself. Recursive case: take the first character off, recursively reverse the rest, and append the first character to the end."
+    }
+  ]
+}
