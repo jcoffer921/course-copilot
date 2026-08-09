@@ -7,6 +7,7 @@
 <script src="{% static 'agent/support.js' %}"></script>
 </head>
 <body>
+{% csrf_token %}
 <x-dc>
 <helmet>
   <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
@@ -384,6 +385,21 @@
 
 </x-dc>
 <script type="text/x-dc" data-dc-script>
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
+  }
+  return cookieValue;
+}
+
 class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'cs101',
@@ -417,7 +433,7 @@ class Component extends DCLogic {
     const seq = ++this._quizSeq;
     this.setState({ quizLoading: true, quizError: null, quizErrorSource: null, quizQuestion: null, quizMcAnswer: null });
     fetch(`/api/courses/${courseId}/quiz/generate/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }, body: '{}'
     })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
@@ -438,7 +454,7 @@ class Component extends DCLogic {
     const q = s.quizQuestion;
     this.setState({ quizLoading: true, quizError: null, quizErrorSource: null });
     fetch(`/api/courses/${courseId}/quiz/record/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
       body: JSON.stringify({
         lecture_id: q.lecture_id, chunk_id: q.chunk_id, topic: q.topic,
         question: q.question, correct_answer: q.correct_answer, user_answer: s.quizMcAnswer
@@ -526,6 +542,7 @@ class Component extends DCLogic {
     const emptyStateMessage = 'No notes uploaded yet for ' + cd.name + ' — nothing to quiz or track until a lecture is added.';
 
     const setTab = (t) => {
+      this._quizSeq++;
       if (t === 'quiz') {
         this.setState({ tab: t, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
         if (courseHasNotes) this.loadQuestion(s.course);
@@ -535,6 +552,7 @@ class Component extends DCLogic {
     };
 
     const selectCourse = (courseId) => {
+      this._quizSeq++;
       if (s.tab === 'quiz') {
         this.setState({ course: courseId, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
         if (courseData[courseId].hasNotes) this.loadQuestion(courseId);
