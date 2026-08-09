@@ -1,5 +1,6 @@
 from adrf.views import APIView
 from asgiref.sync import sync_to_async
+from django.shortcuts import render
 from rest_framework import status
 from rest_framework.response import Response
 
@@ -367,3 +368,15 @@ class SessionDetailView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         return Response(session)
+
+
+def course_copilot_page(request):
+    """GET / — serves the Course Copilot UI mockup (DC pseudo-component app).
+
+    Plain sync Django view, not a DRF/adrf endpoint: it does no I/O, just
+    renders a template. The template's DC bindings use the same `{{ }}`
+    syntax as Django's own template language, so the whole app body is
+    wrapped in `{% verbatim %}` in course_copilot.html to keep Django from
+    trying to resolve them itself.
+    """
+    return render(request, "agent/course_copilot.html")

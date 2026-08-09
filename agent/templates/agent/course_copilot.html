@@ -1,0 +1,588 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="{% static 'agent/support.js' %}"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <script src="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/_ds_bundle.js' %}"></script>
+  <style>
+    body{margin:0;background:var(--color-bg);color:var(--color-text);font-family:var(--font-body)}
+    a{color:var(--color-accent-700)}
+    a:hover{color:var(--color-accent-800,var(--color-accent-700))}
+    ::-webkit-scrollbar{width:8px;height:8px}
+    ::-webkit-scrollbar-thumb{background:var(--color-neutral-300);border-radius:99px}
+  </style>
+</helmet>
+
+{% verbatim %}
+<div style="display:flex;height:100vh;overflow:hidden">
+
+  <div style="width:232px;flex:none;display:flex;flex-direction:column;background:var(--color-neutral-100);border-right:1px solid var(--color-neutral-200);padding:var(--space-6) var(--space-4)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:var(--space-6);padding:0 var(--space-1)">
+      <div style="width:34px;height:34px;border-radius:999px;background:var(--color-accent);display:flex;align-items:center;justify-content:center;flex:none">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+      </div>
+      <div style="font-family:var(--font-heading);font-size:16px;line-height:1.1">Course Copilot</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:2px">
+      <button type="button" onClick="{{ goDashboard }}" style="{{ navBtnStyleDashboard }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1V10"/></svg>
+        Dashboard
+      </button>
+      <button type="button" onClick="{{ goChat }}" style="{{ navBtnStyleChat }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>
+        Ask Copilot
+      </button>
+      <button type="button" onClick="{{ goProgress }}" style="{{ navBtnStyleProgress }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+        Progress
+      </button>
+      <button type="button" onClick="{{ goQuiz }}" style="{{ navBtnStyleQuiz }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
+        Quiz
+      </button>
+    </div>
+
+    <div style="margin-top:var(--space-6)">
+      <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;padding:0 var(--space-1);margin-bottom:var(--space-2)">This semester</div>
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="{{ courseChipStyleCs101 }}" onClick="{{ selectCs101 }}">
+          <span style="width:8px;height:8px;border-radius:99px;background:var(--color-accent);flex:none"></span>
+          Intro to Computer Science
+        </div>
+        <div style="{{ courseChipStylePsyc }}" onClick="{{ selectPsyc }}">
+          <span style="width:8px;height:8px;border-radius:99px;background:var(--color-accent-2);flex:none"></span>
+          Cognitive Psychology
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:auto;padding-top:var(--space-6);border-top:1px solid var(--color-neutral-200);display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-800);display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:13px;flex:none">J</div>
+      <div style="font-size:13px;line-height:1.3">
+        <div style="font-weight:600">Jordan C.</div>
+        <div style="opacity:.55;font-size:12px">Fall 2026</div>
+      </div>
+    </div>
+  </div>
+
+  <div style="flex:1;min-width:0;position:relative;overflow-y:auto">
+
+    <sc-if value="{{ isDashboard }}" hint-placeholder-val="{{ true }}">
+      <div style="padding:var(--space-8) var(--space-8);max-width:1100px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-6)">
+          <div>
+            <h1 style="font-family:var(--font-heading);font-size:30px;margin:0 0 4px">Good afternoon, Jordan</h1>
+            <p style="margin:0;opacity:.65;font-size:14.5px">Here's what's grounded in your syllabi this week.</p>
+          </div>
+          <span class="tag tag-accent">Fall 2026 · CS101 + PSYC201</span>
+        </div>
+
+        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:var(--space-6);margin-bottom:var(--space-6)">
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div style="display:flex;align-items:center;justify-content:between;gap:8px;margin-bottom:var(--space-4)">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+                  <div class="card-title" style="margin:0">Upcoming deadlines</div>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0">
+                <sc-for list="{{ deadlines }}" as="d" hint-placeholder-count="4">
+                  <div style="display:flex;align-items:center;gap:var(--space-3);padding:11px 4px;border-bottom:1px solid var(--color-neutral-200)">
+                    <div style="width:44px;flex:none;text-align:center;font-family:var(--font-heading);font-size:12px;color:var(--color-accent-700);line-height:1.15">{{ d.month }}<br/><span style="font-size:16px">{{ d.day }}</span></div>
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:14px;font-weight:600">{{ d.title }}</div>
+                      <div style="font-size:12.5px;opacity:.6">{{ d.course }}</div>
+                    </div>
+                    <span style="{{ d.tagStyle }}">{{ d.typeLabel }}</span>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div class="card elev-sm" style="padding:var(--space-6);background:var(--color-accent-100);border-color:var(--color-accent-200)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-3)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                  <div class="card-title" style="margin:0;color:var(--color-accent-900,var(--color-accent-800))">Needs practice</div>
+              </div>
+              <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-4)">Based on your quiz history in CS101.</p>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-4)">
+                <sc-for list="{{ weakTopics }}" as="t" hint-placeholder-count="2">
+                  <div>
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="font-weight:600">{{ t.topic }}</span><span style="opacity:.65">{{ t.pct }}%</span></div>
+                    <div style="height:6px;border-radius:99px;background:var(--color-accent-200)"><div style="{{ t.barStyle }}"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+              <button type="button" class="btn btn-primary btn-block" onClick="{{ practiceWeak }}">Practice weak topics</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6);margin-bottom:var(--space-6)">
+            <div class="card-kicker">{{ courseIdUpper }}</div>
+            <div class="card-title">{{ courseName }}</div>
+            <p class="card-body">{{ emptyStateMessage }}</p>
+            <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
+              Upload notes
+            </button>
+          </div>
+        </sc-if>
+
+        <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">Your courses</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-bottom:var(--space-6)">
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <div class="card-kicker">CS101</div>
+            <div class="card-title">Intro to Computer Science</div>
+            <p class="card-body">7 topics · 2 quizzed · midterm Oct 14</p>
+            <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
+              <span class="tag tag-accent">Recursion — developing</span>
+              <span class="tag tag-accent">Sorting — developing</span>
+            </div>
+            <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
+              <sc-for list="{{ gradingCs101 }}" as="g" hint-placeholder-count="4">
+                <span class="tag tag-neutral">{{ g.component }} {{ g.weight_pct }}%</span>
+              </sc-for>
+            </div>
+          </div>
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <div class="card-kicker">PSYC201</div>
+            <div class="card-title">Cognitive Psychology</div>
+            <p class="card-body">Syllabus added — no lecture notes uploaded yet.</p>
+            <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
+              Upload notes
+            </button>
+            <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
+              <sc-for list="{{ gradingPsyc201 }}" as="g" hint-placeholder-count="4">
+                <span class="tag tag-neutral">{{ g.component }} {{ g.weight_pct }}%</span>
+              </sc-for>
+            </div>
+          </div>
+        </div>
+
+        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">Recent quiz activity</div>
+          <div class="card elev-sm" style="padding:0;overflow:hidden">
+            <sc-for list="{{ recentAttempts }}" as="a" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:var(--space-3);padding:12px var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{ a.iconColor }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><sc-if value="{{ a.correct }}" hint-placeholder-val="{{ true }}"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></sc-if><sc-if value="{{ a.incorrect }}" hint-placeholder-val="{{ false }}"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></sc-if></svg>
+                <div style="flex:1;min-width:0;font-size:13.5px">{{ a.question }}</div>
+                <span class="tag tag-neutral">{{ a.topic }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isProgress }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:var(--space-8) var(--space-8);max-width:1100px">
+        <h1 style="font-family:var(--font-heading);font-size:28px;margin:0 0 4px">Your progress</h1>
+        <p style="margin:0 0 var(--space-6);opacity:.65;font-size:14.5px">{{ courseName }}</p>
+
+        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:var(--space-4);margin-bottom:var(--space-6)">
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+                <span style="font-size:12.5px;opacity:.65">Syllabus covered</span>
+              </div>
+              <div style="font-family:var(--font-heading);font-size:32px">29%</div>
+              <div style="font-size:12px;opacity:.55">2 of 7 topics quizzed</div>
+            </div>
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                <span style="font-size:12.5px;opacity:.65">Study streak</span>
+              </div>
+              <div style="font-family:var(--font-heading);font-size:32px">3 days</div>
+              <div style="font-size:12px;opacity:.55">Keep it going</div>
+            </div>
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2)">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
+                <span style="font-size:12.5px;opacity:.65">Quiz accuracy</span>
+              </div>
+              <div style="font-family:var(--font-heading);font-size:32px">50%</div>
+              <div style="font-size:12px;opacity:.55">2 of 4 answers correct</div>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:var(--space-6)">
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div class="card-title" style="margin-bottom:var(--space-4)">Mastery by topic</div>
+              <div style="display:flex;flex-direction:column;gap:14px">
+                <sc-for list="{{ allTopics }}" as="t" hint-placeholder-count="7">
+                  <div>
+                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
+                      <span>{{ t.topic }}</span>
+                      <span style="{{ t.statusStyle }}">{{ t.statusLabel }}</span>
+                    </div>
+                    <div style="height:7px;border-radius:99px;background:var(--color-neutral-200)"><div style="{{ t.barStyle }}"></div></div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div class="card-title" style="margin-bottom:var(--space-4)">Recent attempts</div>
+              <div style="display:flex;flex-direction:column;gap:12px">
+                <sc-for list="{{ recentAttempts }}" as="a" hint-placeholder-count="4">
+                  <div style="display:flex;gap:10px;align-items:flex-start">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="{{ a.iconColor }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px"><sc-if value="{{ a.correct }}" hint-placeholder-val="{{ true }}"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></sc-if><sc-if value="{{ a.incorrect }}" hint-placeholder-val="{{ false }}"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></sc-if></svg>
+                    <div style="font-size:12.5px;line-height:1.35">
+                      <div style="opacity:.8">{{ a.question }}</div>
+                      <div style="opacity:.5;font-size:11.5px;margin-top:1px">{{ a.topic }}</div>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <div class="card-kicker">{{ courseIdUpper }}</div>
+            <div class="card-title">{{ courseName }}</div>
+            <p class="card-body">{{ emptyStateMessage }}</p>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isQuiz }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:var(--space-8) var(--space-8);max-width:720px;margin:0 auto">
+
+        <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <div class="card-kicker">{{ courseIdUpper }}</div>
+            <div class="card-title">{{ courseName }}</div>
+            <p class="card-body">{{ emptyStateMessage }}</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <sc-if value="{{ !isQuizStep3 }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
+              <span class="tag tag-accent">Weakest topic first · Recursion</span>
+              <span style="font-size:12.5px;opacity:.55">Question {{ quizPos }} of 3</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isQuizStep3 }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
+              <span class="tag tag-accent">Weakest topic first · Recursion</span>
+              <span style="font-size:12.5px;opacity:.55">Complete</span>
+            </div>
+          </sc-if>
+          <div style="display:flex;gap:5px;margin-bottom:var(--space-6)">
+            <sc-for list="{{ quizDots }}" as="dot" hint-placeholder-count="3">
+              <div style="{{ dot.style }}"></div>
+            </sc-for>
+          </div>
+
+          <sc-if value="{{ isQuizStep0 }}" hint-placeholder-val="{{ true }}">
+            <div class="card elev-md" style="padding:var(--space-6)">
+              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">Multiple choice</span>
+              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">What is the time complexity of the naive recursive Fibonacci implementation shown in Lecture 05?</div>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-6)">
+                <sc-for list="{{ mcOptions }}" as="opt" hint-placeholder-count="4">
+                  <button type="button" onClick="{{ opt.onClick }}" style="{{ opt.style }}">{{ opt.label }}</button>
+                </sc-for>
+              </div>
+              <button type="button" class="btn btn-primary btn-block" onClick="{{ quizNext }}">Check answer</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isQuizStep1 }}" hint-placeholder-val="{{ false }}">
+            <div class="card elev-md" style="padding:var(--space-6)">
+              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">True / False</span>
+              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">Without a base case, a recursive function will crash with a RecursionError from a stack overflow.</div>
+              <div style="display:flex;gap:12px;margin-bottom:var(--space-6)">
+                <label class="radio" style="flex:1;justify-content:center;padding:14px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-lg)"><input type="radio" name="tf" checked="{{ isTfTrue }}" onChange="{{ selectTfTrue }}"/><span class="dot"></span>True</label>
+                <label class="radio" style="flex:1;justify-content:center;padding:14px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-lg)"><input type="radio" name="tf" checked="{{ isTfFalse }}" onChange="{{ selectTfFalse }}"/><span class="dot"></span>False</label>
+              </div>
+              <button type="button" class="btn btn-primary btn-block" onClick="{{ quizNext }}">Check answer</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isQuizStep2 }}" hint-placeholder-val="{{ false }}">
+            <div class="card elev-md" style="padding:var(--space-6)">
+              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">Short answer</span>
+              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">What is the worst-case time complexity of Linear Search?</div>
+              <div class="field" style="margin-bottom:var(--space-6)">
+                <label for="qc-sa">Your answer</label>
+                <input class="input" id="qc-sa" placeholder="e.g. O(n)" value="{{ quizSaAnswer }}" onInput="{{ setSaAnswer }}"/>
+              </div>
+              <button type="button" class="btn btn-primary btn-block" onClick="{{ quizNext }}">Submit &amp; finish</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ isQuizStep3 }}" hint-placeholder-val="{{ false }}">
+            <div class="card elev-md" style="padding:var(--space-6);text-align:center">
+              <div style="font-size:12.5px;opacity:.65;margin-bottom:var(--space-3)">Quiz complete</div>
+              <div style="font-family:var(--font-heading);font-size:32px">{{ quizCorrectCount }} of 3 correct</div>
+              <div style="font-size:12px;opacity:.55;margin-bottom:var(--space-6)">Recursion</div>
+              <button type="button" class="btn btn-secondary btn-block" onClick="{{ goProgress }}">Back to Progress</button>
+            </div>
+          </sc-if>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+      <div style="display:flex;height:100%">
+        <div style="width:270px;flex:none;border-right:1px solid var(--color-neutral-200);padding:var(--space-6);overflow-y:auto">
+          <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">Intro to Computer Science</div>
+          <div style="margin-bottom:var(--space-4)">
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+              Lecture 05 · Recursion
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;padding-left:19px">
+              <div style="{{ chunkActiveStyle }}">
+                <span>Definition &amp; structure</span>
+                <span class="tag tag-accent" style="white-space:nowrap;flex:none">Grounded in</span>
+              </div>
+              <div style="padding:7px 10px;font-size:12.5px;opacity:.6;border-radius:var(--radius-lg)">Fibonacci &amp; complexity</div>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:6px;display:flex;align-items:center;gap:6px">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+              Lecture 08 · Sorting &amp; searching
+            </div>
+            <div style="display:flex;flex-direction:column;gap:2px;padding-left:19px">
+              <div style="padding:7px 10px;font-size:12.5px;opacity:.6;border-radius:var(--radius-lg)">Binary search</div>
+              <div style="padding:7px 10px;font-size:12.5px;opacity:.6;border-radius:var(--radius-lg)">Linear search</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+          <div style="padding:var(--space-4) var(--space-6);border-bottom:1px solid var(--color-neutral-200);display:flex;align-items:center;gap:8px">
+            <span class="tag tag-accent">Grounded in Lecture 05 — Recursion</span>
+          </div>
+          <div style="flex:1;overflow-y:auto;padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)">
+            <sc-for list="{{ chatMessages }}" as="m" hint-placeholder-count="4">
+              <div style="{{ m.rowStyle }}">
+                <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
+              </div>
+            </sc-for>
+          </div>
+          <div style="padding:var(--space-4) var(--space-6);border-top:1px solid var(--color-neutral-200);display:flex;gap:10px;align-items:center">
+            <input class="input" placeholder="Ask about this course's material..." style="flex:1"/>
+            <button type="button" class="btn btn-primary btn-icon" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"/><path d="m21.854 2.147-10.94 10.939"/></svg></button>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+</div>
+{% endverbatim %}
+
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    tab: 'dashboard', course: 'cs101',
+    quizStep: 0, quizMcAnswer: null, quizTf: null, quizSaAnswer: ''
+  };
+
+  navBtn(active) {
+    return {
+      display: 'flex', alignItems: 'center', gap: '10px', padding: '9px 12px',
+      borderRadius: 'var(--radius-lg)', border: 'none', cursor: 'pointer',
+      fontFamily: 'var(--font-body)', fontSize: '14px', fontWeight: active ? 600 : 500,
+      textAlign: 'left', width: '100%',
+      background: active ? 'var(--color-accent-200)' : 'transparent',
+      color: active ? 'var(--color-accent-800)' : 'var(--color-text)'
+    };
+  }
+
+  courseChip(active) {
+    return {
+      display: 'flex', alignItems: 'center', gap: '8px', padding: '7px 10px',
+      borderRadius: 'var(--radius-lg)', fontSize: '13px', cursor: 'pointer',
+      background: active ? 'var(--color-neutral-200)' : 'transparent',
+      fontWeight: active ? 600 : 400
+    };
+  }
+
+  renderVals() {
+    const s = this.state;
+    const setTab = (t) => t === 'quiz'
+      ? this.setState({ tab: t, quizStep: 0, quizMcAnswer: null, quizTf: null, quizSaAnswer: '' })
+      : this.setState({ tab: t });
+
+    const typeStyle = (type) => {
+      if (type === 'exam') return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-accent-700);color:#fff;flex:none';
+      if (type === 'assignment') return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-accent-2-200);color:var(--color-accent-2-800);flex:none';
+      return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-neutral-200);color:var(--color-text);flex:none';
+    };
+    const statusColor = { developing: 'var(--color-accent-700)', weak: 'var(--color-accent-700)', strong: 'var(--color-accent-2-700)', unassessed: 'var(--color-neutral-400)' };
+    const statusLabel = { developing: 'Developing', weak: 'Weak', strong: 'Strong', unassessed: 'Not yet quizzed' };
+
+    const courseData = {
+      cs101: {
+        name: 'Intro to Computer Science',
+        hasNotes: true,
+        grading: [
+          { component: 'Homework', weight_pct: 30 },
+          { component: 'Midterm', weight_pct: 25 },
+          { component: 'Final', weight_pct: 25 },
+          { component: 'Participation', weight_pct: 20 }
+        ],
+        deadlinesRaw: [
+          { month: 'SEP', day: '4', title: 'First day of class', course: 'CS101', type: 'other' },
+          { month: 'SEP', day: '18', title: 'Homework 1 due', course: 'CS101', type: 'assignment' },
+          { month: 'OCT', day: '2', title: 'Homework 2 due', course: 'CS101', type: 'assignment' },
+          { month: 'OCT', day: '14', title: 'Midterm Exam', course: 'CS101', type: 'exam' },
+        ],
+        weakTopics: [
+          { topic: 'Recursion', pct: 46, barStyle: 'width:46%;height:100%;border-radius:99px;background:var(--color-accent-700)' },
+          { topic: 'Sorting & searching', pct: 55, barStyle: 'width:55%;height:100%;border-radius:99px;background:var(--color-accent-700)' }
+        ],
+        allTopicsRaw: [
+          { topic: 'Recursion', score: 0.46, status: 'developing' },
+          { topic: 'Sorting and searching algorithms', score: 0.55, status: 'developing' },
+          { topic: 'Variables, control flow, and functions', score: null, status: 'unassessed' },
+          { topic: 'Lists, dictionaries, and strings', score: null, status: 'unassessed' },
+          { topic: 'Basic object-oriented programming', score: null, status: 'unassessed' },
+          { topic: 'Big-O notation and algorithmic complexity', score: null, status: 'unassessed' },
+          { topic: 'File I/O and error handling', score: null, status: 'unassessed' },
+        ],
+        attemptsRaw: [
+          { topic: 'Recursion', question: 'What happens without a base case?', correct: true },
+          { topic: 'Sorting and searching algorithms', question: 'What is the time complexity of binary search?', correct: false },
+          { topic: 'Recursion', question: 'Time complexity of naive recursive Fibonacci?', correct: false },
+          { topic: 'Sorting and searching algorithms', question: 'Worst-case time complexity of Linear Search?', correct: true },
+        ]
+      },
+      psyc201: {
+        name: 'Cognitive Psychology',
+        hasNotes: false,
+        grading: [
+          { component: 'Problem sets', weight_pct: 20 },
+          { component: 'Midterm', weight_pct: 30 },
+          { component: 'Final', weight_pct: 35 },
+          { component: 'Participation', weight_pct: 15 }
+        ],
+        deadlinesRaw: [], weakTopics: [], allTopicsRaw: [], attemptsRaw: []
+      }
+    };
+    const cd = courseData[s.course];
+    const courseHasNotes = cd.hasNotes;
+    const emptyStateMessage = 'No notes uploaded yet for ' + cd.name + ' — nothing to quiz or track until a lecture is added.';
+
+    const deadlines = cd.deadlinesRaw.map(d => Object.assign({}, d, {
+      typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Term start',
+      tagStyle: typeStyle(d.type)
+    }));
+    const weakTopics = cd.weakTopics;
+    const allTopics = cd.allTopicsRaw.map(function (t) {
+      var pct = t.score ? Math.round(t.score * 100) : 6;
+      var color = t.score ? statusColor[t.status] : 'var(--color-neutral-300)';
+      return {
+        topic: t.topic,
+        statusLabel: statusLabel[t.status],
+        statusStyle: 'font-size:12px;font-weight:600;color:' + statusColor[t.status],
+        barStyle: 'width:' + pct + '%;height:100%;border-radius:99px;background:' + color
+      };
+    });
+    const recentAttempts = cd.attemptsRaw.map(a => Object.assign({}, a, {
+      incorrect: !a.correct,
+      iconColor: a.correct ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)'
+    }));
+
+    const MC_CORRECT = 'O(2^n)';
+    const mcOptionStyle = (selected) => 'width:100%;text-align:left;padding:13px 15px;border-radius:var(--radius-lg);cursor:pointer;font-size:14px;font-family:var(--font-body);' +
+      (selected ? 'border:1px solid var(--color-accent-700);background:var(--color-accent-100);font-weight:600' : 'border:1px solid var(--color-neutral-200);background:#fff');
+    const mcOptions = ['O(n)', 'O(log n)', 'O(2^n)', 'O(n^2)'].map(label => ({
+      label: label,
+      onClick: () => this.setState({ quizMcAnswer: label }),
+      style: mcOptionStyle(s.quizMcAnswer === label)
+    }));
+    const mcCorrect = s.quizMcAnswer === MC_CORRECT;
+    const tfCorrect = s.quizTf === true;
+    const saCorrect = (s.quizSaAnswer || '').trim().toLowerCase() === 'o(n)';
+    const quizCorrectCount = [mcCorrect, tfCorrect, saCorrect].filter(Boolean).length;
+
+    const quizDots = [0, 1, 2].map(i => ({
+      style: 'height:5px;flex:1;border-radius:99px;background:' + (i <= s.quizStep ? 'var(--color-accent-700)' : 'var(--color-neutral-200)')
+    }));
+
+    const msgStyle = (from) => from === 'user'
+      ? { display: 'flex', justifyContent: 'flex-end' }
+      : { display: 'flex', justifyContent: 'flex-start' };
+    const bubbleStyle = (from) => from === 'user'
+      ? 'max-width:72%;background:var(--color-accent);color:#fff;padding:11px 15px;border-radius:var(--radius-lg);font-size:14px;line-height:1.45'
+      : 'max-width:72%;background:var(--color-neutral-100);padding:11px 15px;border-radius:var(--radius-lg);font-size:14px;line-height:1.45';
+
+    const chatConvo = [
+      { from: 'user', text: 'What happens if my recursive function never hits a base case?' },
+      { from: 'ai', text: 'It keeps calling itself with no way to stop, each call adds a frame to the call stack until it overflows, and Python raises a RecursionError. Lecture 05 covers this right after the base-case definition.' },
+      { from: 'user', text: 'Can you quiz me on this so I actually remember it?' },
+      { from: 'ai', text: 'Sure, recursion is your weakest topic right now (46% mastery). Starting a 3-question quiz for you.' },
+    ];
+    const chatMessages = chatConvo.map(m => ({ text: m.text, rowStyle: msgStyle(m.from), bubbleStyle: bubbleStyle(m.from) }));
+
+    return {
+      isDashboard: s.tab === 'dashboard',
+      isChat: s.tab === 'chat',
+      isProgress: s.tab === 'progress',
+      isQuiz: s.tab === 'quiz',
+      navBtnStyleDashboard: this.navBtn(s.tab === 'dashboard'),
+      navBtnStyleChat: this.navBtn(s.tab === 'chat'),
+      navBtnStyleProgress: this.navBtn(s.tab === 'progress'),
+      navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
+      courseChipStyleCs101: this.courseChip(s.course === 'cs101'),
+      courseChipStylePsyc: this.courseChip(s.course === 'psyc201'),
+      selectCs101: () => this.setState({ course: 'cs101' }),
+      selectPsyc: () => this.setState({ course: 'psyc201' }),
+      goDashboard: () => setTab('dashboard'),
+      goChat: () => setTab('chat'),
+      goProgress: () => setTab('progress'),
+      goQuiz: () => setTab('quiz'),
+      practiceWeak: () => setTab('quiz'),
+      courseName: cd.name,
+      courseIdUpper: s.course.toUpperCase(),
+      courseHasNotes: courseHasNotes,
+      emptyStateMessage: emptyStateMessage,
+      gradingCs101: courseData.cs101.grading,
+      gradingPsyc201: courseData.psyc201.grading,
+      deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: recentAttempts, mcOptions: mcOptions, quizDots: quizDots,
+      quizPos: s.quizStep + 1,
+      isQuizStep0: s.quizStep === 0,
+      isQuizStep1: s.quizStep === 1,
+      isQuizStep2: s.quizStep === 2,
+      isQuizStep3: s.quizStep === 3,
+      quizNext: () => this.setState({ quizStep: Math.min(3, s.quizStep + 1) }),
+      quizCorrectCount: quizCorrectCount,
+      isTfTrue: s.quizTf === true,
+      isTfFalse: s.quizTf === false,
+      selectTfTrue: () => this.setState({ quizTf: true }),
+      selectTfFalse: () => this.setState({ quizTf: false }),
+      quizSaAnswer: s.quizSaAnswer,
+      setSaAnswer: (e) => this.setState({ quizSaAnswer: e.target.value }),
+      chunkActiveStyle: 'padding:7px 10px;font-size:12.5px;border-radius:var(--radius-lg);background:var(--color-accent-100);color:var(--color-accent-800);font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:6px',
+      chatMessages: chatMessages
+    };
+  }
+}
+
+</script>
+</body>
+</html>
