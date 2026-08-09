@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 
+import truststore
+truststore.inject_into_ssl()
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 from dotenv import load_dotenv
