@@ -388,8 +388,10 @@ class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'cs101',
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
-    quizCorrectCount: 0, quizLoading: false, quizError: null
+    quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null
   };
+
+  _quizSeq = 0;
 
   navBtn(active) {
     return {
@@ -412,23 +414,29 @@ class Component extends DCLogic {
   }
 
   loadQuestion(courseId) {
-    this.setState({ quizLoading: true, quizError: null, quizQuestion: null, quizMcAnswer: null });
+    const seq = ++this._quizSeq;
+    this.setState({ quizLoading: true, quizError: null, quizErrorSource: null, quizQuestion: null, quizMcAnswer: null });
     fetch(`/api/courses/${courseId}/quiz/generate/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
     })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
-        if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not generate a question.' }); return; }
+        if (seq !== this._quizSeq) return;
+        if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not generate a question.', quizErrorSource: 'generate' }); return; }
         this.setState({ quizLoading: false, quizQuestion: data });
       })
-      .catch(e => this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message }));
+      .catch(e => {
+        if (seq !== this._quizSeq) return;
+        this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message, quizErrorSource: 'generate' });
+      });
   }
 
   checkAnswer(courseId) {
     const s = this.state;
     if (!s.quizQuestion || s.quizMcAnswer == null) return;
+    const seq = this._quizSeq;
     const q = s.quizQuestion;
-    this.setState({ quizLoading: true, quizError: null });
+    this.setState({ quizLoading: true, quizError: null, quizErrorSource: null });
     fetch(`/api/courses/${courseId}/quiz/record/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -438,7 +446,8 @@ class Component extends DCLogic {
     })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
-        if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not record your answer.' }); return; }
+        if (seq !== this._quizSeq) return;
+        if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not record your answer.', quizErrorSource: 'record' }); return; }
         const nextCount = this.state.quizCorrectCount + (data.correct ? 1 : 0);
         if (this.state.quizStep + 1 < 3) {
           this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: this.state.quizStep + 1 });
@@ -447,7 +456,10 @@ class Component extends DCLogic {
           this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: 3 });
         }
       })
-      .catch(e => this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message }));
+      .catch(e => {
+        if (seq !== this._quizSeq) return;
+        this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message, quizErrorSource: 'record' });
+      });
   }
 
   renderVals() {
@@ -560,6 +572,13 @@ class Component extends DCLogic {
     }));
     const quizTopicLabel = s.quizQuestion ? s.quizQuestion.topic : (s.quizError ? '—' : 'Loading…');
     const showQuizQuestion = !s.quizLoading && !s.quizError && !!s.quizQuestion && s.quizStep < 3;
+    const retryQuiz = () => {
+      if (s.quizErrorSource === 'record') {
+        this.checkAnswer(s.course);
+      } else {
+        this.loadQuestion(s.course);
+      }
+    };
 
     const quizDots = [0, 1, 2].map(i => ({
       style: 'height:5px;flex:1;border-radius:99px;background:' + (i <= s.quizStep ? 'var(--color-accent-700)' : 'var(--color-neutral-200)')
@@ -614,7 +633,7 @@ class Component extends DCLogic {
       quizError: s.quizError,
       quizQuestionText: s.quizQuestion ? s.quizQuestion.question : '',
       checkAnswer: () => this.checkAnswer(s.course),
-      retryQuiz: () => this.loadQuestion(s.course),
+      retryQuiz: retryQuiz,
       chunkActiveStyle: 'padding:7px 10px;font-size:12.5px;border-radius:var(--radius-lg);background:var(--color-accent-100);color:var(--color-accent-800);font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:6px',
       chatMessages: chatMessages
     };
