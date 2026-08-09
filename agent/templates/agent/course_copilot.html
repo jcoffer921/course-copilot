@@ -276,13 +276,13 @@
         <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
           <sc-if value="{{ !isQuizStep3 }}" hint-placeholder-val="{{ true }}">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
-              <span class="tag tag-accent">Weakest topic first · Recursion</span>
+              <span class="tag tag-accent">{{ quizTopicLabel }}</span>
               <span style="font-size:12.5px;opacity:.55">Question {{ quizPos }} of 3</span>
             </div>
           </sc-if>
           <sc-if value="{{ isQuizStep3 }}" hint-placeholder-val="{{ false }}">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
-              <span class="tag tag-accent">Weakest topic first · Recursion</span>
+              <span class="tag tag-accent">{{ quizTopicLabel }}</span>
               <span style="font-size:12.5px;opacity:.55">Complete</span>
             </div>
           </sc-if>
@@ -292,40 +292,29 @@
             </sc-for>
           </div>
 
-          <sc-if value="{{ isQuizStep0 }}" hint-placeholder-val="{{ true }}">
+          <sc-if value="{{ quizLoading }}" hint-placeholder-val="{{ false }}">
+            <div class="card elev-md" style="padding:var(--space-6);text-align:center;opacity:.7">
+              Loading question…
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ quizError }}" hint-placeholder-val="{{ false }}">
+            <div class="card elev-md" style="padding:var(--space-6)">
+              <p class="card-body" style="margin:0 0 var(--space-4)">{{ quizError }}</p>
+              <button type="button" class="btn btn-secondary btn-block" onClick="{{ retryQuiz }}">Try again</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ showQuizQuestion }}" hint-placeholder-val="{{ true }}">
             <div class="card elev-md" style="padding:var(--space-6)">
               <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">Multiple choice</span>
-              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">What is the time complexity of the naive recursive Fibonacci implementation shown in Lecture 05?</div>
+              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">{{ quizQuestionText }}</div>
               <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-6)">
                 <sc-for list="{{ mcOptions }}" as="opt" hint-placeholder-count="4">
                   <button type="button" onClick="{{ opt.onClick }}" style="{{ opt.style }}">{{ opt.label }}</button>
                 </sc-for>
               </div>
-              <button type="button" class="btn btn-primary btn-block" onClick="{{ quizNext }}">Check answer</button>
-            </div>
-          </sc-if>
-
-          <sc-if value="{{ isQuizStep1 }}" hint-placeholder-val="{{ false }}">
-            <div class="card elev-md" style="padding:var(--space-6)">
-              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">True / False</span>
-              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">Without a base case, a recursive function will crash with a RecursionError from a stack overflow.</div>
-              <div style="display:flex;gap:12px;margin-bottom:var(--space-6)">
-                <label class="radio" style="flex:1;justify-content:center;padding:14px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-lg)"><input type="radio" name="tf" checked="{{ isTfTrue }}" onChange="{{ selectTfTrue }}"/><span class="dot"></span>True</label>
-                <label class="radio" style="flex:1;justify-content:center;padding:14px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-lg)"><input type="radio" name="tf" checked="{{ isTfFalse }}" onChange="{{ selectTfFalse }}"/><span class="dot"></span>False</label>
-              </div>
-              <button type="button" class="btn btn-primary btn-block" onClick="{{ quizNext }}">Check answer</button>
-            </div>
-          </sc-if>
-
-          <sc-if value="{{ isQuizStep2 }}" hint-placeholder-val="{{ false }}">
-            <div class="card elev-md" style="padding:var(--space-6)">
-              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">Short answer</span>
-              <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">What is the worst-case time complexity of Linear Search?</div>
-              <div class="field" style="margin-bottom:var(--space-6)">
-                <label for="qc-sa">Your answer</label>
-                <input class="input" id="qc-sa" placeholder="e.g. O(n)" value="{{ quizSaAnswer }}" onInput="{{ setSaAnswer }}"/>
-              </div>
-              <button type="button" class="btn btn-primary btn-block" onClick="{{ quizNext }}">Submit &amp; finish</button>
+              <button type="button" class="btn btn-primary btn-block" onClick="{{ checkAnswer }}">Check answer</button>
             </div>
           </sc-if>
 
@@ -398,7 +387,8 @@
 class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'cs101',
-    quizStep: 0, quizMcAnswer: null, quizTf: null, quizSaAnswer: ''
+    quizStep: 0, quizQuestion: null, quizMcAnswer: null,
+    quizCorrectCount: 0, quizLoading: false, quizError: null
   };
 
   navBtn(active) {
@@ -421,11 +411,47 @@ class Component extends DCLogic {
     };
   }
 
+  loadQuestion(courseId) {
+    this.setState({ quizLoading: true, quizError: null, quizQuestion: null, quizMcAnswer: null });
+    fetch(`/api/courses/${courseId}/quiz/generate/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}'
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not generate a question.' }); return; }
+        this.setState({ quizLoading: false, quizQuestion: data });
+      })
+      .catch(e => this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message }));
+  }
+
+  checkAnswer(courseId) {
+    const s = this.state;
+    if (!s.quizQuestion || s.quizMcAnswer == null) return;
+    const q = s.quizQuestion;
+    this.setState({ quizLoading: true, quizError: null });
+    fetch(`/api/courses/${courseId}/quiz/record/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        lecture_id: q.lecture_id, chunk_id: q.chunk_id, topic: q.topic,
+        question: q.question, correct_answer: q.correct_answer, user_answer: s.quizMcAnswer
+      })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not record your answer.' }); return; }
+        const nextCount = this.state.quizCorrectCount + (data.correct ? 1 : 0);
+        if (this.state.quizStep + 1 < 3) {
+          this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: this.state.quizStep + 1 });
+          this.loadQuestion(courseId);
+        } else {
+          this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: 3 });
+        }
+      })
+      .catch(e => this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message }));
+  }
+
   renderVals() {
     const s = this.state;
-    const setTab = (t) => t === 'quiz'
-      ? this.setState({ tab: t, quizStep: 0, quizMcAnswer: null, quizTf: null, quizSaAnswer: '' })
-      : this.setState({ tab: t });
 
     const typeStyle = (type) => {
       if (type === 'exam') return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-accent-700);color:#fff;flex:none';
@@ -487,6 +513,24 @@ class Component extends DCLogic {
     const courseHasNotes = cd.hasNotes;
     const emptyStateMessage = 'No notes uploaded yet for ' + cd.name + ' — nothing to quiz or track until a lecture is added.';
 
+    const setTab = (t) => {
+      if (t === 'quiz') {
+        this.setState({ tab: t, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
+        if (courseHasNotes) this.loadQuestion(s.course);
+      } else {
+        this.setState({ tab: t });
+      }
+    };
+
+    const selectCourse = (courseId) => {
+      if (s.tab === 'quiz') {
+        this.setState({ course: courseId, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
+        if (courseData[courseId].hasNotes) this.loadQuestion(courseId);
+      } else {
+        this.setState({ course: courseId });
+      }
+    };
+
     const deadlines = cd.deadlinesRaw.map(d => Object.assign({}, d, {
       typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Term start',
       tagStyle: typeStyle(d.type)
@@ -507,18 +551,15 @@ class Component extends DCLogic {
       iconColor: a.correct ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)'
     }));
 
-    const MC_CORRECT = 'O(2^n)';
     const mcOptionStyle = (selected) => 'width:100%;text-align:left;padding:13px 15px;border-radius:var(--radius-lg);cursor:pointer;font-size:14px;font-family:var(--font-body);' +
       (selected ? 'border:1px solid var(--color-accent-700);background:var(--color-accent-100);font-weight:600' : 'border:1px solid var(--color-neutral-200);background:#fff');
-    const mcOptions = ['O(n)', 'O(log n)', 'O(2^n)', 'O(n^2)'].map(label => ({
+    const mcOptions = (s.quizQuestion ? s.quizQuestion.choices : []).map(label => ({
       label: label,
       onClick: () => this.setState({ quizMcAnswer: label }),
       style: mcOptionStyle(s.quizMcAnswer === label)
     }));
-    const mcCorrect = s.quizMcAnswer === MC_CORRECT;
-    const tfCorrect = s.quizTf === true;
-    const saCorrect = (s.quizSaAnswer || '').trim().toLowerCase() === 'o(n)';
-    const quizCorrectCount = [mcCorrect, tfCorrect, saCorrect].filter(Boolean).length;
+    const quizTopicLabel = s.quizQuestion ? s.quizQuestion.topic : (s.quizError ? '—' : 'Loading…');
+    const showQuizQuestion = !s.quizLoading && !s.quizError && !!s.quizQuestion && s.quizStep < 3;
 
     const quizDots = [0, 1, 2].map(i => ({
       style: 'height:5px;flex:1;border-radius:99px;background:' + (i <= s.quizStep ? 'var(--color-accent-700)' : 'var(--color-neutral-200)')
@@ -550,8 +591,8 @@ class Component extends DCLogic {
       navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
       courseChipStyleCs101: this.courseChip(s.course === 'cs101'),
       courseChipStylePsyc: this.courseChip(s.course === 'psyc201'),
-      selectCs101: () => this.setState({ course: 'cs101' }),
-      selectPsyc: () => this.setState({ course: 'psyc201' }),
+      selectCs101: () => selectCourse('cs101'),
+      selectPsyc: () => selectCourse('psyc201'),
       goDashboard: () => setTab('dashboard'),
       goChat: () => setTab('chat'),
       goProgress: () => setTab('progress'),
@@ -565,18 +606,15 @@ class Component extends DCLogic {
       gradingPsyc201: courseData.psyc201.grading,
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: recentAttempts, mcOptions: mcOptions, quizDots: quizDots,
       quizPos: s.quizStep + 1,
-      isQuizStep0: s.quizStep === 0,
-      isQuizStep1: s.quizStep === 1,
-      isQuizStep2: s.quizStep === 2,
       isQuizStep3: s.quizStep === 3,
-      quizNext: () => this.setState({ quizStep: Math.min(3, s.quizStep + 1) }),
-      quizCorrectCount: quizCorrectCount,
-      isTfTrue: s.quizTf === true,
-      isTfFalse: s.quizTf === false,
-      selectTfTrue: () => this.setState({ quizTf: true }),
-      selectTfFalse: () => this.setState({ quizTf: false }),
-      quizSaAnswer: s.quizSaAnswer,
-      setSaAnswer: (e) => this.setState({ quizSaAnswer: e.target.value }),
+      quizCorrectCount: s.quizCorrectCount,
+      quizTopicLabel: quizTopicLabel,
+      showQuizQuestion: showQuizQuestion,
+      quizLoading: s.quizLoading,
+      quizError: s.quizError,
+      quizQuestionText: s.quizQuestion ? s.quizQuestion.question : '',
+      checkAnswer: () => this.checkAnswer(s.course),
+      retryQuiz: () => this.loadQuestion(s.course),
       chunkActiveStyle: 'padding:7px 10px;font-size:12.5px;border-radius:var(--radius-lg);background:var(--color-accent-100);color:var(--color-accent-800);font-weight:600;display:flex;align-items:center;justify-content:space-between;gap:6px',
       chatMessages: chatMessages
     };
