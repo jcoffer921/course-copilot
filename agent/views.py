@@ -242,6 +242,24 @@ class QuizRecordView(APIView):
         return Response(result, status=status.HTTP_200_OK)
 
 
+class QuizHistoryView(APIView):
+    """
+    GET /api/courses/<course_id>/quiz/history/?limit=<int, default 10>
+    Most recent quiz attempts for this course, newest first.
+    """
+
+    async def get(self, request, course_id):
+        raw_limit = request.query_params.get("limit")
+        limit = int(raw_limit) if raw_limit else 10
+
+        try:
+            attempts = await sync_to_async(quiz.recent_attempts)(course_id, limit=limit)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"attempts": attempts}, status=status.HTTP_200_OK)
+
+
 class RemindersView(APIView):
     """
     GET /api/reminders/?within_days=<int>&course_id=<optional>

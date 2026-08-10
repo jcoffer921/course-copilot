@@ -161,3 +161,10 @@ def record_attempt(
     mastery.rebuild_scores(course_id)
 
     return {"correct": correct, "correct_answer": correct_answer}
+
+
+def recent_attempts(course_id: str, limit: int = 10) -> list:
+    """Most recent quiz attempts for this course, newest first."""
+    history = storage.read_quiz_history(course_id)
+    attempts = sorted(history.get("attempts", []), key=lambda a: a.get("timestamp") or "", reverse=True)
+    return attempts[:limit]
