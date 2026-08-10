@@ -137,7 +137,7 @@
                 <button type="button" class="btn btn-primary btn-block" onClick="{{ practiceWeak }}">Practice weak topics</button>
               </div>
             </sc-if>
-            <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+            <sc-if value="{{ showNoNotesEmptyState }}" hint-placeholder-val="{{ false }}">
               <div class="card elev-sm" style="padding:var(--space-6)">
                 <div class="card-kicker">{{ courseIdUpper }}</div>
                 <div class="card-title">{{ courseName }}</div>
@@ -276,7 +276,7 @@
           </div>
         </sc-if>
 
-        <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ showNoNotesEmptyState }}" hint-placeholder-val="{{ false }}">
           <div class="card elev-sm" style="padding:var(--space-6)">
             <div class="card-kicker">{{ courseIdUpper }}</div>
             <div class="card-title">{{ courseName }}</div>
@@ -289,7 +289,7 @@
     <sc-if value="{{ isQuiz }}" hint-placeholder-val="{{ false }}">
       <div style="padding:var(--space-8) var(--space-8);max-width:720px;margin:0 auto">
 
-        <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ showNoNotesEmptyState }}" hint-placeholder-val="{{ false }}">
           <div class="card elev-sm" style="padding:var(--space-6)">
             <div class="card-kicker">{{ courseIdUpper }}</div>
             <div class="card-title">{{ courseName }}</div>
@@ -433,6 +433,8 @@ class Component extends DCLogic {
   };
 
   _quizSeq = 0;
+  _dashSeq = 0;
+  _recentSeq = 0;
 
   navBtn(active) {
     return {
@@ -460,25 +462,35 @@ class Component extends DCLogic {
   }
 
   loadDashboard() {
+    const seq = ++this._dashSeq;
     this.setState({ dashboardLoading: true, dashboardError: null });
     fetch('/api/dashboard/')
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
+        if (seq !== this._dashSeq) return;
         if (!ok) { this.setState({ dashboardLoading: false, dashboardError: data.detail || 'Could not load dashboard data.' }); return; }
         this.setState({ dashboardLoading: false, courseMeta: data.courses, dashboardDeadlines: data.deadlines });
       })
-      .catch(e => this.setState({ dashboardLoading: false, dashboardError: 'Network error: ' + e.message }));
+      .catch(e => {
+        if (seq !== this._dashSeq) return;
+        this.setState({ dashboardLoading: false, dashboardError: 'Network error: ' + e.message });
+      });
   }
 
   loadDashboardRecent(courseId) {
+    const seq = ++this._recentSeq;
     this.setState({ dashboardRecentLoading: true, dashboardRecentError: null });
     fetch(`/api/courses/${courseId}/quiz/history/?limit=4`)
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
+        if (seq !== this._recentSeq) return;
         if (!ok) { this.setState({ dashboardRecentLoading: false, dashboardRecentError: data.detail || 'Could not load recent activity.' }); return; }
         this.setState({ dashboardRecentLoading: false, dashboardRecentAttempts: data.attempts });
       })
-      .catch(e => this.setState({ dashboardRecentLoading: false, dashboardRecentError: 'Network error: ' + e.message }));
+      .catch(e => {
+        if (seq !== this._recentSeq) return;
+        this.setState({ dashboardRecentLoading: false, dashboardRecentError: 'Network error: ' + e.message });
+      });
   }
 
   loadQuestion(courseId) {
@@ -566,6 +578,7 @@ class Component extends DCLogic {
     const courseMetaFor = (id) => (s.courseMeta && s.courseMeta[id]) || null;
     const cd = courseData[s.course];
     const courseHasNotes = !!(courseMetaFor(s.course) && courseMetaFor(s.course).has_notes);
+    const courseMetaLoaded = s.courseMeta !== null;
     const courseDisplayName = (courseMetaFor(s.course) && courseMetaFor(s.course).course_name) || s.course.toUpperCase();
     const emptyStateMessage = 'No notes uploaded yet for ' + courseDisplayName + ' — nothing to quiz or track until a lecture is added.';
 
@@ -573,7 +586,7 @@ class Component extends DCLogic {
       this._quizSeq++;
       if (t === 'quiz') {
         this.setState({ tab: t, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
-        if (courseHasNotes) this.loadQuestion(s.course);
+        if (courseHasNotes || !courseMetaLoaded) this.loadQuestion(s.course);
       } else if (t === 'dashboard') {
         this.setState({ tab: t });
         this.loadDashboard();
@@ -587,7 +600,7 @@ class Component extends DCLogic {
       this._quizSeq++;
       if (s.tab === 'quiz') {
         this.setState({ course: courseId, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
-        if (courseMetaFor(courseId) && courseMetaFor(courseId).has_notes) this.loadQuestion(courseId);
+        if (!s.courseMeta || (courseMetaFor(courseId) && courseMetaFor(courseId).has_notes)) this.loadQuestion(courseId);
       } else if (s.tab === 'dashboard') {
         this.setState({ course: courseId });
         this.loadDashboardRecent(courseId);
@@ -705,6 +718,7 @@ class Component extends DCLogic {
       courseName: courseDisplayName,
       courseIdUpper: s.course.toUpperCase(),
       courseHasNotes: courseHasNotes,
+      showNoNotesEmptyState: courseMetaLoaded && !courseHasNotes,
       emptyStateMessage: emptyStateMessage,
       gradingCs101: (courseMetaFor('cs101') && courseMetaFor('cs101').grading) || [],
       gradingPsyc201: (courseMetaFor('psyc201') && courseMetaFor('psyc201').grading) || [],
