@@ -86,8 +86,18 @@
           <span class="tag tag-accent">Fall 2026 · CS101 + PSYC201</span>
         </div>
 
-        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
-          <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:var(--space-6);margin-bottom:var(--space-6)">
+        <sc-if value="{{ showDashboardLoading }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6);text-align:center;opacity:.7;margin-bottom:var(--space-6)">
+            Loading dashboard…
+          </div>
+        </sc-if>
+        <sc-if value="{{ showDashboardError }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6);margin-bottom:var(--space-6)">
+            <p class="card-body" style="margin:0 0 var(--space-4)">{{ dashboardError }}</p>
+            <button type="button" class="btn btn-secondary" onClick="{{ retryDashboard }}">Try again</button>
+          </div>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:var(--space-6);margin-bottom:var(--space-6)">
             <div class="card elev-sm" style="padding:var(--space-6)">
               <div style="display:flex;align-items:center;justify-content:between;gap:8px;margin-bottom:var(--space-4)">
                 <div style="display:flex;align-items:center;gap:8px">
@@ -109,24 +119,32 @@
               </div>
             </div>
 
-            <div class="card elev-sm" style="padding:var(--space-6);background:var(--color-accent-100);border-color:var(--color-accent-200)">
-              <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-3)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-                  <div class="card-title" style="margin:0;color:var(--color-accent-900,var(--color-accent-800))">Needs practice</div>
+            <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+              <div class="card elev-sm" style="padding:var(--space-6);background:var(--color-accent-100);border-color:var(--color-accent-200)">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-3)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-800)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                    <div class="card-title" style="margin:0;color:var(--color-accent-900,var(--color-accent-800))">Needs practice</div>
+                </div>
+                <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-4)">Based on your quiz history in {{ courseIdUpper }}.</p>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-4)">
+                  <sc-for list="{{ weakTopics }}" as="t" hint-placeholder-count="2">
+                    <div>
+                      <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="font-weight:600">{{ t.topic }}</span><span style="opacity:.65">{{ t.pct }}%</span></div>
+                      <div style="height:6px;border-radius:99px;background:var(--color-accent-200)"><div style="{{ t.barStyle }}"></div></div>
+                    </div>
+                  </sc-for>
+                </div>
+                <button type="button" class="btn btn-primary btn-block" onClick="{{ practiceWeak }}">Practice weak topics</button>
               </div>
-              <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-4)">Based on your quiz history in CS101.</p>
-              <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-4)">
-                <sc-for list="{{ weakTopics }}" as="t" hint-placeholder-count="2">
-                  <div>
-                    <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span style="font-weight:600">{{ t.topic }}</span><span style="opacity:.65">{{ t.pct }}%</span></div>
-                    <div style="height:6px;border-radius:99px;background:var(--color-accent-200)"><div style="{{ t.barStyle }}"></div></div>
-                  </div>
-                </sc-for>
+            </sc-if>
+            <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
+              <div class="card elev-sm" style="padding:var(--space-6)">
+                <div class="card-kicker">{{ courseIdUpper }}</div>
+                <div class="card-title">{{ courseName }}</div>
+                <p class="card-body" style="font-size:13px">Add notes to {{ courseName }} to get weak-topic recommendations here.</p>
               </div>
-              <button type="button" class="btn btn-primary btn-block" onClick="{{ practiceWeak }}">Practice weak topics</button>
-            </div>
-          </div>
-        </sc-if>
+            </sc-if>
+        </div>
 
         <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
           <div class="card elev-sm" style="padding:var(--space-6);margin-bottom:var(--space-6)">
@@ -145,10 +163,11 @@
           <div class="card elev-sm" style="padding:var(--space-6)">
             <div class="card-kicker">CS101</div>
             <div class="card-title">Intro to Computer Science</div>
-            <p class="card-body">7 topics · 2 quizzed · midterm Oct 14</p>
+            <p class="card-body">{{ cs101Summary }}</p>
             <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
-              <span class="tag tag-accent">Recursion — developing</span>
-              <span class="tag tag-accent">Sorting — developing</span>
+              <sc-for list="{{ cs101Tags }}" as="tag" hint-placeholder-count="2">
+                <span class="tag tag-accent">{{ tag.label }}</span>
+              </sc-for>
             </div>
             <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
               <sc-for list="{{ gradingCs101 }}" as="g" hint-placeholder-count="4">
@@ -159,11 +178,16 @@
           <div class="card elev-sm" style="padding:var(--space-6)">
             <div class="card-kicker">PSYC201</div>
             <div class="card-title">Cognitive Psychology</div>
-            <p class="card-body">Syllabus added — no lecture notes uploaded yet.</p>
+            <p class="card-body">{{ psyc201Summary }}</p>
             <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
               Upload notes
             </button>
+            <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
+              <sc-for list="{{ psyc201Tags }}" as="tag" hint-placeholder-count="2">
+                <span class="tag tag-accent">{{ tag.label }}</span>
+              </sc-for>
+            </div>
             <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
               <sc-for list="{{ gradingPsyc201 }}" as="g" hint-placeholder-count="4">
                 <span class="tag tag-neutral">{{ g.component }} {{ g.weight_pct }}%</span>
@@ -174,15 +198,26 @@
 
         <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
           <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">Recent quiz activity</div>
-          <div class="card elev-sm" style="padding:0;overflow:hidden">
-            <sc-for list="{{ recentAttempts }}" as="a" hint-placeholder-count="4">
-              <div style="display:flex;align-items:center;gap:var(--space-3);padding:12px var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{ a.iconColor }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><sc-if value="{{ a.correct }}" hint-placeholder-val="{{ true }}"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></sc-if><sc-if value="{{ a.incorrect }}" hint-placeholder-val="{{ false }}"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></sc-if></svg>
-                <div style="flex:1;min-width:0;font-size:13.5px">{{ a.question }}</div>
-                <span class="tag tag-neutral">{{ a.topic }}</span>
-              </div>
-            </sc-for>
-          </div>
+          <sc-if value="{{ dashboardRecentLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.6;padding:12px 0">Loading…</div>
+          </sc-if>
+          <sc-if value="{{ dashboardRecentError }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;padding:12px 0;display:flex;align-items:center;gap:10px">
+              <span style="opacity:.7">{{ dashboardRecentError }}</span>
+              <button type="button" class="btn btn-secondary" onClick="{{ retryDashboardRecent }}">Try again</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ !dashboardRecentLoading }}" hint-placeholder-val="{{ true }}">
+            <div class="card elev-sm" style="padding:0;overflow:hidden">
+              <sc-for list="{{ dashboardRecentActivity }}" as="a" hint-placeholder-count="4">
+                <div style="display:flex;align-items:center;gap:var(--space-3);padding:12px var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="{{ a.iconColor }}" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><sc-if value="{{ a.correct }}" hint-placeholder-val="{{ true }}"><path d="M21.801 10A10 10 0 1 1 17 3.335"/><path d="m9 11 3 3L22 4"/></sc-if><sc-if value="{{ a.incorrect }}" hint-placeholder-val="{{ false }}"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></sc-if></svg>
+                  <div style="flex:1;min-width:0;font-size:13.5px">{{ a.question }}</div>
+                  <span class="tag tag-neutral">{{ a.topic }}</span>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
         </sc-if>
       </div>
     </sc-if>
@@ -403,6 +438,8 @@ function getCookie(name) {
 class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'cs101',
+    courseMeta: null, dashboardDeadlines: [], dashboardLoading: false, dashboardError: null,
+    dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
     quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null
   };
@@ -427,6 +464,33 @@ class Component extends DCLogic {
       background: active ? 'var(--color-neutral-200)' : 'transparent',
       fontWeight: active ? 600 : 400
     };
+  }
+
+  componentDidMount() {
+    this.loadDashboard();
+    this.loadDashboardRecent(this.state.course);
+  }
+
+  loadDashboard() {
+    this.setState({ dashboardLoading: true, dashboardError: null });
+    fetch('/api/dashboard/')
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) { this.setState({ dashboardLoading: false, dashboardError: data.detail || 'Could not load dashboard data.' }); return; }
+        this.setState({ dashboardLoading: false, courseMeta: data.courses, dashboardDeadlines: data.deadlines });
+      })
+      .catch(e => this.setState({ dashboardLoading: false, dashboardError: 'Network error: ' + e.message }));
+  }
+
+  loadDashboardRecent(courseId) {
+    this.setState({ dashboardRecentLoading: true, dashboardRecentError: null });
+    fetch(`/api/courses/${courseId}/quiz/history/?limit=4`)
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) { this.setState({ dashboardRecentLoading: false, dashboardRecentError: data.detail || 'Could not load recent activity.' }); return; }
+        this.setState({ dashboardRecentLoading: false, dashboardRecentAttempts: data.attempts });
+      })
+      .catch(e => this.setState({ dashboardRecentLoading: false, dashboardRecentError: 'Network error: ' + e.message }));
   }
 
   loadQuestion(courseId) {
@@ -491,24 +555,6 @@ class Component extends DCLogic {
 
     const courseData = {
       cs101: {
-        name: 'Intro to Computer Science',
-        hasNotes: true,
-        grading: [
-          { component: 'Homework', weight_pct: 30 },
-          { component: 'Midterm', weight_pct: 25 },
-          { component: 'Final', weight_pct: 25 },
-          { component: 'Participation', weight_pct: 20 }
-        ],
-        deadlinesRaw: [
-          { month: 'SEP', day: '4', title: 'First day of class', course: 'CS101', type: 'other' },
-          { month: 'SEP', day: '18', title: 'Homework 1 due', course: 'CS101', type: 'assignment' },
-          { month: 'OCT', day: '2', title: 'Homework 2 due', course: 'CS101', type: 'assignment' },
-          { month: 'OCT', day: '14', title: 'Midterm Exam', course: 'CS101', type: 'exam' },
-        ],
-        weakTopics: [
-          { topic: 'Recursion', pct: 46, barStyle: 'width:46%;height:100%;border-radius:99px;background:var(--color-accent-700)' },
-          { topic: 'Sorting & searching', pct: 55, barStyle: 'width:55%;height:100%;border-radius:99px;background:var(--color-accent-700)' }
-        ],
         allTopicsRaw: [
           { topic: 'Recursion', score: 0.46, status: 'developing' },
           { topic: 'Sorting and searching algorithms', score: 0.55, status: 'developing' },
@@ -526,26 +572,24 @@ class Component extends DCLogic {
         ]
       },
       psyc201: {
-        name: 'Cognitive Psychology',
-        hasNotes: false,
-        grading: [
-          { component: 'Problem sets', weight_pct: 20 },
-          { component: 'Midterm', weight_pct: 30 },
-          { component: 'Final', weight_pct: 35 },
-          { component: 'Participation', weight_pct: 15 }
-        ],
-        deadlinesRaw: [], weakTopics: [], allTopicsRaw: [], attemptsRaw: []
+        allTopicsRaw: [], attemptsRaw: []
       }
     };
+    const courseMetaFor = (id) => (s.courseMeta && s.courseMeta[id]) || null;
     const cd = courseData[s.course];
-    const courseHasNotes = cd.hasNotes;
-    const emptyStateMessage = 'No notes uploaded yet for ' + cd.name + ' — nothing to quiz or track until a lecture is added.';
+    const courseHasNotes = !!(courseMetaFor(s.course) && courseMetaFor(s.course).has_notes);
+    const courseDisplayName = (courseMetaFor(s.course) && courseMetaFor(s.course).course_name) || s.course.toUpperCase();
+    const emptyStateMessage = 'No notes uploaded yet for ' + courseDisplayName + ' — nothing to quiz or track until a lecture is added.';
 
     const setTab = (t) => {
       this._quizSeq++;
       if (t === 'quiz') {
         this.setState({ tab: t, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
         if (courseHasNotes) this.loadQuestion(s.course);
+      } else if (t === 'dashboard') {
+        this.setState({ tab: t });
+        this.loadDashboard();
+        this.loadDashboardRecent(s.course);
       } else {
         this.setState({ tab: t });
       }
@@ -555,17 +599,52 @@ class Component extends DCLogic {
       this._quizSeq++;
       if (s.tab === 'quiz') {
         this.setState({ course: courseId, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
-        if (courseData[courseId].hasNotes) this.loadQuestion(courseId);
+        if (courseMetaFor(courseId) && courseMetaFor(courseId).has_notes) this.loadQuestion(courseId);
+      } else if (s.tab === 'dashboard') {
+        this.setState({ course: courseId });
+        this.loadDashboardRecent(courseId);
       } else {
         this.setState({ course: courseId });
       }
     };
 
-    const deadlines = cd.deadlinesRaw.map(d => Object.assign({}, d, {
-      typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Term start',
-      tagStyle: typeStyle(d.type)
+    const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dateParts = (isoDate) => {
+      const bits = isoDate.split('-').map(Number);
+      return { monthAbbrUpper: MONTH_LABELS[bits[1] - 1].toUpperCase(), monthLabel: MONTH_LABELS[bits[1] - 1], day: String(bits[2]) };
+    };
+
+    const deadlines = s.dashboardDeadlines.map(d => {
+      const dp = dateParts(d.date);
+      return {
+        month: dp.monthAbbrUpper, day: dp.day, title: d.title, course: d.course_id.toUpperCase(),
+        typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Other',
+        tagStyle: typeStyle(d.type)
+      };
+    });
+    const weakTopics = ((courseMetaFor(s.course) && courseMetaFor(s.course).weak_topics) || []).slice(0, 2).map(t => {
+      const pct = Math.round(t.score * 100);
+      return { topic: t.topic, pct: pct, barStyle: 'width:' + pct + '%;height:100%;border-radius:99px;background:var(--color-accent-700)' };
+    });
+    const courseCardSummary = (meta) => {
+      if (!meta) return 'Loading…';
+      const parts = [meta.topics_count + ' topics', meta.quizzed_count + ' quizzed'];
+      if (meta.next_deadline) {
+        const dp = dateParts(meta.next_deadline.date);
+        parts.push(meta.next_deadline.title.toLowerCase() + ' ' + dp.monthLabel + ' ' + dp.day);
+      }
+      return parts.join(' · ');
+    };
+    const courseCardTags = (meta) => (meta ? meta.weak_topics.slice(0, 2) : []).map(t => ({
+      label: t.topic + ' — ' + (statusLabel[t.status] || t.status)
     }));
-    const weakTopics = cd.weakTopics;
+    const dashboardRecentActivity = s.dashboardRecentAttempts.map(a => ({
+      topic: a.topic, question: a.question, correct: a.correct, incorrect: !a.correct,
+      iconColor: a.correct ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)'
+    }));
+    const retryDashboard = () => this.loadDashboard();
+    const retryDashboardRecent = () => this.loadDashboardRecent(s.course);
+
     const allTopics = cd.allTopicsRaw.map(function (t) {
       var pct = t.score ? Math.round(t.score * 100) : 6;
       var color = t.score ? statusColor[t.status] : 'var(--color-neutral-300)';
@@ -635,13 +714,26 @@ class Component extends DCLogic {
       goProgress: () => setTab('progress'),
       goQuiz: () => setTab('quiz'),
       practiceWeak: () => setTab('quiz'),
-      courseName: cd.name,
+      courseName: courseDisplayName,
       courseIdUpper: s.course.toUpperCase(),
       courseHasNotes: courseHasNotes,
       emptyStateMessage: emptyStateMessage,
-      gradingCs101: courseData.cs101.grading,
-      gradingPsyc201: courseData.psyc201.grading,
+      gradingCs101: (courseMetaFor('cs101') && courseMetaFor('cs101').grading) || [],
+      gradingPsyc201: (courseMetaFor('psyc201') && courseMetaFor('psyc201').grading) || [],
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: recentAttempts, mcOptions: mcOptions, quizDots: quizDots,
+      dashboardLoading: s.dashboardLoading,
+      showDashboardError: !!s.dashboardError && !s.courseMeta,
+      dashboardError: s.dashboardError,
+      retryDashboard: retryDashboard,
+      showDashboardLoading: s.dashboardLoading && !s.courseMeta,
+      cs101Summary: courseCardSummary(courseMetaFor('cs101')),
+      psyc201Summary: courseCardSummary(courseMetaFor('psyc201')),
+      cs101Tags: courseCardTags(courseMetaFor('cs101')),
+      psyc201Tags: courseCardTags(courseMetaFor('psyc201')),
+      dashboardRecentActivity: dashboardRecentActivity,
+      dashboardRecentLoading: s.dashboardRecentLoading,
+      dashboardRecentError: s.dashboardRecentError,
+      retryDashboardRecent: retryDashboardRecent,
       quizPos: s.quizStep + 1,
       isQuizStep3: s.quizStep === 3,
       quizCorrectCount: s.quizCorrectCount,
