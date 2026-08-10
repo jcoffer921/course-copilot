@@ -11,7 +11,7 @@ from .serializers import (
     GenerateQuestionRequestSerializer,
     RecordAttemptRequestSerializer,
 )
-from .services import chunk_notes, mastery, quiz, reminders, sessions, storage
+from .services import chunk_notes, dashboard, mastery, quiz, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
@@ -260,6 +260,21 @@ class RemindersView(APIView):
             within_days=within_days, course_ids=course_ids,
         )
         return Response(deadlines, status=status.HTTP_200_OK)
+
+
+class DashboardView(APIView):
+    """
+    GET /api/dashboard/
+    Cross-course summary for the Dashboard tab: upcoming deadlines (14-day
+    window) plus, per course, topics/quizzed counts, next deadline
+    (uncapped), grading, and weak topics. Always 200 — a corrupt course's
+    data is isolated to its own {"error": ...} slot by build_dashboard(),
+    never fails the whole response.
+    """
+
+    async def get(self, request):
+        data = await sync_to_async(dashboard.build_dashboard)()
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class SyllabusDetailView(APIView):

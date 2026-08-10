@@ -20,4 +20,5 @@ urlpatterns = [
         name="session-detail",
     ),
     path("reminders/", views.RemindersView.as_view(), name="reminders"),
+    path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
 ]
