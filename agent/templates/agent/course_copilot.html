@@ -146,18 +146,6 @@
             </sc-if>
         </div>
 
-        <sc-if value="{{ !courseHasNotes }}" hint-placeholder-val="{{ false }}">
-          <div class="card elev-sm" style="padding:var(--space-6);margin-bottom:var(--space-6)">
-            <div class="card-kicker">{{ courseIdUpper }}</div>
-            <div class="card-title">{{ courseName }}</div>
-            <p class="card-body">{{ emptyStateMessage }}</p>
-            <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
-              Upload notes
-            </button>
-          </div>
-        </sc-if>
-
         <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">Your courses</div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-4);margin-bottom:var(--space-6)">
           <div class="card elev-sm" style="padding:var(--space-6)">
