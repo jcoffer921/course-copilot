@@ -614,6 +614,7 @@ class Component extends DCLogic {
   }
 
   closeUpload() {
+    this._uploadSeq++;
     this.setState({
       uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
       uploadLoading: false, uploadError: null, uploadConflict: null
@@ -622,7 +623,8 @@ class Component extends DCLogic {
 
   submitUpload(overwrite) {
     const s = this.state;
-    if (!s.uploadFile || !s.uploadLectureId) return;
+    if (!s.uploadFile) { this.setState({ uploadError: 'Choose a file to upload.' }); return; }
+    if (!s.uploadLectureId) { this.setState({ uploadError: 'Enter a lecture id.' }); return; }
     const seq = ++this._uploadSeq;
     const courseId = s.uploadOpenFor;
     this.setState({ uploadLoading: true, uploadError: null, uploadConflict: null });
@@ -756,7 +758,7 @@ class Component extends DCLogic {
 
     const uploadConflictPreview = (s.uploadConflict && s.uploadConflict.existing_preview) || null;
     const uploadConflictTopicsText = (uploadConflictPreview && uploadConflictPreview.topics || []).join(', ');
-    const onUploadFileChange = (e) => this.setState({ uploadFile: e.target.files[0] || null });
+    const onUploadFileChange = (e) => this.setState({ uploadFile: e.target.files[0] || null, uploadError: null });
     const onUploadLectureIdChange = (e) => this.setState({ uploadLectureId: e.target.value });
     const onUploadDateChange = (e) => this.setState({ uploadDate: e.target.value });
 

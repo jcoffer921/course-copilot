@@ -11,7 +11,7 @@ def isolated_courses_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-def _seed_course(course_id, topics, grading, dates, has_notes=False):
+def _seed_course(course_id, topics, grading, dates, notes_count=0):
     storage.write_syllabus(course_id, {
         "course_id": course_id,
         "course_name": course_id.upper(),
@@ -19,9 +19,10 @@ def _seed_course(course_id, topics, grading, dates, has_notes=False):
         "grading": grading,
         "topics": topics,
     })
-    if has_notes:
-        storage.write_notes(course_id, "lecture01", {
-            "lecture_id": "lecture01",
+    for i in range(notes_count):
+        lecture_id = f"lecture{i + 1:02d}"
+        storage.write_notes(course_id, lecture_id, {
+            "lecture_id": lecture_id,
             "source": "notes",
             "date": "2026-01-01",
             "topics": topics[:1],
@@ -34,7 +35,7 @@ def test_build_dashboard_composes_course_data(isolated_courses_dir):
         "cs101", topics=["A", "B", "C"],
         grading=[{"component": "HW", "weight_pct": 100}],
         dates=[{"date": "2026-08-10", "title": "Quiz 1", "type": "assignment"}],
-        has_notes=True,
+        notes_count=1,
     )
     storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-01T00:00:00"})
     mastery.rebuild_scores("cs101")
@@ -51,7 +52,7 @@ def test_build_dashboard_composes_course_data(isolated_courses_dir):
 
 
 def test_build_dashboard_course_without_notes_or_mastery(isolated_courses_dir):
-    _seed_course("psyc201", topics=["X", "Y"], grading=[], dates=[], has_notes=False)
+    _seed_course("psyc201", topics=["X", "Y"], grading=[], dates=[])
 
     data = dashboard.build_dashboard()
 
@@ -68,7 +69,7 @@ def test_build_dashboard_next_deadline_uncapped_but_top_level_deadlines_windowed
     far_date = (date.today() + timedelta(days=20)).isoformat()
     _seed_course(
         "cs101", topics=["A"], grading=[],
-        dates=[{"date": far_date, "title": "Midterm", "type": "exam"}], has_notes=False,
+        dates=[{"date": far_date, "title": "Midterm", "type": "exam"}],
     )
 
     data = dashboard.build_dashboard()
@@ -80,7 +81,7 @@ def test_build_dashboard_next_deadline_uncapped_but_top_level_deadlines_windowed
 
 
 def test_build_dashboard_isolates_corrupt_course(isolated_courses_dir):
-    _seed_course("cs101", topics=["A"], grading=[], dates=[], has_notes=False)
+    _seed_course("cs101", topics=["A"], grading=[], dates=[])
 
     bad_dir = isolated_courses_dir / "badcourse"
     bad_dir.mkdir()
@@ -90,3 +91,11 @@ def test_build_dashboard_isolates_corrupt_course(isolated_courses_dir):
 
     assert "error" in data["courses"]["badcourse"]
     assert data["courses"]["cs101"]["topics_count"] == 1
+
+
+def test_build_dashboard_notes_count_reflects_multiple_lectures(isolated_courses_dir):
+    _seed_course("cs101", topics=["A"], grading=[], dates=[], notes_count=2)
+
+    data = dashboard.build_dashboard()
+
+    assert data["courses"]["cs101"]["notes_count"] == 2
