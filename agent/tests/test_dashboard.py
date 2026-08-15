@@ -43,7 +43,7 @@ def test_build_dashboard_composes_course_data(isolated_courses_dir):
 
     course = data["courses"]["cs101"]
     assert course["course_name"] == "CS101"
-    assert course["has_notes"] is True
+    assert course["notes_count"] == 1
     assert course["topics_count"] == 3
     assert course["quizzed_count"] == 1
     assert course["grading"] == [{"component": "HW", "weight_pct": 100}]
@@ -56,7 +56,7 @@ def test_build_dashboard_course_without_notes_or_mastery(isolated_courses_dir):
     data = dashboard.build_dashboard()
 
     course = data["courses"]["psyc201"]
-    assert course["has_notes"] is False
+    assert course["notes_count"] == 0
     assert course["quizzed_count"] == 0
     assert course["weak_topics"] == []
     assert course["next_deadline"] is None

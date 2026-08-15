@@ -577,7 +577,7 @@ class Component extends DCLogic {
     };
     const courseMetaFor = (id) => (s.courseMeta && s.courseMeta[id]) || null;
     const cd = courseData[s.course];
-    const courseHasNotes = !!(courseMetaFor(s.course) && courseMetaFor(s.course).has_notes);
+    const courseHasNotes = !!(courseMetaFor(s.course) && courseMetaFor(s.course).notes_count > 0);
     const courseMetaLoaded = s.courseMeta !== null;
     const courseDisplayName = (courseMetaFor(s.course) && courseMetaFor(s.course).course_name) || s.course.toUpperCase();
     const emptyStateMessage = 'No notes uploaded yet for ' + courseDisplayName + ' — nothing to quiz or track until a lecture is added.';
@@ -600,7 +600,7 @@ class Component extends DCLogic {
       this._quizSeq++;
       if (s.tab === 'quiz') {
         this.setState({ course: courseId, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
-        if (!s.courseMeta || (courseMetaFor(courseId) && courseMetaFor(courseId).has_notes)) this.loadQuestion(courseId);
+        if (!s.courseMeta || (courseMetaFor(courseId) && courseMetaFor(courseId).notes_count > 0)) this.loadQuestion(courseId);
       } else if (s.tab === 'dashboard') {
         this.setState({ course: courseId });
         this.loadDashboardRecent(courseId);
