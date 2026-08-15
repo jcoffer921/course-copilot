@@ -42,7 +42,7 @@ the prompt).
 ## Option B: Run the API server
 ```bash
 ./scripts/run_server.sh       # Git Bash / WSL / macOS / Linux
-scripts\run_server.bat        # Windows cmd.exe / PowerShell
+.\run_server.bat              # Windows cmd.exe / PowerShell
 ```
 Do **not** use `python manage.py runserver` for real use — it's fine for
 quick checks but doesn't exercise the ASGI/async path the way uvicorn does.
