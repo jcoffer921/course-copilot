@@ -152,6 +152,10 @@
             <div class="card-kicker">CS101</div>
             <div class="card-title">Intro to Computer Science</div>
             <p class="card-body">{{ cs101Summary }}</p>
+            <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)" onClick="{{ openUploadCs101 }}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
+              Upload notes
+            </button>
             <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
               <sc-for list="{{ cs101Tags }}" as="tag" hint-placeholder-count="2">
                 <span class="tag tag-accent">{{ tag.label }}</span>
@@ -167,7 +171,7 @@
             <div class="card-kicker">PSYC201</div>
             <div class="card-title">Cognitive Psychology</div>
             <p class="card-body">{{ psyc201Summary }}</p>
-            <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)">
+            <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)" onClick="{{ openUploadPsyc201 }}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
               Upload notes
             </button>
@@ -206,6 +210,60 @@
               </sc-for>
             </div>
           </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ uploadModalOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+            <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
+              <div class="card-title" style="margin:0 0 var(--space-4)">Upload notes — {{ uploadModalCourseUpper }}</div>
+
+              <sc-if value="{{ hasUploadConflict }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13.5px;margin-bottom:var(--space-4)">
+                  <p style="margin:0 0 8px">A lecture called "{{ uploadLectureId }}" already exists for this course:</p>
+                  <div class="card elev-sm" style="padding:12px;margin-bottom:12px">
+                    <div style="font-weight:600">{{ uploadConflictPreview.lecture_id }} ({{ uploadConflictPreview.source }})</div>
+                    <div style="opacity:.7;font-size:12.5px">{{ uploadConflictTopicsText }}</div>
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-secondary" onClick="{{ cancelConflict }}">Cancel</button>
+                    <button type="button" class="btn btn-primary" onClick="{{ confirmOverwrite }}">Overwrite</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ !hasUploadConflict }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+                  <div>
+                    <div style="font-size:13px;margin-bottom:4px">File (PDF, TXT, MD, or PPTX)</div>
+                    <input type="file" accept=".pdf,.txt,.md,.pptx" onChange="{{ onUploadFileChange }}" style="font-size:13px"/>
+                  </div>
+                  <div>
+                    <div style="font-size:13px;margin-bottom:4px">Lecture ID</div>
+                    <input class="input" value="{{ uploadLectureId }}" onChange="{{ onUploadLectureIdChange }}" style="width:100%"/>
+                  </div>
+                  <div>
+                    <div style="font-size:13px;margin-bottom:4px">Date (optional)</div>
+                    <input class="input" placeholder="YYYY-MM-DD" value="{{ uploadDate }}" onChange="{{ onUploadDateChange }}" style="width:100%"/>
+                  </div>
+                </div>
+
+                <sc-if value="{{ uploadError }}" hint-placeholder-val="{{ false }}">
+                  <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ uploadError }}</p>
+                </sc-if>
+
+                <sc-if value="{{ uploadLoading }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;opacity:.7;padding:8px 0">Chunking your notes… this can take a few seconds.</div>
+                </sc-if>
+
+                <sc-if value="{{ !uploadLoading }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-secondary" onClick="{{ closeUpload }}">Cancel</button>
+                    <button type="button" class="btn btn-primary" onClick="{{ submitUpload }}">Upload</button>
+                  </div>
+                </sc-if>
+              </sc-if>
+            </div>
+          </div>
         </sc-if>
       </div>
     </sc-if>
@@ -429,12 +487,15 @@ class Component extends DCLogic {
     courseMeta: null, dashboardDeadlines: [], dashboardLoading: false, dashboardError: null,
     dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
-    quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null
+    quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
+    uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
+    uploadLoading: false, uploadError: null, uploadConflict: null
   };
 
   _quizSeq = 0;
   _dashSeq = 0;
   _recentSeq = 0;
+  _uploadSeq = 0;
 
   navBtn(active) {
     return {
@@ -542,6 +603,53 @@ class Component extends DCLogic {
       });
   }
 
+  openUpload(courseId) {
+    const meta = this.state.courseMeta && this.state.courseMeta[courseId];
+    const n = (meta && meta.notes_count) || 0;
+    const suggested = 'lecture' + String(n + 1).padStart(2, '0');
+    this.setState({
+      uploadOpenFor: courseId, uploadLectureId: suggested, uploadDate: '',
+      uploadFile: null, uploadLoading: false, uploadError: null, uploadConflict: null
+    });
+  }
+
+  closeUpload() {
+    this.setState({
+      uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
+      uploadLoading: false, uploadError: null, uploadConflict: null
+    });
+  }
+
+  submitUpload(overwrite) {
+    const s = this.state;
+    if (!s.uploadFile || !s.uploadLectureId) return;
+    const seq = ++this._uploadSeq;
+    const courseId = s.uploadOpenFor;
+    this.setState({ uploadLoading: true, uploadError: null, uploadConflict: null });
+
+    const body = new FormData();
+    body.append('file', s.uploadFile);
+    body.append('lecture_id', s.uploadLectureId);
+    if (s.uploadDate) body.append('date', s.uploadDate);
+    if (overwrite) body.append('overwrite', 'true');
+
+    fetch(`/api/courses/${courseId}/notes/chunk/`, {
+      method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: body
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, status: r.status, data })))
+      .then(({ ok, status, data }) => {
+        if (seq !== this._uploadSeq) return;
+        if (status === 409) { this.setState({ uploadLoading: false, uploadConflict: data }); return; }
+        if (!ok) { this.setState({ uploadLoading: false, uploadError: data.detail || 'Could not process that file.' }); return; }
+        this.closeUpload();
+        this.loadDashboard();
+      })
+      .catch(e => {
+        if (seq !== this._uploadSeq) return;
+        this.setState({ uploadLoading: false, uploadError: 'Network error: ' + e.message });
+      });
+  }
+
   renderVals() {
     const s = this.state;
 
@@ -646,6 +754,12 @@ class Component extends DCLogic {
     const retryDashboard = () => this.loadDashboard();
     const retryDashboardRecent = () => this.loadDashboardRecent(s.course);
 
+    const uploadConflictPreview = (s.uploadConflict && s.uploadConflict.existing_preview) || null;
+    const uploadConflictTopicsText = (uploadConflictPreview && uploadConflictPreview.topics || []).join(', ');
+    const onUploadFileChange = (e) => this.setState({ uploadFile: e.target.files[0] || null });
+    const onUploadLectureIdChange = (e) => this.setState({ uploadLectureId: e.target.value });
+    const onUploadDateChange = (e) => this.setState({ uploadDate: e.target.value });
+
     const allTopics = cd.allTopicsRaw.map(function (t) {
       var pct = t.score ? Math.round(t.score * 100) : 6;
       var color = t.score ? statusColor[t.status] : 'var(--color-neutral-300)';
@@ -736,6 +850,24 @@ class Component extends DCLogic {
       dashboardRecentLoading: s.dashboardRecentLoading,
       dashboardRecentError: s.dashboardRecentError,
       retryDashboardRecent: retryDashboardRecent,
+      openUploadCs101: () => this.openUpload('cs101'),
+      openUploadPsyc201: () => this.openUpload('psyc201'),
+      uploadModalOpen: !!s.uploadOpenFor,
+      uploadModalCourseUpper: s.uploadOpenFor ? s.uploadOpenFor.toUpperCase() : '',
+      uploadLectureId: s.uploadLectureId,
+      uploadDate: s.uploadDate,
+      uploadLoading: s.uploadLoading,
+      uploadError: s.uploadError,
+      hasUploadConflict: !!s.uploadConflict,
+      uploadConflictPreview: uploadConflictPreview,
+      uploadConflictTopicsText: uploadConflictTopicsText,
+      onUploadFileChange: onUploadFileChange,
+      onUploadLectureIdChange: onUploadLectureIdChange,
+      onUploadDateChange: onUploadDateChange,
+      closeUpload: () => this.closeUpload(),
+      cancelConflict: () => this.setState({ uploadConflict: null }),
+      submitUpload: () => this.submitUpload(false),
+      confirmOverwrite: () => this.submitUpload(true),
       quizPos: s.quizStep + 1,
       isQuizStep3: s.quizStep === 3,
       quizCorrectCount: s.quizCorrectCount,
