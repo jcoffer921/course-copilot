@@ -14,7 +14,7 @@ def _course_summary(course_id: str) -> dict:
 
     return {
         "course_name": syllabus.get("course_name", course_id),
-        "has_notes": bool(storage.read_notes(course_id)),
+        "notes_count": len(storage.read_notes(course_id)),
         "topics_count": len(syllabus.get("topics", [])),
         "quizzed_count": len(weak_topics),
         "next_deadline": upcoming[0] if upcoming else None,
