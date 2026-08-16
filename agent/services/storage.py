@@ -27,6 +27,11 @@ COURSE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 # defense as COURSE_ID_RE.
 LECTURE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
+# reference_id becomes a filename under courses/<course_id>/references/ — same
+# defense as LECTURE_ID_RE, and reuses it directly rather than duplicating the
+# same safe charset under a new name.
+REFERENCE_ID_RE = LECTURE_ID_RE
+
 
 class SyllabusStorageError(Exception):
     """Raised when an existing syllabus.json on disk is corrupt/unreadable."""
@@ -42,6 +47,14 @@ class InvalidLectureIdError(ValueError):
 
 class NotesStorageError(Exception):
     """Raised when an existing notes/<lecture_id>.json on disk is corrupt/unreadable."""
+
+
+class InvalidReferenceIdError(ValueError):
+    """Raised when reference_id isn't a safe filesystem path segment."""
+
+
+class ReferencesStorageError(Exception):
+    """Raised when an existing references/<reference_id>.json on disk is corrupt/unreadable."""
 
 
 class QuizStorageError(Exception):
@@ -77,6 +90,19 @@ def _lecture_path(course_id: str, lecture_id: str) -> Path:
     path = (notes_dir / f"{lecture_id}.json").resolve()
     if path.parent != notes_dir.resolve():
         raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
+    return path
+
+
+def _reference_path(course_id: str, reference_id: str) -> Path:
+    """Resolves courses/<course_id>/references/<reference_id>.json, guarding
+    against path traversal via reference_id the same way _lecture_path does
+    for lecture_id."""
+    if not REFERENCE_ID_RE.fullmatch(reference_id):
+        raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
+    references_dir = _course_dir(course_id) / "references"
+    path = (references_dir / f"{reference_id}.json").resolve()
+    if path.parent != references_dir.resolve():
+        raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
     return path
 
 
@@ -196,6 +222,35 @@ def validate_notes(data: dict) -> list:
     return errors
 
 
+def validate_reference(data: dict) -> list:
+    """Returns a list of error strings. An empty list means the data is
+    valid. Unlike notes/syllabus, there are no non-blocking WARNING entries
+    here — a reference doc either has usable text or it doesn't."""
+    errors = []
+
+    def require(key, expected_type):
+        if key not in data:
+            errors.append(f"missing required field: '{key}'")
+        elif not isinstance(data[key], expected_type):
+            errors.append(
+                f"field '{key}' must be {expected_type.__name__}, "
+                f"got {type(data[key]).__name__}"
+            )
+
+    require("reference_id", str)
+    require("title", str)
+    require("source_filename", str)
+    require("text", str)
+
+    if errors:
+        return errors  # top-level shape is broken, don't bother checking nested items
+
+    if not data["text"].strip():
+        errors.append("'text' is empty — a reference with no extractable content shouldn't be written")
+
+    return errors
+
+
 # --------------------------------------------------------------------------
 # Read / write — plain sync I/O, wrapped with sync_to_async at the call site
 # --------------------------------------------------------------------------
@@ -250,6 +305,51 @@ def write_notes(course_id: str, lecture_id: str, data: dict, overwrite: bool = F
         raise FileExistsError(str(out_path))
 
     notes_dir.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return out_path
+
+
+def read_references(course_id: str) -> list:
+    """Returns a list of parsed reference dicts for every file under
+    courses/<course_id>/references/*.json, sorted by filename. Returns [] if
+    references/ doesn't exist yet — that's a normal state, not an error."""
+    references_dir = _course_dir(course_id) / "references"
+    if not references_dir.exists():
+        return []
+
+    references = []
+    for path in sorted(references_dir.glob("*.json")):
+        try:
+            references.append(json.loads(path.read_text(encoding="utf-8")))
+        except json.JSONDecodeError as e:
+            raise ReferencesStorageError(f"reference file '{path.name}' for '{course_id}' is corrupt: {e}")
+    return references
+
+
+def read_reference(course_id: str, reference_id: str):
+    """Returns the parsed references/<reference_id>.json dict, or None if it
+    doesn't exist."""
+    path = _reference_path(course_id, reference_id)
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ReferencesStorageError(f"reference file '{reference_id}' for '{course_id}' is corrupt: {e}")
+
+
+def write_reference(course_id: str, reference_id: str, data: dict, overwrite: bool = False) -> Path:
+    """Writes references/<reference_id>.json. Raises FileExistsError if it
+    already exists and overwrite=False — same plan-then-pause contract as
+    write_notes, even though in practice references.ingest_reference()
+    generates reference_id fresh on every call and this path is rarely hit."""
+    references_dir = _course_dir(course_id) / "references"
+    out_path = _reference_path(course_id, reference_id)
+
+    if out_path.exists() and not overwrite:
+        raise FileExistsError(str(out_path))
+
+    references_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out_path
 
