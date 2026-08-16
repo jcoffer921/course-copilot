@@ -24,9 +24,24 @@ class _FakeTextBlock:
         self.text = text
 
 
+class _FakeNonTextBlock:
+    def __init__(self, block_type="server_tool_use"):
+        self.type = block_type
+
+
 class _FakeResponse:
     def __init__(self, text, stop_reason="end_turn"):
         self.content = [_FakeTextBlock(text)]
+        self.stop_reason = stop_reason
+
+
+class _FakeResponseWithContent:
+    """Like _FakeResponse, but takes a pre-built content list directly so
+    tests can mix text and non-text blocks (e.g. simulating a preamble or
+    citation-split final answer)."""
+
+    def __init__(self, content, stop_reason="end_turn"):
+        self.content = content
         self.stop_reason = stop_reason
 
 
@@ -128,3 +143,50 @@ async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, mo
 
     # First call plus the capped number of continuations.
     assert len(fake_client.messages.calls) == ask.MAX_PAUSE_TURN_CONTINUATIONS + 1
+
+
+async def test_citation_split_text_blocks_after_tool_use_are_reassembled(
+    isolated_courses_dir, monkeypatch,
+):
+    # Simulates a post-search response where the API attaches citations to a
+    # span of the answer, splitting the final JSON text across multiple
+    # trailing `text` blocks (each carrying its own citations array in
+    # reality, though the fake doesn't need to model that field). Only the
+    # last text block used to be read, which truncated the JSON.
+    _seed_course("testcourse")
+    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+    content = [
+        _FakeNonTextBlock("server_tool_use"),
+        _FakeNonTextBlock("web_search_tool_result"),
+        _FakeTextBlock('{"answer": "Per the docs, '),
+        _FakeTextBlock('the walrus operator assigns inline'),
+        _FakeTextBlock('", "grounded": true, "sources": ["https://docs.python.org/3/"]}'),
+    ]
+    fake_client = _FakeClient(_FakeResponseWithContent(content))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "what does := do?")
+
+    assert result["answer"] == "Per the docs, the walrus operator assigns inline"
+    assert result["grounded"] is True
+    assert result["sources"] == ["https://docs.python.org/3/"]
+
+
+async def test_preamble_text_block_before_tool_use_is_dropped(isolated_courses_dir, monkeypatch):
+    # A text block emitted before tool use (e.g. the model narrating what
+    # it's about to do) must not be concatenated into the final JSON.
+    _seed_course("testcourse")
+    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+    content = [
+        _FakeTextBlock("I'll check the docs."),
+        _FakeNonTextBlock("server_tool_use"),
+        _FakeTextBlock('{"answer": "ok", "grounded": true, "sources": []}'),
+    ]
+    fake_client = _FakeClient(_FakeResponseWithContent(content))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "some question")
+
+    assert result["answer"] == "ok"
+    assert result["grounded"] is True
+    assert result["sources"] == []

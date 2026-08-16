@@ -165,8 +165,10 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
         response = await client.messages.create(**create_kwargs)
         continuations += 1
 
-    text_blocks = [block.text for block in response.content if block.type == "text"]
-    raw = text_blocks[-1].strip() if text_blocks else ""
+    last_non_text = max((i for i, b in enumerate(response.content) if b.type != "text"), default=-1)
+    raw = "".join(
+        block.text for block in response.content[last_non_text + 1:] if block.type == "text"
+    ).strip()
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
 
     try:
