@@ -1,0 +1,22 @@
+{
+  "session_id": "c5ec282a915f4fa188e292599f20862c",
+  "course_id": "cs101",
+  "created_at": "2026-08-16T15:21:46.731103+00:00",
+  "updated_at": "2026-08-16T15:21:51.615765+00:00",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What is recursion?",
+      "timestamp": "2026-08-16T15:21:51.608237+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Recursion is when a function calls itself. Every recursive function needs two parts: (1) a **base case** that stops the recursion, and (2) a **recursive case** that breaks the problem into a smaller version of itself. Without a base case, the function calls itself forever and the program crashes with a stack overflow (called a `RecursionError` in Python).\n\nFor example, here is a recursive factorial function:\n\n```python\ndef factorial(n):\n    if n == 0:          # base case\n        return 1\n    return n * factorial(n - 1)   # recursive case\n```\n\nEach call waits on the result of the next call before it can return, building up a 'call stack' \u2014 factorial(4) calls factorial(3), which calls factorial(2), and so on down to factorial(0), then the results multiply back up on the way out.",
+      "timestamp": "2026-08-16T15:21:51.615765+00:00",
+      "sources": [
+        "lecture05"
+      ],
+      "grounded": true
+    }
+  ]
+}

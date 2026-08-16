@@ -82,16 +82,28 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
 
     # Multi-turn: the context (syllabus+notes) only needs to be stated once —
     # the whole message list is resent to the API every call, so it stays in
-    # scope for every later turn. Prior turns are replayed as plain role/content
-    # (not the JSON envelope the model emits) since that's all a turn needs to
-    # carry forward as conversational context.
+    # scope for every later turn. Prior assistant turns are replayed in the
+    # same JSON envelope the system prompt demands (not the plain answer
+    # text) — otherwise the model's own conversation history shows it
+    # answering in plain prose on earlier turns, and it drifts away from the
+    # required JSON format on later ones despite the system prompt repeating
+    # the instruction every call (confirmed in practice: turn 2 of a session
+    # failed JSON parsing once this replayed as plain text).
     messages = []
     if session and session["messages"]:
         prior = session["messages"]
         first = prior[0]
         messages.append({"role": "user", "content": f"{context}\n\nQuestion: {first['content']}"})
         for m in prior[1:]:
-            messages.append({"role": m["role"], "content": m["content"]})
+            if m["role"] == "assistant":
+                envelope = json.dumps({
+                    "answer": m["content"],
+                    "grounded": m.get("grounded", False),
+                    "sources": m.get("sources", []),
+                })
+                messages.append({"role": "assistant", "content": envelope})
+            else:
+                messages.append({"role": m["role"], "content": m["content"]})
         messages.append({"role": "user", "content": question})
     else:
         messages.append({"role": "user", "content": f"{context}\n\nQuestion: {question}"})
