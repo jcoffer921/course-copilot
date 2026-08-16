@@ -462,7 +462,22 @@
                 <div style="{{ m.wrapStyle }}">
                   <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
                   <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
-                    <div style="font-size:11px;opacity:.5;margin-top:4px">{{ m.sourcesText }}</div>
+                    <div style="font-size:11px;opacity:.5;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
+                      <sc-if value="{{ m.hasSources }}" hint-placeholder-val="{{ false }}">
+                        <span>Sources:</span>
+                        <sc-for list="{{ m.sourceItems }}" as="src" hint-placeholder-count="1">
+                          <sc-if value="{{ src.isLink }}" hint-placeholder-val="{{ false }}">
+                            <a href="{{ src.href }}" target="_blank" rel="noopener noreferrer" style="color:inherit;text-decoration:underline">{{ src.text }}</a>
+                          </sc-if>
+                          <sc-if value="{{ src.isPlain }}" hint-placeholder-val="{{ true }}">
+                            <span>{{ src.text }}</span>
+                          </sc-if>
+                        </sc-for>
+                      </sc-if>
+                      <sc-if value="{{ m.notGroundedText }}" hint-placeholder-val="{{ false }}">
+                        <span>{{ m.notGroundedText }}</span>
+                      </sc-if>
+                    </div>
                   </sc-if>
                 </div>
               </div>
@@ -982,12 +997,20 @@ class Component extends DCLogic {
       ? 'background:var(--color-accent);color:#fff;padding:11px 15px;border-radius:var(--radius-lg);font-size:14px;line-height:1.45'
       : 'background:var(--color-neutral-100);padding:11px 15px;border-radius:var(--radius-lg);font-size:14px;line-height:1.45';
 
+    const hasSources = (m) => m.from === 'assistant' && !!(m.grounded && m.sources && m.sources.length);
     const chatMessages = s.chatMessages.map(m => ({
       text: m.text, rowStyle: msgStyle(m.from), wrapStyle: wrapStyle(m.from), bubbleStyle: bubbleStyle(m.from),
       isAssistant: m.from === 'assistant',
-      sourcesText: m.from === 'assistant'
-        ? (m.grounded && m.sources && m.sources.length ? 'Sources: ' + m.sources.join(', ') : 'Not grounded in your course material')
-        : ''
+      hasSources: hasSources(m),
+      notGroundedText: !hasSources(m) && m.from === 'assistant' ? 'Not grounded in your course material' : '',
+      sourceItems: hasSources(m)
+        ? m.sources.map(src => ({
+            text: src,
+            isLink: src.indexOf('http') === 0,
+            isPlain: src.indexOf('http') !== 0,
+            href: src
+          }))
+        : []
     }));
     const chatCourseMeta = courseMetaFor(s.course);
     const chatNotesCount = (chatCourseMeta && chatCourseMeta.notes_count) || 0;
