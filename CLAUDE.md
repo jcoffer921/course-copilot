@@ -12,7 +12,7 @@ An AI agent scoped to the current semester's coursework, built on the Anthropic 
 - Optional: Google Calendar API for deadline sync (later phase, not v1)
 
 ## Non-negotiable constraints
-- Never fabricate course content. If the knowledge base doesn't contain something, say so — don't answer from training data or general knowledge as if it's the course's material.
+- Never fabricate course content. Ground every answer in real material only: this course's syllabus/notes, a user-uploaded reference document, or — only when that material genuinely doesn't cover the question, and only from a domain the user has explicitly approved for this course — real, cited web content. Never invent facts, never blend web content into an answer as if it were the course's own material, and never search the web outside an approved domain list.
 - Rubric critique mode never writes the assignment for the user. Scaffold, question, and critique only.
 - All extracted data (dates, topics, notes chunks) goes through a defined JSON schema — no free-text dumps into course files.
 - Plan-then-pause: before any destructive or bulk write (overwriting a course's JSON, bulk re-parsing notes), pause and confirm.
@@ -33,7 +33,9 @@ course-copilot/
       storage.py            # JSON schema validation + read/write (courses/*.json)
       syllabus_extraction.py # syllabus text/pdf -> syllabus.json
       chunk_notes.py         # notes (pdf/txt/md) or slides (.pptx) -> notes/<lecture_id>.json
+      references.py          # reference doc (pdf/txt/md) -> references/<reference_id>.json, no LLM call
       ask.py                    # grounded Q&A, stateless or multi-turn via session_id
+      domain_suggestions.py     # LLM-suggested trusted domains for a course's restricted web search, read-only
       sessions.py               # conversation session read/write (courses/*/sessions/*.json)
       quiz.py                  # question generation from chunks + quiz_history.json logging
       mastery.py                # EWMA topic scoring, rebuilds mastery_scores.json from quiz_history.json
@@ -43,7 +45,9 @@ course-copilot/
     management/commands/
       extract_syllabus.py  # CLI wrapper — no server needed
       chunk_notes.py         # CLI wrapper, handles both notes files and .pptx decks
+      references.py           # CLI wrapper around references.py
       ask.py                 # CLI wrapper around ask.py, optional --session
+      domains.py               # CLI wrapper around domain_suggestions.py (--suggest / --approve)
       sessions.py             # CLI wrapper around sessions.py (--create/--list/--show)
       quiz.py                  # CLI wrapper — generates a question, prompts, records the attempt
       mastery.py                # CLI wrapper (--rebuild / --weak-topics)
@@ -55,10 +59,13 @@ course-copilot/
       syllabus.json       # extracted dates, topics, grading breakdown
       notes/
         <lecture_id>.json # chunked notes/slides, one file per lecture — see schema below
+      references/
+        <reference_id>.json # uploaded reference material, one file per doc — see schema below
       sessions/
         <session_id>.json # multi-turn grounded Q&A conversation history
       quiz_history.json   # append-only event log: every attempt, questions asked, correct/incorrect
       mastery_scores.json # derived from quiz_history.json — never hand-edited, always rebuildable
+      trusted_domains.json # human-approved web-search domains — absent until at least one is approved
   test-syllabi/           # sample syllabi for testing extraction
   test-notes/             # sample lecture notes + slide decks for testing chunk_notes
   CLAUDE.md               # this file
@@ -104,6 +111,34 @@ verbatim) — this is what keeps mastery.py's topic scores meaningful across not
 slides, and quizzes instead of drifting into unrelated topic vocabulary per source.
 The lecture-level "topics" array is the deduplicated set of topics used across
 its own "chunks".
+
+**references/<reference_id>.json**
+```json
+{
+  "reference_id": "string",
+  "title": "string",
+  "source_filename": "string",
+  "text": "string"
+}
+```
+
+No `chunks`/`topics` — unlike notes, references aren't quizzed or mastery-tracked, so there's no need
+to chunk by topic. The whole `text` gets stuffed into ask.py's context every time, same as syllabus
+and notes.
+
+**trusted_domains.json**
+```json
+{
+  "course_id": "string",
+  "domains": ["string", ...]
+}
+```
+
+Absent entirely (not an empty file) until the user approves at least one domain via
+`manage.py domains <course_id> --approve ...` or `PUT /api/courses/<id>/domains/` — same
+"doesn't exist yet = normal state" convention as mastery_scores.json before any quiz attempt.
+`domain_suggestions.suggest_domains()` proposes candidates from the course's own syllabus, but never
+writes this file itself.
 
 **sessions/<session_id>.json**
 ```json
