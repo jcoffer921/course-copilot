@@ -63,3 +63,39 @@ def test_invalid_reference_id_rejected(isolated_courses_dir):
         storage.write_reference("cs101", "../escape", {
             "reference_id": "ch1", "title": "x", "source_filename": "x.pdf", "text": "x",
         })
+
+
+from agent.services import references
+
+
+async def test_ingest_reference_extracts_txt_and_generates_id(isolated_courses_dir):
+    data = await references.ingest_reference(
+        "cs101", b"Some textbook content about recursion.", "chapter1.txt", title="Chapter 1: Recursion",
+    )
+
+    assert data["reference_id"] == "chapter-1-recursion"
+    assert data["title"] == "Chapter 1: Recursion"
+    assert data["source_filename"] == "chapter1.txt"
+    assert data["text"] == "Some textbook content about recursion."
+
+
+async def test_ingest_reference_defaults_title_to_filename_stem(isolated_courses_dir):
+    data = await references.ingest_reference("cs101", b"content", "notes.md")
+
+    assert data["title"] == "notes"
+    assert data["reference_id"] == "notes"
+
+
+async def test_ingest_reference_dedupes_id_on_collision(isolated_courses_dir):
+    storage.write_reference("cs101", "notes", {
+        "reference_id": "notes", "title": "notes", "source_filename": "notes.md", "text": "existing",
+    })
+
+    data = await references.ingest_reference("cs101", b"content", "notes.md")
+
+    assert data["reference_id"] == "notes-2"
+
+
+async def test_ingest_reference_rejects_unsupported_file_type(isolated_courses_dir):
+    with pytest.raises(ValueError):
+        await references.ingest_reference("cs101", b"content", "slides.pptx")
