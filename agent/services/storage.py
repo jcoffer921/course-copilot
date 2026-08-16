@@ -57,6 +57,10 @@ class ReferencesStorageError(Exception):
     """Raised when an existing references/<reference_id>.json on disk is corrupt/unreadable."""
 
 
+class TrustedDomainsStorageError(Exception):
+    """Raised when an existing trusted_domains.json on disk is corrupt/unreadable."""
+
+
 class QuizStorageError(Exception):
     """Raised when quiz_history.json or mastery_scores.json on disk is corrupt/unreadable."""
 
@@ -251,6 +255,32 @@ def validate_reference(data: dict) -> list:
     return errors
 
 
+def validate_trusted_domains(data: dict) -> list:
+    """Returns a list of error strings. An empty list means the data is valid."""
+    errors = []
+
+    def require(key, expected_type):
+        if key not in data:
+            errors.append(f"missing required field: '{key}'")
+        elif not isinstance(data[key], expected_type):
+            errors.append(
+                f"field '{key}' must be {expected_type.__name__}, "
+                f"got {type(data[key]).__name__}"
+            )
+
+    require("course_id", str)
+    require("domains", list)
+
+    if errors:
+        return errors
+
+    for i, d in enumerate(data["domains"]):
+        if not isinstance(d, str) or not d.strip():
+            errors.append(f"domains[{i}] is not a non-empty string: {d!r}")
+
+    return errors
+
+
 # --------------------------------------------------------------------------
 # Read / write — plain sync I/O, wrapped with sync_to_async at the call site
 # --------------------------------------------------------------------------
@@ -351,6 +381,36 @@ def write_reference(course_id: str, reference_id: str, data: dict, overwrite: bo
 
     references_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return out_path
+
+
+def read_trusted_domains(course_id: str) -> list:
+    """Returns the approved domains list, or [] if trusted_domains.json
+    doesn't exist yet — no domains approved is the normal starting state,
+    same "doesn't exist yet = normal state" convention as
+    mastery_scores.json before any quiz attempt."""
+    path = _course_dir(course_id) / "trusted_domains.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise TrustedDomainsStorageError(f"trusted_domains.json for '{course_id}' is corrupt: {e}")
+    return data.get("domains", [])
+
+
+def write_trusted_domains(course_id: str, domains: list) -> Path:
+    """Writes trusted_domains.json. Always overwrites — this is a
+    user-controlled config list (the human approval step), not append-only
+    data, so there's no destructive-conflict case to guard against the way
+    write_syllabus/write_notes do."""
+    out_dir = _course_dir(course_id)
+    out_path = out_dir / "trusted_domains.json"
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        json.dumps({"course_id": course_id, "domains": domains}, indent=2), encoding="utf-8"
+    )
     return out_path
 
 
