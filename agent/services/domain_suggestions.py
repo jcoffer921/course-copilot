@@ -49,11 +49,11 @@ wildcards, no protocol prefix, no path.
 
 
 async def suggest_domains(course_id: str) -> list[str]:
-    client = get_client()
-
     syllabus = await sync_to_async(storage.read_syllabus)(course_id)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
+
+    client = get_client()
 
     user_prompt = (
         f"course_name: {syllabus.get('course_name', '')}\n"
