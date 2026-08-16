@@ -135,14 +135,15 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
     tools = []
     if approved_domains:
         tools.append({
-            "type": "web_search_20250305",
+            "type": "web_search_20260209",
             "name": "web_search",
             "allowed_domains": approved_domains,
+            "max_uses": 5,
         })
 
     create_kwargs = {
         "model": MODEL,
-        "max_tokens": 1024,
+        "max_tokens": 2048,
         "system": ASK_SYSTEM_PROMPT,
         "messages": messages,
     }
@@ -164,6 +165,12 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
         create_kwargs["messages"] = messages
         response = await client.messages.create(**create_kwargs)
         continuations += 1
+
+    if response.stop_reason == "max_tokens":
+        raise ValueError(
+            f"response truncated at max_tokens before completing the JSON answer "
+            f"(stop_reason={response.stop_reason})"
+        )
 
     last_non_text = max((i for i, b in enumerate(response.content) if b.type != "text"), default=-1)
     raw = "".join(

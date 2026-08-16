@@ -396,7 +396,14 @@ def read_trusted_domains(course_id: str) -> list:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         raise TrustedDomainsStorageError(f"trusted_domains.json for '{course_id}' is corrupt: {e}")
-    return data.get("domains", [])
+
+    domains = data.get("domains", [])
+    errors = validate_trusted_domains({"course_id": course_id, "domains": domains})
+    if errors:
+        raise TrustedDomainsStorageError(
+            f"trusted_domains.json for '{course_id}' failed validation: {errors}"
+        )
+    return domains
 
 
 def write_trusted_domains(course_id: str, domains: list) -> Path:

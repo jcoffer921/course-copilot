@@ -1006,15 +1006,19 @@ class Component extends DCLogic {
       sourceItems: hasSources(m)
         ? m.sources.map(src => ({
             text: src,
-            isLink: src.indexOf('http') === 0,
-            isPlain: src.indexOf('http') !== 0,
+            isLink: src.indexOf('http://') === 0 || src.indexOf('https://') === 0,
+            isPlain: src.indexOf('http://') !== 0 && src.indexOf('https://') !== 0,
             href: src
           }))
         : []
     }));
     const chatCourseMeta = courseMetaFor(s.course);
     const chatNotesCount = (chatCourseMeta && chatCourseMeta.notes_count) || 0;
-    const chatGroundingText = 'Answers are grounded only in this course\'s syllabus' + (chatNotesCount > 0 ? ' and uploaded notes' : '') + '.';
+    const chatReferencesCount = (chatCourseMeta && chatCourseMeta.references_count) || 0;
+    const chatGroundingText = 'Answers are grounded only in this course\'s syllabus'
+      + (chatNotesCount > 0 ? ' and uploaded notes' : '')
+      + (chatReferencesCount > 0 ? ' and uploaded references' : '')
+      + ', and, when available, cited web results from domains you\'ve approved.';
     const chatNotesCountLabel = chatNotesCount > 0
       ? (chatNotesCount + (chatNotesCount === 1 ? ' lecture uploaded' : ' lectures uploaded'))
       : 'No lecture notes uploaded yet';

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from agent.services import storage
@@ -42,3 +44,17 @@ def test_validate_trusted_domains_accepts_valid_data():
     errors = storage.validate_trusted_domains({"course_id": "cs101", "domains": ["good.com"]})
 
     assert errors == []
+
+
+def test_read_trusted_domains_rejects_malformed_on_disk_shape(isolated_courses_dir):
+    # trusted_domains.json is hand-editable — a hand-edit like this (a bare
+    # string instead of a list) must fail loudly and clearly at the storage
+    # layer, not flow a truthy string into allowed_domains in ask.py.
+    course_dir = isolated_courses_dir / "cs101"
+    course_dir.mkdir(parents=True, exist_ok=True)
+    (course_dir / "trusted_domains.json").write_text(
+        json.dumps({"course_id": "cs101", "domains": "not-a-list"}), encoding="utf-8",
+    )
+
+    with pytest.raises(storage.TrustedDomainsStorageError):
+        storage.read_trusted_domains("cs101")

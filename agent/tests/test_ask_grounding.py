@@ -92,7 +92,10 @@ async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir,
     assert result["grounded"] is True
     call = fake_client.messages.calls[0]
     assert call["tools"] == [{
-        "type": "web_search_20250305", "name": "web_search", "allowed_domains": ["docs.python.org"],
+        "type": "web_search_20260209",
+        "name": "web_search",
+        "allowed_domains": ["docs.python.org"],
+        "max_uses": 5,
     }]
 
 
@@ -170,6 +173,28 @@ async def test_citation_split_text_blocks_after_tool_use_are_reassembled(
     assert result["answer"] == "Per the docs, the walrus operator assigns inline"
     assert result["grounded"] is True
     assert result["sources"] == ["https://docs.python.org/3/"]
+
+
+async def test_reference_text_reaches_prompt(isolated_courses_dir, monkeypatch):
+    # Structural check that reference content actually gets stuffed into the
+    # prompt sent to the API — closes the gap where deleting the
+    # reference-context wiring from ask_async would leave the whole
+    # non-live suite green.
+    _seed_course("testcourse")
+    storage.write_reference("testcourse", "ref1", {
+        "reference_id": "ref1",
+        "title": "Some Reference",
+        "source_filename": "ref1.txt",
+        "text": "UNIQUE_MARKER_TEXT_12345",
+    })
+    canned = json.dumps({"answer": "not covered", "grounded": False, "sources": []})
+    fake_client = _FakeClient(_FakeResponse(canned))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    await ask.ask_async("testcourse", "some question")
+
+    call = fake_client.messages.calls[0]
+    assert "UNIQUE_MARKER_TEXT_12345" in call["messages"][0]["content"]
 
 
 async def test_preamble_text_block_before_tool_use_is_dropped(isolated_courses_dir, monkeypatch):

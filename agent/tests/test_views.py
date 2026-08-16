@@ -4,7 +4,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from agent import views
-from agent.services import storage
+from agent.services import ask, storage
 
 
 @pytest.fixture
@@ -107,3 +107,36 @@ def test_domain_suggestions_view_404s_without_syllabus(isolated_courses_dir, api
     response = api_client.post("/api/courses/nocourse/domains/suggest/")
 
     assert response.status_code == 404
+
+
+class _NeverCalledMessages:
+    async def create(self, **kwargs):
+        raise AssertionError(
+            "API client should not be reached — corrupt reference file must fail first"
+        )
+
+
+class _NeverCalledClient:
+    def __init__(self):
+        self.messages = _NeverCalledMessages()
+
+
+def test_ask_returns_500_not_crash_on_corrupt_reference_file(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101")
+
+    # get_client() is called before storage.read_references() inside
+    # ask_async, so it must be mocked so construction succeeds — but its
+    # messages.create() must never actually be reached, since the
+    # corrupt-file error should raise before any network call happens.
+    monkeypatch.setattr(ask, "get_client", lambda: _NeverCalledClient())
+
+    references_dir = isolated_courses_dir / "cs101" / "references"
+    references_dir.mkdir(parents=True, exist_ok=True)
+    (references_dir / "bad.json").write_text("not valid json {{{", encoding="utf-8")
+
+    response = api_client.post(
+        "/api/courses/cs101/ask/", {"question": "what is this course about?"}, format="json",
+    )
+
+    assert response.status_code == 500
+    assert "detail" in response.data

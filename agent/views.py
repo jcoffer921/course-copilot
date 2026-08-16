@@ -460,7 +460,8 @@ class AskView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except (storage.InvalidCourseIdError, sessions.InvalidSessionIdError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
-        except storage.SyllabusStorageError as e:
+        except (storage.SyllabusStorageError, storage.NotesStorageError,
+                storage.ReferencesStorageError, storage.TrustedDomainsStorageError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except ValueError as e:
             return Response({"detail": f"ask failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
