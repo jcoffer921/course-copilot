@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from .serializers import (
+    ApproveDomainsRequestSerializer,
     AskRequestSerializer,
     ChunkNotesRequestSerializer,
     ExtractSyllabusRequestSerializer,
@@ -12,7 +13,7 @@ from .serializers import (
     IngestReferenceRequestSerializer,
     RecordAttemptRequestSerializer,
 )
-from .services import chunk_notes, dashboard, mastery, quiz, references, reminders, sessions, storage
+from .services import chunk_notes, dashboard, domain_suggestions, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
@@ -201,6 +202,67 @@ class ReferencesView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response({"references": data}, status=status.HTTP_200_OK)
+
+
+class DomainSuggestionsView(APIView):
+    """
+    POST /api/courses/<course_id>/domains/suggest/ — read-only. Asks Claude
+    to propose candidate trusted domains from this course's syllabus. Never
+    writes anything; the human approves (or hand-edits) the list via
+    PUT /domains/ separately.
+    """
+
+    async def post(self, request, course_id):
+        try:
+            domains = await domain_suggestions.suggest_domains(course_id)
+        except CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as e:
+            return Response({"detail": f"suggestion failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response({"suggested": domains}, status=status.HTTP_200_OK)
+
+
+class DomainsView(APIView):
+    """
+    GET /api/courses/<course_id>/domains/ — the current approved list, []
+    if none approved yet.
+
+    PUT /api/courses/<course_id>/domains/ — replace the approved list with
+    the user's (possibly hand-edited) selection. body: {"domains": [...]}
+    """
+
+    async def get(self, request, course_id):
+        try:
+            domains = await sync_to_async(storage.read_trusted_domains)(course_id)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.TrustedDomainsStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"domains": domains}, status=status.HTTP_200_OK)
+
+    async def put(self, request, course_id):
+        serializer = ApproveDomainsRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        domains = serializer.validated_data["domains"]
+        errors = storage.validate_trusted_domains({"course_id": course_id, "domains": domains})
+        if errors:
+            return Response(
+                {"detail": "invalid domain list", "errors": errors},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        try:
+            await sync_to_async(storage.write_trusted_domains)(course_id, domains)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({"course_id": course_id, "domains": domains}, status=status.HTTP_200_OK)
 
 
 class MasteryView(APIView):

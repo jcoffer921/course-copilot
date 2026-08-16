@@ -24,6 +24,14 @@ class IngestReferenceRequestSerializer(serializers.Serializer):
     title = serializers.CharField(required=False, allow_blank=True, default=None)
 
 
+class ApproveDomainsRequestSerializer(serializers.Serializer):
+    # allow_blank=True here deliberately: an empty-string domain is a content
+    # problem, not a request-shape problem, so it's left for
+    # storage.validate_trusted_domains() to catch and report as 422 rather
+    # than being rejected by DRF at the 400 (malformed request) layer.
+    domains = serializers.ListField(child=serializers.CharField(allow_blank=True), allow_empty=True)
+
+
 class GenerateQuestionRequestSerializer(serializers.Serializer):
     topic = serializers.CharField(required=False, allow_blank=False, default=None)
     chunk_id = serializers.CharField(required=False, allow_blank=False, default=None)
