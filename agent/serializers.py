@@ -19,6 +19,11 @@ class ChunkNotesRequestSerializer(serializers.Serializer):
     overwrite = serializers.BooleanField(required=False, default=False)
 
 
+class IngestReferenceRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
+    title = serializers.CharField(required=False, allow_blank=True, default=None)
+
+
 class GenerateQuestionRequestSerializer(serializers.Serializer):
     topic = serializers.CharField(required=False, allow_blank=False, default=None)
     chunk_id = serializers.CharField(required=False, allow_blank=False, default=None)

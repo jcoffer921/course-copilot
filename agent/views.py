@@ -9,9 +9,10 @@ from .serializers import (
     ChunkNotesRequestSerializer,
     ExtractSyllabusRequestSerializer,
     GenerateQuestionRequestSerializer,
+    IngestReferenceRequestSerializer,
     RecordAttemptRequestSerializer,
 )
-from .services import chunk_notes, dashboard, mastery, quiz, reminders, sessions, storage
+from .services import chunk_notes, dashboard, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
@@ -146,6 +147,60 @@ class ChunkNotesView(APIView):
             {"course_id": course_id, "notes": data, "warnings": warnings},
             status=status.HTTP_201_CREATED,
         )
+
+
+class ReferencesView(APIView):
+    """
+    POST /api/courses/<course_id>/references/
+    multipart/form-data: file=<reference pdf/txt/md>, title=<optional>
+
+    No plan-then-pause here — reference_id is generated fresh from the title
+    (or filename), with a numeric suffix on collision, so there's no
+    existing file for this upload to overwrite the way syllabus/notes
+    uploads can collide.
+
+    GET /api/courses/<course_id>/references/ — list all references, [] if none.
+    """
+
+    async def post(self, request, course_id):
+        serializer = IngestReferenceRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        upload = serializer.validated_data["file"]
+        title = serializer.validated_data.get("title") or None
+
+        try:
+            data = await references.ingest_reference(course_id, upload.read(), upload.name, title=title)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        errors = storage.validate_reference(data)
+        if errors:
+            return Response(
+                {"detail": "extracted data failed schema validation", "errors": errors, "raw": data},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        try:
+            await sync_to_async(storage.write_reference)(course_id, data["reference_id"], data)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {"course_id": course_id, "reference": data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    async def get(self, request, course_id):
+        try:
+            data = await sync_to_async(storage.read_references)(course_id)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.ReferencesStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"references": data}, status=status.HTTP_200_OK)
 
 
 class MasteryView(APIView):

@@ -8,6 +8,7 @@ urlpatterns = [
     path("courses/<slug:course_id>/syllabus/extract/", views.ExtractSyllabusView.as_view(), name="extract-syllabus"),
     path("courses/<slug:course_id>/syllabus/", views.SyllabusDetailView.as_view(), name="syllabus-detail"),
     path("courses/<slug:course_id>/notes/chunk/", views.ChunkNotesView.as_view(), name="chunk-notes"),
+    path("courses/<slug:course_id>/references/", views.ReferencesView.as_view(), name="references"),
     path("courses/<slug:course_id>/mastery/", views.MasteryView.as_view(), name="mastery"),
     path("courses/<slug:course_id>/mastery/rebuild/", views.MasteryRebuildView.as_view(), name="mastery-rebuild"),
     path("courses/<slug:course_id>/quiz/generate/", views.QuizGenerateView.as_view(), name="quiz-generate"),
