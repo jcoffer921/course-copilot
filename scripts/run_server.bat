@@ -28,9 +28,25 @@ rem use on Linux/macOS -- Windows invokes the real binary as "uvicorn.exe",
 rem so that exact contiguous substring never appears in the real command
 rem line. Both substrings are still required, so this stays scoped to this
 rem project's server (nothing else on a dev box has "config.asgi:application"
-rem in its command line) and it catches the whole --reload supervisor tree
-rem (launcher + worker), not just one piece that would otherwise respawn.
-powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*uvicorn*' -and $_.CommandLine -like '*config.asgi:application*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"
+rem in its command line).
+rem
+rem Killed via `taskkill /F /T`, not Stop-Process: uvicorn's --reload on
+rem Windows spawns its actual worker through Python's multiprocessing module
+rem (Windows has no fork()), so the worker's own command line is
+rem `python.exe -c "from multiprocessing.spawn import spawn_main; ..."
+rem --multiprocessing-fork` -- it contains neither "uvicorn" nor
+rem "config.asgi:application" and this match can never see it directly.
+rem Stop-Process only kills the matched PID itself, orphaning that worker;
+rem it keeps holding the port and keeps serving whatever code was loaded
+rem when it started, silently, for as long as it survives. taskkill's /T
+rem kills the whole OS-level process tree under each matched PID
+rem (parent-child, not command-line matching), which reaches the worker
+rem regardless of how its command line looks. Confirmed via a live repro:
+rem after several restarts, curl against the "running" server returned
+rem template content from hours earlier -- Stop-Process had been orphaning
+rem a fresh worker every time, and whichever old one still held the port
+rem kept answering.
+powershell -NoProfile -Command "Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -like '*uvicorn*' -and $_.CommandLine -like '*config.asgi:application*' } | ForEach-Object { taskkill /F /T /PID $_.ProcessId 2>$null }"
 
 rem Give the port a moment to free up (avoids "timeout" here since it can
 rem error out under redirected/non-interactive stdin; ping is a portable sleep).

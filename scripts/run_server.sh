@@ -38,12 +38,27 @@ elif command -v pwsh.exe >/dev/null 2>&1 || command -v powershell.exe >/dev/null
     # config.asgi:application" (space right after "uvicorn") never actually
     # appears there. Both substrings are still required, so this stays just
     # as scoped to this project's server (nothing else on a dev box has
-    # "config.asgi:application" in its command line) while also catching the
-    # uvicorn --reload supervisor's full process tree (launcher + worker) —
-    # killing only the worker leaves the supervisor to silently respawn it.
+    # "config.asgi:application" in its command line).
+    #
+    # Killed via `taskkill /F /T`, not `Stop-Process -Force`: uvicorn's
+    # --reload on Windows spawns its actual worker through Python's
+    # multiprocessing module (Windows has no fork()), so the worker's own
+    # command line is `python.exe -c "from multiprocessing.spawn import
+    # spawn_main; ..." --multiprocessing-fork` — it contains neither
+    # "uvicorn" nor "config.asgi:application" and this match can never see
+    # it directly. Stop-Process only kills the matched PID itself, orphaning
+    # that worker; it keeps holding the port and keeps serving whatever code
+    # was loaded when it started, silently, for as long as it survives.
+    # taskkill's /T kills the whole OS-level process tree under each matched
+    # PID (parent-child, not command-line matching), which reaches the
+    # worker regardless of how its command line looks. Confirmed via a live
+    # repro: after several restarts, curl against the "running" server
+    # returned template content from hours earlier — Stop-Process had been
+    # orphaning a fresh worker every time, and whichever old one still held
+    # the port kept answering.
     PS_BIN="$(command -v pwsh.exe || command -v powershell.exe)"
     "$PS_BIN" -NoProfile -Command \
-        "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*uvicorn*' -and \$_.CommandLine -like '*config.asgi:application*' } | ForEach-Object { Stop-Process -Id \$_.ProcessId -Force -ErrorAction SilentlyContinue }" \
+        "Get-CimInstance Win32_Process | Where-Object { \$_.CommandLine -like '*uvicorn*' -and \$_.CommandLine -like '*config.asgi:application*' } | ForEach-Object { taskkill /F /T /PID \$_.ProcessId 2>\$null }" \
         || true
 else
     echo "Warning: no pkill or PowerShell found — skipping stale-instance check." >&2
