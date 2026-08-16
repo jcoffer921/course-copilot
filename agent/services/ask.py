@@ -15,46 +15,60 @@ from . import sessions, storage
 from .client import MODEL_DEFAULT as MODEL, get_client
 from .storage import CourseNotFoundError
 
-ASK_SYSTEM_PROMPT = """You answer questions about ONE course using ONLY the syllabus \
-and notes provided below. That material is the entire knowledge base you have — \
-there is nothing else to draw on.
+ASK_SYSTEM_PROMPT = """You answer questions about ONE course using ONLY the material provided below, \
+plus — only when that material genuinely doesn't cover the question — real, cited results from a \
+restricted web search when one is available to you. There is nothing else to draw on: never answer \
+from general/training knowledge as if it were this course's material.
+
+Grounding tiers, in order:
+1. Answer from SYLLABUS, NOTES, and REFERENCES first, always. These are this course's own real \
+material and take priority over everything else.
+2. Only if that material genuinely doesn't cover the question, and only if a web_search tool is \
+available to you, you may search the web — restricted to the domains you've been given access to. \
+If no web_search tool is available, you have no other source: say the material doesn't cover it.
+3. Every claim sourced from the web must be cited with its real URL, and your answer must make clear \
+which parts (if any) came from outside the course's own material — never blend a web result into an \
+answer as if it were the course's own syllabus, notes, or reference material.
 
 Rules:
-- Answer ONLY from the provided material. Never use outside/general knowledge, even \
-if you're confident it's correct — the user needs to know what is and isn't actually \
-in their course materials.
-- If the answer isn't in the provided material, say so explicitly (e.g. "This isn't \
-covered in the syllabus or notes I have for this course.") — do not guess, and do not \
-answer as if it were the course's content.
-- This applies to every turn of a multi-turn conversation, not just the first message. \
-Earlier turns establishing a topic is not license to fill gaps from general knowledge \
-later on — re-check each new question against the provided material on its own merits.
-- A topic being NAMED in the material is not the same as the material ANSWERING a \
-question about it. If the material only mentions a topic in passing — e.g. naming it \
-and saying it's out of scope, or referencing it without explaining it — and the \
-question asks you to explain, teach, or apply that topic, the material does not \
-contain the answer. Say what the material does say about it (that's fine and often \
-useful), but this is still an ungrounded answer: not fabricating anything is not the \
-same as the material actually answering what was asked.
-- Output ONLY valid JSON matching the schema below. No preamble, no markdown fences, \
-no commentary.
+- Answer ONLY from the provided material and, when used, real cited web search results — never use \
+outside/general knowledge, even if you're confident it's correct — the user needs to know what is and \
+isn't actually grounded in real material.
+- If the answer isn't covered by the provided material or an available, permitted web search, say so \
+explicitly (e.g. "This isn't covered in the syllabus, notes, or references I have for this course.") \
+— do not guess, and do not answer as if it were the course's content.
+- This applies to every turn of a multi-turn conversation, not just the first message. Earlier turns \
+establishing a topic is not license to fill gaps from general knowledge later on — re-check each new \
+question against the provided material (and, if used, real search results) on its own merits.
+- A topic being NAMED in the material is not the same as the material ANSWERING a question about it. \
+If the material only mentions a topic in passing — e.g. naming it and saying it's out of scope, or \
+referencing it without explaining it — and the question asks you to explain, teach, or apply that \
+topic, the material does not contain the answer. Say what the material does say about it (that's fine \
+and often useful), but this is still an ungrounded answer unless a permitted web search fills the gap: \
+not fabricating anything is not the same as the material actually answering what was asked.
+- Output ONLY valid JSON matching the schema below. No preamble, no markdown fences, no commentary — \
+this applies even if you use the web search tool first: your final visible response must be nothing \
+but this JSON object.
 
 Schema:
 {
   "answer": "string",
   "grounded": true/false,
-  "sources": ["syllabus" | "<lecture_id>", ...]
+  "sources": ["syllabus" | "<lecture_id>" | "<reference_id>" | "<full URL>", ...]
 }
 
 Notes on fields:
-- "grounded" is true only if the material contains an actual answer to what was asked \
-— not merely that everything you said is accurate and drawn from the text. A truthful, \
-non-fabricated "the material doesn't cover this" is still grounded: false, since the \
-question itself remains unanswered.
-- "sources" lists which part(s) of the material the answer draws from: "syllabus" \
-and/or the specific lecture_ids (from the notes) it was drawn from. Empty list when \
-grounded is false.
+- "grounded" is true when the material contains an actual answer to what was asked, OR when a \
+permitted web search returned a real, cited, allowed-domain result that answers it — not merely that \
+everything you said is accurate. A truthful, non-fabricated "this isn't covered" is still grounded: \
+false, since the question itself remains unanswered.
+- "sources" lists which part(s) of the material — and/or which cited web result(s) — the answer draws \
+from: "syllabus", specific lecture_ids (from NOTES), specific reference_ids (from REFERENCES), and/or \
+full URLs (from a permitted web search). Empty list when grounded is false.
 """
+
+
+MAX_PAUSE_TURN_CONTINUATIONS = 3
 
 
 async def ask_async(course_id: str, question: str, session_id: str = None) -> dict:
@@ -65,12 +79,18 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 
     notes = await sync_to_async(storage.read_notes)(course_id)
+    references = await sync_to_async(storage.read_references)(course_id)
+    approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id)
 
     context = f"SYLLABUS:\n{json.dumps(syllabus, indent=2)}\n\n"
     if notes:
-        context += f"NOTES:\n{json.dumps(notes, indent=2)}"
+        context += f"NOTES:\n{json.dumps(notes, indent=2)}\n\n"
     else:
-        context += "NOTES: none available yet for this course."
+        context += "NOTES: none available yet for this course.\n\n"
+    if references:
+        context += f"REFERENCES:\n{json.dumps(references, indent=2)}"
+    else:
+        context += "REFERENCES: none available yet for this course."
 
     session = None
     if session_id is not None:
@@ -80,15 +100,15 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
                 f"no session '{session_id}' found for course '{course_id}'"
             )
 
-    # Multi-turn: the context (syllabus+notes) only needs to be stated once —
-    # the whole message list is resent to the API every call, so it stays in
-    # scope for every later turn. Prior assistant turns are replayed in the
-    # same JSON envelope the system prompt demands (not the plain answer
-    # text) — otherwise the model's own conversation history shows it
-    # answering in plain prose on earlier turns, and it drifts away from the
-    # required JSON format on later ones despite the system prompt repeating
-    # the instruction every call (confirmed in practice: turn 2 of a session
-    # failed JSON parsing once this replayed as plain text).
+    # Multi-turn: the context (syllabus+notes+references) only needs to be
+    # stated once — the whole message list is resent to the API every call,
+    # so it stays in scope for every later turn. Prior assistant turns are
+    # replayed in the same JSON envelope the system prompt demands (not the
+    # plain answer text) — otherwise the model's own conversation history
+    # shows it answering in plain prose on earlier turns, and it drifts away
+    # from the required JSON format on later ones despite the system prompt
+    # repeating the instruction every call (confirmed in practice: turn 2 of
+    # a session failed JSON parsing once this replayed as plain text).
     messages = []
     if session and session["messages"]:
         prior = session["messages"]
@@ -108,12 +128,42 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
     else:
         messages.append({"role": "user", "content": f"{context}\n\nQuestion: {question}"})
 
-    response = await client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        system=ASK_SYSTEM_PROMPT,
-        messages=messages,
-    )
+    # No domains approved for this course yet means the agent stays scoped to
+    # course material only, same as it does today — the web_search tool is
+    # simply never offered, rather than failing or (worse) searching
+    # unrestricted.
+    tools = []
+    if approved_domains:
+        tools.append({
+            "type": "web_search_20250305",
+            "name": "web_search",
+            "allowed_domains": approved_domains,
+        })
+
+    create_kwargs = {
+        "model": MODEL,
+        "max_tokens": 1024,
+        "system": ASK_SYSTEM_PROMPT,
+        "messages": messages,
+    }
+    if tools:
+        create_kwargs["tools"] = tools
+
+    response = await client.messages.create(**create_kwargs)
+
+    # web_search is a server-side tool — the API runs its own internal search
+    # loop and returns results in this same response, so no client-side
+    # tool_use/tool_result loop is needed here. If that internal loop hits
+    # its default iteration cap mid-search, the API returns stop_reason
+    # "pause_turn" instead of finishing; resending the conversation (not a
+    # "Continue" message — the API detects the trailing search state itself)
+    # lets it pick back up. Capped so a stuck search can't loop forever.
+    continuations = 0
+    while response.stop_reason == "pause_turn" and continuations < MAX_PAUSE_TURN_CONTINUATIONS:
+        messages = messages + [{"role": "assistant", "content": response.content}]
+        create_kwargs["messages"] = messages
+        response = await client.messages.create(**create_kwargs)
+        continuations += 1
 
     raw = "".join(block.text for block in response.content if block.type == "text").strip()
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())

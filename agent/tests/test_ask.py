@@ -70,3 +70,39 @@ async def test_adjacent_topic_is_not_blurred_with_covered_topic():
     )
 
     assert result["grounded"] is False
+
+
+async def test_reference_grounds_when_syllabus_and_notes_dont_cover_it():
+    """A question only a course's uploaded reference doc answers (not
+    covered by syllabus/notes) should come back grounded, citing the
+    reference_id — not 'syllabus' or a lecture_id."""
+    references = storage.read_references(COURSE_ID)
+    if not references:
+        pytest.skip(f"courses/{COURSE_ID}/references/ is empty — upload a reference doc first")
+
+    result = await ask_async(COURSE_ID, "What does the uploaded reference document cover?")
+
+    assert result["grounded"] is True
+    assert any(r["reference_id"] in result["sources"] for r in references)
+
+
+async def test_web_search_grounds_when_domain_approved_and_course_material_silent():
+    """A question genuinely outside cs101's notes/syllabus, but inside an
+    approved domain's real coverage, should come back grounded with a real
+    cited URL from the approved list."""
+    approved = storage.read_trusted_domains(COURSE_ID)
+    if not approved:
+        pytest.skip(
+            f"no trusted_domains.json approved for {COURSE_ID} — run "
+            f"`manage.py domains {COURSE_ID} --approve ...` first"
+        )
+
+    result = await ask_async(
+        COURSE_ID,
+        "According to the official Python documentation, what does the walrus operator (:=) do?",
+    )
+
+    assert result["grounded"] is True
+    web_sources = [s for s in result["sources"] if s.startswith("http")]
+    assert web_sources
+    assert any(domain in src for domain in approved for src in web_sources)
