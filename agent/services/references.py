@@ -17,6 +17,8 @@ from .syllabus_extraction import extract_text_from_bytes
 
 def _slugify(value: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    # Truncate to 50 chars to leave room for -N collision suffix under 64-char limit
+    slug = slug[:50].rstrip("-")
     return slug or "reference"
 
 
