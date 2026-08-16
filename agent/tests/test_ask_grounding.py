@@ -85,19 +85,19 @@ async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_di
     _seed_course("testcourse")
     storage.write_trusted_domains("testcourse", ["docs.python.org"])
     final = json.dumps({"answer": "done", "grounded": True, "sources": ["https://docs.python.org/3/"]})
-    fake_client = _FakeClient(_FakeResponse("mid-search", stop_reason="pause_turn"))
+    paused_response = _FakeResponse("mid-search", stop_reason="pause_turn")
+    fake_client = _FakeClient(paused_response)
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
     # First call pauses; make the second call (the resubmission) return the final answer.
-    original_create = fake_client.messages.create
-
     call_count = 0
 
     async def create(**kwargs):
         nonlocal call_count
         call_count += 1
+        fake_client.messages.calls.append(kwargs)
         if call_count == 1:
-            return await original_create(**kwargs)
+            return paused_response
         return _FakeResponse(final)
 
     fake_client.messages.create = create
@@ -106,3 +106,25 @@ async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_di
 
     assert result["answer"] == "done"
     assert call_count == 2
+
+    # The resubmission must replay the paused assistant's actual content
+    # (the API auto-detects the trailing server-tool state itself), not a
+    # synthetic "Continue" user message.
+    second_call_messages = fake_client.messages.calls[1]["messages"]
+    assert second_call_messages[-1] == {"role": "assistant", "content": paused_response.content}
+
+
+async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, monkeypatch):
+    _seed_course("testcourse")
+    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+    # Always pauses — never resolves to end_turn — to prove the loop is
+    # actually capped rather than unbounded (an unbounded `while` would also
+    # pass the test above, since its second response is end_turn).
+    fake_client = _FakeClient(_FakeResponse("mid-search", stop_reason="pause_turn"))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    with pytest.raises(ValueError):
+        await ask.ask_async("testcourse", "some question")
+
+    # First call plus the capped number of continuations.
+    assert len(fake_client.messages.calls) == ask.MAX_PAUSE_TURN_CONTINUATIONS + 1
