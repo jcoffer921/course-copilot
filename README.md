@@ -1,4 +1,6 @@
-# Course Copilot — Quickstart
+# OnTrack — Quickstart
+
+OnTrack keeps your semester organized. Cora — the Course Organization & Resource Assistant — answers grounded questions about your courses.
 
 ## Architecture (updated)
 Django + DRF, served over **ASGI** (uvicorn) rather than WSGI. The extraction

@@ -1,7 +1,7 @@
-# Course Copilot — Project Instructions
+# OnTrack — Project Instructions
 
 ## What this project is
-An AI agent scoped to the current semester's coursework, built on the Anthropic API. It answers questions, tracks deadlines, and generates quizzes grounded in the user's actual syllabi and notes — not generic content.
+OnTrack is an AI agent scoped to the current semester's coursework, built on the Anthropic API. Cora, its assistant persona, answers questions, tracks deadlines, and generates quizzes grounded in the user's actual syllabi and notes — not generic content.
 
 ## Stack
 - Anthropic API (Messages endpoint), Python
