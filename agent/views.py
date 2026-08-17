@@ -521,13 +521,13 @@ class SessionDetailView(APIView):
         return Response(session)
 
 
-def course_copilot_page(request):
-    """GET / — serves the Course Copilot UI mockup (DC pseudo-component app).
+def ontrack_page(request):
+    """GET / — serves the OnTrack UI mockup (DC pseudo-component app).
 
     Plain sync Django view, not a DRF/adrf endpoint: it does no I/O, just
     renders a template. The template's DC bindings use the same `{{ }}`
     syntax as Django's own template language, so the whole app body is
-    wrapped in `{% verbatim %}` in course_copilot.html to keep Django from
+    wrapped in `{% verbatim %}` in ontrack.html to keep Django from
     trying to resolve them itself.
     """
-    return render(request, "agent/course_copilot.html")
+    return render(request, "agent/ontrack.html")
