@@ -287,24 +287,24 @@
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
                 <span style="font-size:12.5px;opacity:.65">Syllabus covered</span>
               </div>
-              <div style="font-family:var(--font-heading);font-size:32px">29%</div>
-              <div style="font-size:12px;opacity:.55">2 of 7 topics quizzed</div>
+              <div style="font-family:var(--font-heading);font-size:32px">{{ syllabusCoveredPct }}</div>
+              <div style="font-size:12px;opacity:.55">{{ syllabusCoveredLabel }}</div>
             </div>
             <div class="card elev-sm" style="padding:var(--space-6)">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-2-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
                 <span style="font-size:12.5px;opacity:.65">Study streak</span>
               </div>
-              <div style="font-family:var(--font-heading);font-size:32px">3 days</div>
-              <div style="font-size:12px;opacity:.55">Keep it going</div>
+              <div style="font-family:var(--font-heading);font-size:32px">{{ streakLabel }}</div>
+              <div style="font-size:12px;opacity:.55">{{ streakSubLabel }}</div>
             </div>
             <div class="card elev-sm" style="padding:var(--space-6)">
               <div style="display:flex;align-items:center;gap:8px;margin-bottom:var(--space-2)">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>
                 <span style="font-size:12.5px;opacity:.65">Quiz accuracy</span>
               </div>
-              <div style="font-family:var(--font-heading);font-size:32px">50%</div>
-              <div style="font-size:12px;opacity:.55">2 of 4 answers correct</div>
+              <div style="font-family:var(--font-heading);font-size:32px">{{ quizAccuracyPct }}</div>
+              <div style="font-size:12px;opacity:.55">{{ quizAccuracyLabel }}</div>
             </div>
           </div>
 
@@ -525,7 +525,7 @@ const FALLBACK_COURSE = 'cs101';
 class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'all',
-    courseMeta: null, dashboardDeadlines: [], dashboardLoading: false, dashboardError: null,
+    courseMeta: null, dashboardDeadlines: [], dashboardStreak: 0, dashboardLoading: false, dashboardError: null,
     dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
     quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
@@ -575,7 +575,7 @@ class Component extends DCLogic {
       .then(({ ok, data }) => {
         if (seq !== this._dashSeq) return;
         if (!ok) { this.setState({ dashboardLoading: false, dashboardError: data.detail || 'Could not load dashboard data.' }); return; }
-        this.setState({ dashboardLoading: false, courseMeta: data.courses, dashboardDeadlines: data.deadlines });
+        this.setState({ dashboardLoading: false, courseMeta: data.courses, dashboardDeadlines: data.deadlines, dashboardStreak: data.streak });
       })
       .catch(e => {
         if (seq !== this._dashSeq) return;
@@ -803,30 +803,8 @@ class Component extends DCLogic {
     const statusColor = { developing: 'var(--color-accent-700)', weak: 'var(--color-accent-700)', strong: 'var(--color-accent-2-700)', unassessed: 'var(--color-neutral-400)' };
     const statusLabel = { developing: 'Developing', weak: 'Weak', strong: 'Strong', unassessed: 'Not yet quizzed' };
 
-    const courseData = {
-      cs101: {
-        allTopicsRaw: [
-          { topic: 'Recursion', score: 0.46, status: 'developing' },
-          { topic: 'Sorting and searching algorithms', score: 0.55, status: 'developing' },
-          { topic: 'Variables, control flow, and functions', score: null, status: 'unassessed' },
-          { topic: 'Lists, dictionaries, and strings', score: null, status: 'unassessed' },
-          { topic: 'Basic object-oriented programming', score: null, status: 'unassessed' },
-          { topic: 'Big-O notation and algorithmic complexity', score: null, status: 'unassessed' },
-          { topic: 'File I/O and error handling', score: null, status: 'unassessed' },
-        ],
-        attemptsRaw: [
-          { topic: 'Recursion', question: 'What happens without a base case?', correct: true },
-          { topic: 'Sorting and searching algorithms', question: 'What is the time complexity of binary search?', correct: false },
-          { topic: 'Recursion', question: 'Time complexity of naive recursive Fibonacci?', correct: false },
-          { topic: 'Sorting and searching algorithms', question: 'Worst-case time complexity of Linear Search?', correct: true },
-        ]
-      },
-      psyc201: {
-        allTopicsRaw: [], attemptsRaw: []
-      }
-    };
     const courseMetaFor = (id) => (s.courseMeta && s.courseMeta[id]) || null;
-    const cd = courseData[s.course] || { allTopicsRaw: [], attemptsRaw: [] };
+    const progressTopicsRaw = (courseMetaFor(s.course) && courseMetaFor(s.course).topics) || [];
     const anyCourseHasNotes = COURSE_IDS.some(id => courseMetaFor(id) && courseMetaFor(id).notes_count > 0);
     const courseHasNotes = s.course === 'all'
       ? anyCourseHasNotes
@@ -863,6 +841,9 @@ class Component extends DCLogic {
           this.setState({ tab: t });
         }
         this.loadChatSessions(targetCourse);
+      } else if (t === 'progress') {
+        this.setState({ tab: t, course: targetCourse });
+        this.loadDashboardRecent(targetCourse);
       } else {
         this.setState({ tab: t, course: targetCourse });
       }
@@ -888,6 +869,9 @@ class Component extends DCLogic {
           this.setState({ course: courseId, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null });
           this.loadChatSessions(courseId);
         }
+      } else if (s.tab === 'progress') {
+        this.setState({ course: courseId });
+        this.loadDashboardRecent(courseId);
       } else {
         this.setState({ course: courseId });
       }
@@ -944,6 +928,23 @@ class Component extends DCLogic {
       question: a.question, correct: a.correct, incorrect: !a.correct,
       iconColor: a.correct ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)'
     }));
+    const progressMeta = courseMetaFor(s.course);
+    const syllabusCoveredPct = (progressMeta && progressMeta.topics_count > 0)
+      ? Math.round(100 * progressMeta.quizzed_count / progressMeta.topics_count) + '%'
+      : '—';
+    const syllabusCoveredLabel = progressMeta
+      ? (progressMeta.quizzed_count + ' of ' + progressMeta.topics_count + ' topics quizzed')
+      : 'Loading…';
+    const streakLabel = s.dashboardStreak + (s.dashboardStreak === 1 ? ' day' : ' days');
+    const streakSubLabel = s.dashboardStreak > 0 ? 'Keep it going' : 'Start today';
+    const quizAccuracyTotal = s.dashboardRecentAttempts.length;
+    const quizAccuracyCorrect = s.dashboardRecentAttempts.filter(a => a.correct).length;
+    const quizAccuracyPct = quizAccuracyTotal > 0
+      ? Math.round(100 * quizAccuracyCorrect / quizAccuracyTotal) + '%'
+      : '—';
+    const quizAccuracyLabel = quizAccuracyTotal > 0
+      ? (quizAccuracyCorrect + ' of ' + quizAccuracyTotal + ' answers correct')
+      : 'No attempts yet';
     const retryDashboard = () => this.loadDashboard();
     const retryDashboardRecent = () => this.loadDashboardRecent(s.course);
 
@@ -953,7 +954,7 @@ class Component extends DCLogic {
     const onUploadLectureIdChange = (e) => this.setState({ uploadLectureId: e.target.value });
     const onUploadDateChange = (e) => this.setState({ uploadDate: e.target.value });
 
-    const allTopics = cd.allTopicsRaw.map(function (t) {
+    const allTopics = progressTopicsRaw.map(function (t) {
       var pct = t.score ? Math.round(t.score * 100) : 6;
       var color = t.score ? statusColor[t.status] : 'var(--color-neutral-300)';
       return {
@@ -963,10 +964,6 @@ class Component extends DCLogic {
         barStyle: 'width:' + pct + '%;height:100%;border-radius:99px;background:' + color
       };
     });
-    const recentAttempts = cd.attemptsRaw.map(a => Object.assign({}, a, {
-      incorrect: !a.correct,
-      iconColor: a.correct ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)'
-    }));
 
     const mcOptionStyle = (selected) => 'width:100%;text-align:left;padding:13px 15px;border-radius:var(--radius-lg);cursor:pointer;font-size:14px;font-family:var(--font-body);' +
       (selected ? 'border:1px solid var(--color-accent-700);background:var(--color-accent-100);font-weight:600' : 'border:1px solid var(--color-neutral-200);background:#fff');
@@ -1078,7 +1075,10 @@ class Component extends DCLogic {
       yourCoursesGridStyle: 'display:grid;grid-template-columns:' + (s.course === 'all' ? '1fr 1fr' : '1fr') + ';gap:var(--space-4);margin-bottom:var(--space-6)',
       showCs101Card: s.course === 'all' || s.course === 'cs101',
       showPsyc201Card: s.course === 'all' || s.course === 'psyc201',
-      deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: recentAttempts, mcOptions: mcOptions, quizDots: quizDots,
+      deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
+      syllabusCoveredPct: syllabusCoveredPct, syllabusCoveredLabel: syllabusCoveredLabel,
+      streakLabel: streakLabel, streakSubLabel: streakSubLabel,
+      quizAccuracyPct: quizAccuracyPct, quizAccuracyLabel: quizAccuracyLabel,
       dashboardLoading: s.dashboardLoading,
       showDashboardError: !!s.dashboardError && !s.courseMeta,
       dashboardError: s.dashboardError,
