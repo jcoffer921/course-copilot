@@ -495,12 +495,17 @@
               </div>
             </sc-for>
           </div>
-          <sc-if value="{{ chatLoading }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ chatBusy }}" hint-placeholder-val="{{ false }}">
             <div style="padding:0 var(--space-6) var(--space-2);display:flex;align-items:center;gap:10px">
-              <div class="cora-avatar pulsing">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
-              </div>
-              <span style="font-size:12.5px;opacity:.6">Thinking…</span>
+              <sc-if value="{{ chatSending }}" hint-placeholder-val="{{ false }}">
+                <div class="cora-avatar pulsing">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                </div>
+                <span style="font-size:12.5px;opacity:.6">Thinking…</span>
+              </sc-if>
+              <sc-if value="{{ !chatSending }}" hint-placeholder-val="{{ true }}">
+                <span style="font-size:12.5px;opacity:.6">Loading…</span>
+              </sc-if>
             </div>
           </sc-if>
           <sc-if value="{{ chatError }}" hint-placeholder-val="{{ false }}">
@@ -547,7 +552,7 @@ class Component extends DCLogic {
     quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
-    chatMessages: [], chatInput: '', chatLoading: false, chatError: null,
+    chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
     chatSessionId: null, chatSessions: [], chatSessionsLoading: false, chatSessionsError: null
   };
 
@@ -663,7 +668,7 @@ class Component extends DCLogic {
     const seq = ++this._chatSeq;
     this.setState({
       chatMessages: this.state.chatMessages.concat([{ from: 'user', text: question }]),
-      chatInput: '', chatLoading: true, chatError: null
+      chatInput: '', chatSending: true, chatError: null
     });
 
     const ask = (sessionId) => {
@@ -674,9 +679,9 @@ class Component extends DCLogic {
         .then(r => r.json().then(data => ({ ok: r.ok, data })))
         .then(({ ok, data }) => {
           if (seq !== this._chatSeq) return;
-          if (!ok) { this.setState({ chatLoading: false, chatError: data.detail || 'Could not get an answer.' }); return; }
+          if (!ok) { this.setState({ chatSending: false, chatError: data.detail || 'Could not get an answer.' }); return; }
           this.setState({
-            chatLoading: false,
+            chatSending: false,
             chatSessionId: sessionId,
             chatMessages: this.state.chatMessages.concat([{
               from: 'assistant', text: data.answer, sources: data.sources || [], grounded: !!data.grounded
@@ -686,7 +691,7 @@ class Component extends DCLogic {
         })
         .catch(e => {
           if (seq !== this._chatSeq) return;
-          this.setState({ chatLoading: false, chatError: 'Network error: ' + e.message });
+          this.setState({ chatSending: false, chatError: 'Network error: ' + e.message });
         });
     };
 
@@ -701,12 +706,12 @@ class Component extends DCLogic {
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (seq !== this._chatSeq) return;
-        if (!ok) { this.setState({ chatLoading: false, chatError: data.detail || 'Could not start a new chat.' }); return; }
+        if (!ok) { this.setState({ chatSending: false, chatError: data.detail || 'Could not start a new chat.' }); return; }
         ask(data.session_id);
       })
       .catch(e => {
         if (seq !== this._chatSeq) return;
-        this.setState({ chatLoading: false, chatError: 'Network error: ' + e.message });
+        this.setState({ chatSending: false, chatError: 'Network error: ' + e.message });
       });
   }
 
@@ -1040,7 +1045,7 @@ class Component extends DCLogic {
     const onChatInputChange = (e) => this.setState({ chatInput: e.target.value });
     const submitChat = () => {
       const text = (s.chatInput || '').trim();
-      if (!text || s.chatLoading) return;
+      if (!text || s.chatLoading || s.chatSending) return;
       this.sendChatMessage(s.course, text);
     };
     const startNewChat = () => {
@@ -1140,7 +1145,8 @@ class Component extends DCLogic {
       chatMessages: chatMessages,
       chatIsEmpty: s.chatMessages.length === 0,
       chatInput: s.chatInput,
-      chatLoading: s.chatLoading,
+      chatBusy: s.chatLoading || s.chatSending,
+      chatSending: s.chatSending,
       chatError: s.chatError,
       chatGroundingText: chatGroundingText,
       chatNotesCountLabel: chatNotesCountLabel,
