@@ -49,6 +49,30 @@ def test_build_dashboard_composes_course_data(isolated_courses_dir):
     assert course["quizzed_count"] == 1
     assert course["grading"] == [{"component": "HW", "weight_pct": 100}]
     assert [t["topic"] for t in course["weak_topics"]] == ["A"]
+    assert course["topics"] == [
+        {"topic": "A", "score": pytest.approx(0.65), "status": "developing"},
+        {"topic": "B", "score": None, "status": "unassessed"},
+        {"topic": "C", "score": None, "status": "unassessed"},
+    ]
+
+
+def test_build_dashboard_topics_all_unassessed_without_quiz_history(isolated_courses_dir):
+    _seed_course("psyc201", topics=["X", "Y"], grading=[], dates=[])
+
+    data = dashboard.build_dashboard()
+
+    assert data["courses"]["psyc201"]["topics"] == [
+        {"topic": "X", "score": None, "status": "unassessed"},
+        {"topic": "Y", "score": None, "status": "unassessed"},
+    ]
+
+
+def test_build_dashboard_includes_streak(isolated_courses_dir):
+    _seed_course("cs101", topics=["A"], grading=[], dates=[])
+
+    data = dashboard.build_dashboard()
+
+    assert data["streak"] == 0
 
 
 def test_build_dashboard_course_without_notes_or_mastery(isolated_courses_dir):
