@@ -9,12 +9,20 @@ from . import mastery, reminders, storage, streak
 
 def _merge_topics(syllabus_topics: list, weak_topics: list) -> list:
     """Every topic from the syllabus, in syllabus order, tagged with its
-    mastery status. A topic mastery.weak_topics() hasn't scored yet (never
-    quizzed) gets score=None, status="unassessed" rather than being omitted —
-    the Progress tab's "Mastery by topic" list needs every syllabus topic
-    represented, not just the ones with quiz history."""
+    mastery status, followed by any scored topic that isn't in the syllabus
+    at all. A topic mastery.weak_topics() hasn't scored yet (never quizzed)
+    gets score=None, status="unassessed" rather than being omitted — the
+    Progress tab's "Mastery by topic" list needs every syllabus topic
+    represented, not just the ones with quiz history.
+
+    Off-syllabus topics are real: chunk_notes.py's chunking prompt
+    explicitly allows a chunk to be tagged with its own topic name when it
+    doesn't cleanly match a syllabus topic, and that topic still gets
+    quizzed and scored like any other — it must still show up here rather
+    than silently vanishing from "Mastery by topic"."""
     scores_by_topic = {t["topic"]: t for t in weak_topics}
-    return [
+    syllabus_topic_set = set(syllabus_topics)
+    merged = [
         {
             "topic": topic,
             "score": scores_by_topic[topic]["score"] if topic in scores_by_topic else None,
@@ -22,6 +30,12 @@ def _merge_topics(syllabus_topics: list, weak_topics: list) -> list:
         }
         for topic in syllabus_topics
     ]
+    merged += [
+        {"topic": t["topic"], "score": t["score"], "status": t["status"]}
+        for t in weak_topics
+        if t["topic"] not in syllabus_topic_set
+    ]
+    return merged
 
 
 def _course_summary(course_id: str) -> dict:
@@ -29,12 +43,18 @@ def _course_summary(course_id: str) -> dict:
     weak_topics = mastery.weak_topics(course_id)
     upcoming = reminders.upcoming_deadlines(within_days=None, course_ids=[course_id])
     syllabus_topics = syllabus.get("topics", [])
+    syllabus_topic_set = set(syllabus_topics)
 
     return {
         "course_name": syllabus.get("course_name", course_id),
         "notes_count": len(storage.read_notes(course_id)),
         "topics_count": len(syllabus_topics),
-        "quizzed_count": len(weak_topics),
+        # Only counts syllabus topics that have been quizzed — an
+        # off-syllabus scored topic (see _merge_topics) must not inflate
+        # this past topics_count, since "X of Y topics quizzed" and the
+        # syllabus-covered percentage derived from it would otherwise be
+        # able to exceed 100%.
+        "quizzed_count": len([t for t in weak_topics if t["topic"] in syllabus_topic_set]),
         "next_deadline": upcoming[0] if upcoming else None,
         "grading": syllabus.get("grading", []),
         "weak_topics": weak_topics,

@@ -67,6 +67,27 @@ def test_build_dashboard_topics_all_unassessed_without_quiz_history(isolated_cou
     ]
 
 
+def test_build_dashboard_topics_includes_off_syllabus_topic_without_inflating_quizzed_count(isolated_courses_dir):
+    # chunk_notes.py's chunking prompt explicitly allows a chunk to be
+    # tagged with its own topic name when it doesn't cleanly match a
+    # syllabus topic — that topic still gets quizzed and scored, so it
+    # must still show up in "topics" rather than silently vanishing, and
+    # it must not be counted toward "quizzed_count" (which drives the
+    # "X of Y topics quizzed" / syllabus-covered percentage and must never
+    # exceed topics_count, since only Y=topics_count syllabus topics exist).
+    _seed_course("cs101", topics=["A", "B"], grading=[], dates=[])
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-01T00:00:00"})
+    storage.append_quiz_attempt("cs101", {"topic": "Off-syllabus topic", "correct": True, "timestamp": "2026-01-01T00:00:00"})
+    mastery.rebuild_scores("cs101")
+
+    data = dashboard.build_dashboard()
+    course = data["courses"]["cs101"]
+
+    assert [t["topic"] for t in course["topics"]] == ["A", "B", "Off-syllabus topic"]
+    assert course["topics_count"] == 2
+    assert course["quizzed_count"] == 1
+
+
 def test_build_dashboard_includes_streak(isolated_courses_dir):
     _seed_course("cs101", topics=["A"], grading=[], dates=[])
 
