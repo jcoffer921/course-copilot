@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -36,7 +36,7 @@ def test_streak_zero_with_no_attempts_anywhere(isolated_courses_dir):
 
 
 def test_streak_counts_consecutive_days_across_courses(isolated_courses_dir):
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     _seed_syllabus("cs101")
     _seed_syllabus("psyc201")
     storage.append_quiz_attempt("cs101", _attempt_at(today))
@@ -47,7 +47,7 @@ def test_streak_counts_consecutive_days_across_courses(isolated_courses_dir):
 
 
 def test_streak_alive_with_activity_yesterday_but_not_today(isolated_courses_dir):
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     _seed_syllabus("cs101")
     storage.append_quiz_attempt("cs101", _attempt_at(today - timedelta(days=1)))
     storage.append_quiz_attempt("cs101", _attempt_at(today - timedelta(days=2)))
@@ -56,7 +56,7 @@ def test_streak_alive_with_activity_yesterday_but_not_today(isolated_courses_dir
 
 
 def test_streak_breaks_after_full_day_gap(isolated_courses_dir):
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     _seed_syllabus("cs101")
     storage.append_quiz_attempt("cs101", _attempt_at(today - timedelta(days=2)))
     storage.append_quiz_attempt("cs101", _attempt_at(today - timedelta(days=3)))
@@ -65,7 +65,7 @@ def test_streak_breaks_after_full_day_gap(isolated_courses_dir):
 
 
 def test_streak_ignores_a_course_with_corrupt_quiz_history(isolated_courses_dir, tmp_path):
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     _seed_syllabus("cs101")
     _seed_syllabus("badcourse")
     storage.append_quiz_attempt("cs101", _attempt_at(today))

@@ -5,7 +5,7 @@ reminders.py's cross-course scanning style. Deliberately global rather than
 per-course: studying any course on a given day keeps the streak alive.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from . import reminders, storage
 
@@ -43,7 +43,7 @@ def current_streak() -> int:
     for course_id in reminders.list_courses():
         all_dates |= _attempt_dates(course_id)
 
-    today = date.today()
+    today = datetime.now(timezone.utc).date()
     if today in all_dates:
         cursor = today
     elif (today - timedelta(days=1)) in all_dates:
