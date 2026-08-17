@@ -19,6 +19,7 @@
     a:hover{color:var(--color-accent-800,var(--color-accent-700))}
     ::-webkit-scrollbar{width:8px;height:8px}
     ::-webkit-scrollbar-thumb{background:var(--color-neutral-300);border-radius:99px}
+    .cora-avatar{width:28px;height:28px;border-radius:999px;background:var(--color-accent-2);display:flex;align-items:center;justify-content:center;flex:none}
   </style>
 </helmet>
 
@@ -460,6 +461,11 @@
             </sc-if>
             <sc-for list="{{ chatMessages }}" as="m" hint-placeholder-count="4">
               <div style="{{ m.rowStyle }}">
+                <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
+                  <div class="cora-avatar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></svg>
+                  </div>
+                </sc-if>
                 <div style="{{ m.wrapStyle }}">
                   <div style="{{ m.bubbleStyle }}">{{ m.text }}</div>
                   <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
@@ -989,7 +995,7 @@ class Component extends DCLogic {
 
     const msgStyle = (from) => from === 'user'
       ? { display: 'flex', justifyContent: 'flex-end' }
-      : { display: 'flex', justifyContent: 'flex-start' };
+      : { display: 'flex', justifyContent: 'flex-start', alignItems: 'flex-start', gap: '10px' };
     const wrapStyle = (from) => 'display:flex;flex-direction:column;max-width:72%;' +
       (from === 'user' ? 'align-items:flex-end' : 'align-items:flex-start');
     const bubbleStyle = (from) => from === 'user'
