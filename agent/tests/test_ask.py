@@ -106,3 +106,15 @@ async def test_web_search_grounds_when_domain_approved_and_course_material_silen
     web_sources = [s for s in result["sources"] if s.startswith("http")]
     assert web_sources
     assert any(domain in src for domain in approved for src in web_sources)
+
+
+async def test_identity_question_answers_as_cora():
+    """Asking who the assistant is should be answered in character as Cora,
+    still inside the required JSON envelope — proving the identity clause
+    doesn't leak outside the JSON contract or corrupt grounded/sources
+    semantics for a question that isn't about course material."""
+    result = await ask_async(COURSE_ID, "Who are you and what do you do?")
+
+    assert "cora" in result["answer"].lower()
+    assert result["grounded"] is False
+    assert result["sources"] == []
