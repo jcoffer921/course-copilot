@@ -421,6 +421,16 @@
     </sc-if>
 
     <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
+      <sc-if value="{{ courseIsDraft }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:var(--space-8) var(--space-8);max-width:720px;margin:0 auto">
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <div class="card-kicker">{{ courseIdUpper }}</div>
+            <div class="card-title">{{ courseName }}</div>
+            <p class="card-body">{{ emptyStateMessage }}</p>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ !courseIsDraft }}" hint-placeholder-val="{{ true }}">
       <div style="display:flex;height:100%">
         <div style="width:270px;flex:none;border-right:1px solid var(--color-neutral-200);padding:var(--space-6);overflow-y:auto">
           <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">{{ courseName }}</div>
@@ -512,6 +522,7 @@
           </div>
         </div>
       </div>
+      </sc-if>
     </sc-if>
 
   <sc-if value="{{ addClassOpen }}" hint-placeholder-val="{{ false }}">
@@ -962,11 +973,15 @@ class Component extends DCLogic {
       ? anyCourseHasNotes
       : !!(courseMetaFor(s.course) && courseMetaFor(s.course).notes_count > 0);
     const courseMetaLoaded = s.courseMeta !== null;
+    const courseIsDraft = s.course !== 'all' && s.courseDrafts.some(d => d.course_id === s.course);
+    const draftName = courseIsDraft ? (s.courseDrafts.find(d => d.course_id === s.course) || {}).course_name : null;
     const courseDisplayName = s.course === 'all'
       ? 'your courses'
-      : (courseMetaFor(s.course) && courseMetaFor(s.course).course_name) || s.course.toUpperCase();
+      : (courseMetaFor(s.course) && courseMetaFor(s.course).course_name) || draftName || s.course.toUpperCase();
     const scopeLabel = s.course === 'all' ? 'all courses' : s.course.toUpperCase();
-    const emptyStateMessage = 'No notes uploaded yet for ' + courseDisplayName + ' — nothing to quiz or track until a lecture is added.';
+    const emptyStateMessage = courseIsDraft
+      ? "This class doesn't have a syllabus yet. Add one from the sidebar to start tracking it."
+      : 'No notes uploaded yet for ' + courseDisplayName + ' — nothing to quiz or track until a lecture is added.';
 
     const dotColors = ['var(--color-accent)', 'var(--color-accent-2)'];
     const courseChips = realCourseIds.map((id, i) => ({
@@ -1296,6 +1311,7 @@ class Component extends DCLogic {
       courseHasNotes: courseHasNotes,
       showNoNotesEmptyState: courseMetaLoaded && !courseHasNotes,
       emptyStateMessage: emptyStateMessage,
+      courseIsDraft: courseIsDraft,
       yourCoursesGridStyle: 'display:grid;grid-template-columns:' + (s.course === 'all' ? '1fr 1fr' : '1fr') + ';gap:var(--space-4);margin-bottom:var(--space-6)',
       yourCoursesCards: yourCoursesCards,
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
