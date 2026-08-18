@@ -159,48 +159,40 @@
 
         <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:var(--space-3)">Your courses</div>
         <div style="{{ yourCoursesGridStyle }}">
-          <sc-if value="{{ showCs101Card }}" hint-placeholder-val="{{ true }}">
-            <div class="card elev-sm" style="padding:var(--space-6)">
-              <div class="card-kicker">CS101</div>
-              <div class="card-title">Intro to Computer Science</div>
-              <p class="card-body">{{ cs101Summary }}</p>
-              <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)" onClick="{{ openUploadCs101 }}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
-                Upload notes
-              </button>
-              <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
-                <sc-for list="{{ cs101Tags }}" as="tag" hint-placeholder-count="2">
-                  <span class="tag tag-accent">{{ tag.label }}</span>
-                </sc-for>
+          <sc-for list="{{ yourCoursesCards }}" as="c" hint-placeholder-count="2">
+            <sc-if value="{{ c.isDraft }}" hint-placeholder-val="{{ false }}">
+              <div class="card elev-sm" style="padding:var(--space-6)">
+                <div class="card-kicker">{{ c.kicker }}</div>
+                <div class="card-title">{{ c.name }}</div>
+                <p class="card-body">Syllabus pending</p>
+                <button type="button" class="btn btn-primary" style="margin-top:var(--space-2)" onClick="{{ c.onAddSyllabus }}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
+                  Upload syllabus
+                </button>
               </div>
-              <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
-                <sc-for list="{{ gradingCs101 }}" as="g" hint-placeholder-count="4">
-                  <span class="tag tag-neutral">{{ g.component }} {{ g.weight_pct }}%</span>
-                </sc-for>
+            </sc-if>
+            <sc-if value="{{ !c.isDraft }}" hint-placeholder-val="{{ true }}">
+              <div class="card elev-sm" style="padding:var(--space-6)">
+                <div class="card-kicker">{{ c.kicker }}</div>
+                <div class="card-title">{{ c.name }}</div>
+                <p class="card-body">{{ c.summary }}</p>
+                <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)" onClick="{{ c.onUpload }}">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
+                  Upload notes
+                </button>
+                <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
+                  <sc-for list="{{ c.tags }}" as="tag" hint-placeholder-count="2">
+                    <span class="tag tag-accent">{{ tag.label }}</span>
+                  </sc-for>
+                </div>
+                <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
+                  <sc-for list="{{ c.grading }}" as="g" hint-placeholder-count="4">
+                    <span class="tag tag-neutral">{{ g.component }} {{ g.weight_pct }}%</span>
+                  </sc-for>
+                </div>
               </div>
-            </div>
-          </sc-if>
-          <sc-if value="{{ showPsyc201Card }}" hint-placeholder-val="{{ true }}">
-            <div class="card elev-sm" style="padding:var(--space-6)">
-              <div class="card-kicker">PSYC201</div>
-              <div class="card-title">Cognitive Psychology</div>
-              <p class="card-body">{{ psyc201Summary }}</p>
-              <button type="button" class="btn btn-secondary" style="margin-top:var(--space-2)" onClick="{{ openUploadPsyc201 }}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M5 21h14"/></svg>
-                Upload notes
-              </button>
-              <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
-                <sc-for list="{{ psyc201Tags }}" as="tag" hint-placeholder-count="2">
-                  <span class="tag tag-accent">{{ tag.label }}</span>
-                </sc-for>
-              </div>
-              <div style="display:flex;gap:6px;margin-top:var(--space-2);flex-wrap:wrap">
-                <sc-for list="{{ gradingPsyc201 }}" as="g" hint-placeholder-count="4">
-                  <span class="tag tag-neutral">{{ g.component }} {{ g.weight_pct }}%</span>
-                </sc-for>
-              </div>
-            </div>
-          </sc-if>
+            </sc-if>
+          </sc-for>
         </div>
 
         <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
@@ -1086,6 +1078,30 @@ class Component extends DCLogic {
     const courseCardTags = (meta) => (meta && meta.weak_topics ? meta.weak_topics.slice(0, 2) : []).map(t => ({
       label: t.topic + ' — ' + (statusLabel[t.status] || t.status)
     }));
+    const yourCoursesCards = realCourseIds
+      .filter(id => s.course === 'all' || s.course === id)
+      .map(id => {
+        const meta = courseMetaFor(id);
+        return {
+          id: id, isDraft: false,
+          kicker: id.toUpperCase(),
+          name: (meta && meta.course_name) || id.toUpperCase(),
+          summary: courseCardSummary(meta),
+          tags: courseCardTags(meta),
+          grading: (meta && meta.grading) || [],
+          onUpload: () => this.openUpload(id)
+        };
+      })
+      .concat(
+        s.courseDrafts
+          .filter(d => s.course === 'all' || s.course === d.course_id)
+          .map(d => ({
+            id: d.course_id, isDraft: true,
+            kicker: d.course_id.toUpperCase(),
+            name: d.course_name,
+            onAddSyllabus: () => this.openAddClassForDraft(d.course_id, d.course_name)
+          }))
+      );
     const dashboardRecentActivity = s.dashboardRecentAttempts.map(a => ({
       topic: (s.course === 'all' ? a.course_id.toUpperCase() + ' · ' : '') + a.topic,
       question: a.question, correct: a.correct, incorrect: !a.correct,
@@ -1243,11 +1259,8 @@ class Component extends DCLogic {
       courseHasNotes: courseHasNotes,
       showNoNotesEmptyState: courseMetaLoaded && !courseHasNotes,
       emptyStateMessage: emptyStateMessage,
-      gradingCs101: (courseMetaFor('cs101') && courseMetaFor('cs101').grading) || [],
-      gradingPsyc201: (courseMetaFor('psyc201') && courseMetaFor('psyc201').grading) || [],
       yourCoursesGridStyle: 'display:grid;grid-template-columns:' + (s.course === 'all' ? '1fr 1fr' : '1fr') + ';gap:var(--space-4);margin-bottom:var(--space-6)',
-      showCs101Card: s.course === 'all' || s.course === 'cs101',
-      showPsyc201Card: s.course === 'all' || s.course === 'psyc201',
+      yourCoursesCards: yourCoursesCards,
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
       syllabusCoveredPct: syllabusCoveredPct, syllabusCoveredLabel: syllabusCoveredLabel,
       streakLabel: streakLabel, streakSubLabel: streakSubLabel,
@@ -1257,16 +1270,10 @@ class Component extends DCLogic {
       dashboardError: s.dashboardError,
       retryDashboard: retryDashboard,
       showDashboardLoading: s.dashboardLoading && !s.courseMeta,
-      cs101Summary: courseCardSummary(courseMetaFor('cs101')),
-      psyc201Summary: courseCardSummary(courseMetaFor('psyc201')),
-      cs101Tags: courseCardTags(courseMetaFor('cs101')),
-      psyc201Tags: courseCardTags(courseMetaFor('psyc201')),
       dashboardRecentActivity: dashboardRecentActivity,
       dashboardRecentLoading: s.dashboardRecentLoading,
       dashboardRecentError: s.dashboardRecentError,
       retryDashboardRecent: retryDashboardRecent,
-      openUploadCs101: () => this.openUpload('cs101'),
-      openUploadPsyc201: () => this.openUpload('psyc201'),
       uploadModalOpen: !!s.uploadOpenFor,
       uploadModalCourseUpper: s.uploadOpenFor ? s.uploadOpenFor.toUpperCase() : '',
       uploadLectureId: s.uploadLectureId,
