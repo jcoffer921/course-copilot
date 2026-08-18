@@ -76,6 +76,7 @@
 
     <div style="margin-top:var(--space-2);display:flex;flex-direction:column;gap:2px">
       <button type="button" class="btn btn-ghost" style="justify-content:flex-start;width:100%;padding:7px 10px" onClick="{{ openAddClass }}">+ Add class</button>
+      <button type="button" class="btn btn-ghost" style="justify-content:flex-start;width:100%;padding:7px 10px" onClick="{{ openUploadPicker }}">Upload notes</button>
     </div>
 
     <div style="margin-top:auto;padding-top:var(--space-6);border-top:1px solid var(--color-neutral-200);display:flex;align-items:center;gap:10px">
@@ -551,6 +552,23 @@
     </div>
   </sc-if>
 
+  <sc-if value="{{ uploadPickerOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:320px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-4)">Upload notes — choose a class</div>
+        <sc-if value="{{ uploadPickerEmpty }}" hint-placeholder-val="{{ false }}">
+          <p class="card-body" style="margin:0 0 var(--space-4)">No classes with a syllabus yet — add a class first.</p>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:var(--space-4)">
+          <sc-for list="{{ uploadPickerItems }}" as="item" hint-placeholder-count="2">
+            <div style="padding:8px 10px;border-radius:var(--radius-lg);cursor:pointer;font-size:13.5px" onClick="{{ item.onClick }}">{{ item.name }}</div>
+          </sc-for>
+        </div>
+        <button type="button" class="btn btn-secondary" onClick="{{ closeUploadPicker }}">Cancel</button>
+      </div>
+    </div>
+  </sc-if>
+
   </div>
 </div>
 {% endverbatim %}
@@ -588,7 +606,8 @@ class Component extends DCLogic {
     chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
     chatSessionId: null, chatSessions: [], chatSessionsLoading: false, chatSessionsError: null,
     addClassOpen: false, addClassName: '', addClassId: '', addClassIdLocked: false,
-    addClassFile: null, addClassLoading: false, addClassError: null
+    addClassFile: null, addClassLoading: false, addClassError: null,
+    uploadPickerOpen: false
   };
 
   _quizSeq = 0;
@@ -915,6 +934,14 @@ class Component extends DCLogic {
       .catch(onError);
   }
 
+  openUploadPicker() {
+    this.setState({ uploadPickerOpen: true });
+  }
+
+  closeUploadPicker() {
+    this.setState({ uploadPickerOpen: false });
+  }
+
   renderVals() {
     const s = this.state;
     const realCourseIds = Object.keys(s.courseMeta || {}).sort();
@@ -967,6 +994,11 @@ class Component extends DCLogic {
     const onAddClassFileChange = (e) => this.setState({ addClassFile: e.target.files[0] || null, addClassError: null });
     const addClassModalTitle = s.addClassIdLocked ? ('Add syllabus — ' + s.addClassName) : 'Add a class';
     const addClassSubmitLabel = s.addClassIdLocked ? 'Upload syllabus' : 'Add class';
+    const uploadPickerItems = realCourseIds.map(id => ({
+      id: id,
+      name: (courseMetaFor(id) && courseMetaFor(id).course_name) || id.toUpperCase(),
+      onClick: () => { this.closeUploadPicker(); this.openUpload(id); }
+    }));
 
     const goToQuiz = (courseId) => {
       const hasNotes = !!(courseMetaFor(courseId) && courseMetaFor(courseId).notes_count > 0);
@@ -1247,6 +1279,11 @@ class Component extends DCLogic {
       addClassLoading: s.addClassLoading,
       closeAddClass: () => this.closeAddClass(),
       submitAddClass: () => this.submitAddClass(),
+      openUploadPicker: () => this.openUploadPicker(),
+      closeUploadPicker: () => this.closeUploadPicker(),
+      uploadPickerOpen: s.uploadPickerOpen,
+      uploadPickerEmpty: realCourseIds.length === 0,
+      uploadPickerItems: uploadPickerItems,
       selectAll: () => selectCourse('all'),
       goDashboard: () => setTab('dashboard'),
       goChat: () => setTab('chat'),
