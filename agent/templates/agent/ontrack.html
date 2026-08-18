@@ -663,6 +663,7 @@ class Component extends DCLogic {
         if (seq !== this._dashSeq) return;
         if (!ok) { this.setState({ dashboardLoading: false, dashboardError: data.detail || 'Could not load dashboard data.' }); return; }
         this.setState({ dashboardLoading: false, courseMeta: data.courses, courseDrafts: data.drafts, dashboardDeadlines: data.deadlines, dashboardStreak: data.streak });
+        if (this.state.course === 'all') this.loadDashboardRecent('all');
       })
       .catch(e => {
         if (seq !== this._dashSeq) return;
@@ -907,6 +908,10 @@ class Component extends DCLogic {
       if (!s.addClassFile) { this.setState({ addClassError: 'Choose a syllabus file to upload.' }); return; }
     } else {
       if (!s.addClassName.trim() || !s.addClassId) { this.setState({ addClassError: 'Enter a class name.' }); return; }
+      if (s.courseDrafts.some(d => d.course_id === s.addClassId)) {
+        this.setState({ addClassError: 'A class with that name already exists as a draft — use its "Upload syllabus" button instead.' });
+        return;
+      }
     }
     const seq = ++this._addClassSeq;
     this.setState({ addClassLoading: true, addClassError: null });
@@ -1030,7 +1035,9 @@ class Component extends DCLogic {
         this.loadDashboardRecent(s.course);
         return;
       }
-      const targetCourse = s.course === 'all' ? fallbackCourse : s.course;
+      const targetCourse = s.course === 'all'
+        ? (fallbackCourse || (s.courseDrafts[0] && s.courseDrafts[0].course_id) || null)
+        : s.course;
       if (!targetCourse) return;
       if (t === 'quiz') {
         goToQuiz(targetCourse);
@@ -1108,7 +1115,7 @@ class Component extends DCLogic {
       this._quizSeq++;
       this._chatSeq++;
       const targetCourse = s.course === 'all'
-        ? ((rawWeakTopics[0] && rawWeakTopics[0].course_id) || fallbackCourse)
+        ? ((rawWeakTopics[0] && rawWeakTopics[0].course_id) || fallbackCourse || (s.courseDrafts[0] && s.courseDrafts[0].course_id) || null)
         : s.course;
       if (!targetCourse) return;
       goToQuiz(targetCourse);

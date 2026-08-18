@@ -40,9 +40,12 @@ def list_draft_courses() -> list:
         if not course_json.exists():
             continue
         try:
-            drafts.append(json.loads(course_json.read_text(encoding="utf-8")))
-        except json.JSONDecodeError:
+            parsed = json.loads(course_json.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
             continue
+        if not isinstance(parsed, dict) or "course_id" not in parsed:
+            continue
+        drafts.append(parsed)
     return drafts
 
 
