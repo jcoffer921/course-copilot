@@ -65,14 +65,12 @@
           <span style="width:8px;height:8px;border-radius:99px;background:var(--color-neutral-400);flex:none"></span>
           All Courses
         </div>
-        <div style="{{ courseChipStyleCs101 }}" onClick="{{ selectCs101 }}">
-          <span style="width:8px;height:8px;border-radius:99px;background:var(--color-accent);flex:none"></span>
-          Intro to Computer Science
-        </div>
-        <div style="{{ courseChipStylePsyc }}" onClick="{{ selectPsyc }}">
-          <span style="width:8px;height:8px;border-radius:99px;background:var(--color-accent-2);flex:none"></span>
-          Cognitive Psychology
-        </div>
+        <sc-for list="{{ courseChips }}" as="c" hint-placeholder-count="2">
+          <div style="{{ c.chipStyle }}" onClick="{{ c.onClick }}">
+            <span style="{{ c.dotStyle }}"></span>
+            {{ c.label }}
+          </div>
+        </sc-for>
       </div>
     </div>
 
@@ -540,13 +538,10 @@ function getCookie(name) {
   return cookieValue;
 }
 
-const COURSE_IDS = ['cs101', 'psyc201'];
-const FALLBACK_COURSE = 'cs101';
-
 class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'all',
-    courseMeta: null, dashboardDeadlines: [], dashboardStreak: 0, dashboardLoading: false, dashboardError: null,
+    courseMeta: null, courseDrafts: [], dashboardDeadlines: [], dashboardStreak: 0, dashboardLoading: false, dashboardError: null,
     dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
     quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
@@ -596,7 +591,7 @@ class Component extends DCLogic {
       .then(({ ok, data }) => {
         if (seq !== this._dashSeq) return;
         if (!ok) { this.setState({ dashboardLoading: false, dashboardError: data.detail || 'Could not load dashboard data.' }); return; }
-        this.setState({ dashboardLoading: false, courseMeta: data.courses, dashboardDeadlines: data.deadlines, dashboardStreak: data.streak });
+        this.setState({ dashboardLoading: false, courseMeta: data.courses, courseDrafts: data.drafts, dashboardDeadlines: data.deadlines, dashboardStreak: data.streak });
       })
       .catch(e => {
         if (seq !== this._dashSeq) return;
@@ -607,7 +602,7 @@ class Component extends DCLogic {
   loadDashboardRecent(courseId) {
     const seq = ++this._recentSeq;
     this.setState({ dashboardRecentLoading: true, dashboardRecentError: null });
-    const ids = courseId === 'all' ? COURSE_IDS : [courseId];
+    const ids = courseId === 'all' ? Object.keys(this.state.courseMeta || {}) : [courseId];
     Promise.all(ids.map(id =>
       fetch(`/api/courses/${id}/quiz/history/?limit=4`)
         .then(r => r.json().then(data => ({ ok: r.ok, data, id })))
@@ -815,6 +810,8 @@ class Component extends DCLogic {
 
   renderVals() {
     const s = this.state;
+    const realCourseIds = Object.keys(s.courseMeta || {}).sort();
+    const fallbackCourse = realCourseIds[0] || null;
 
     const typeStyle = (type) => {
       if (type === 'exam') return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-accent-700);color:#fff;flex:none';
@@ -826,7 +823,7 @@ class Component extends DCLogic {
 
     const courseMetaFor = (id) => (s.courseMeta && s.courseMeta[id]) || null;
     const progressTopicsRaw = (courseMetaFor(s.course) && courseMetaFor(s.course).topics) || [];
-    const anyCourseHasNotes = COURSE_IDS.some(id => courseMetaFor(id) && courseMetaFor(id).notes_count > 0);
+    const anyCourseHasNotes = realCourseIds.some(id => courseMetaFor(id) && courseMetaFor(id).notes_count > 0);
     const courseHasNotes = s.course === 'all'
       ? anyCourseHasNotes
       : !!(courseMetaFor(s.course) && courseMetaFor(s.course).notes_count > 0);
@@ -836,6 +833,21 @@ class Component extends DCLogic {
       : (courseMetaFor(s.course) && courseMetaFor(s.course).course_name) || s.course.toUpperCase();
     const scopeLabel = s.course === 'all' ? 'all courses' : s.course.toUpperCase();
     const emptyStateMessage = 'No notes uploaded yet for ' + courseDisplayName + ' — nothing to quiz or track until a lecture is added.';
+
+    const dotColors = ['var(--color-accent)', 'var(--color-accent-2)'];
+    const courseChips = realCourseIds.map((id, i) => ({
+      id: id,
+      label: (courseMetaFor(id) && courseMetaFor(id).course_name) || id.toUpperCase(),
+      chipStyle: this.courseChip(s.course === id),
+      dotStyle: 'width:8px;height:8px;border-radius:99px;background:' + dotColors[i % dotColors.length] + ';flex:none',
+      onClick: () => selectCourse(id)
+    })).concat(s.courseDrafts.map(d => ({
+      id: d.course_id,
+      label: d.course_name + ' · pending',
+      chipStyle: this.courseChip(s.course === d.course_id),
+      dotStyle: 'width:8px;height:8px;border-radius:99px;background:var(--color-neutral-400);flex:none',
+      onClick: () => selectCourse(d.course_id)
+    })));
 
     const goToQuiz = (courseId) => {
       const hasNotes = !!(courseMetaFor(courseId) && courseMetaFor(courseId).notes_count > 0);
@@ -852,7 +864,8 @@ class Component extends DCLogic {
         this.loadDashboardRecent(s.course);
         return;
       }
-      const targetCourse = s.course === 'all' ? FALLBACK_COURSE : s.course;
+      const targetCourse = s.course === 'all' ? fallbackCourse : s.course;
+      if (!targetCourse) return;
       if (t === 'quiz') {
         goToQuiz(targetCourse);
       } else if (t === 'chat') {
@@ -915,7 +928,7 @@ class Component extends DCLogic {
     });
     const weakTopicsForCourse = (id) => ((courseMetaFor(id) && courseMetaFor(id).weak_topics) || []).map(t => Object.assign({}, t, { course_id: id }));
     const rawWeakTopics = s.course === 'all'
-      ? COURSE_IDS.map(weakTopicsForCourse).reduce((a, b) => a.concat(b), []).sort((a, b) => a.score - b.score)
+      ? realCourseIds.map(weakTopicsForCourse).reduce((a, b) => a.concat(b), []).sort((a, b) => a.score - b.score)
       : weakTopicsForCourse(s.course);
     const weakTopics = rawWeakTopics.slice(0, s.course === 'all' ? 3 : 2).map(t => {
       const pct = Math.round(t.score * 100);
@@ -929,8 +942,9 @@ class Component extends DCLogic {
       this._quizSeq++;
       this._chatSeq++;
       const targetCourse = s.course === 'all'
-        ? ((rawWeakTopics[0] && rawWeakTopics[0].course_id) || FALLBACK_COURSE)
+        ? ((rawWeakTopics[0] && rawWeakTopics[0].course_id) || fallbackCourse)
         : s.course;
+      if (!targetCourse) return;
       goToQuiz(targetCourse);
     };
     const courseCardSummary = (meta) => {
@@ -1076,11 +1090,8 @@ class Component extends DCLogic {
       navBtnStyleProgress: this.navBtn(s.tab === 'progress'),
       navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
       courseChipStyleAll: this.courseChip(s.course === 'all'),
-      courseChipStyleCs101: this.courseChip(s.course === 'cs101'),
-      courseChipStylePsyc: this.courseChip(s.course === 'psyc201'),
+      courseChips: courseChips,
       selectAll: () => selectCourse('all'),
-      selectCs101: () => selectCourse('cs101'),
-      selectPsyc: () => selectCourse('psyc201'),
       goDashboard: () => setTab('dashboard'),
       goChat: () => setTab('chat'),
       goProgress: () => setTab('progress'),
