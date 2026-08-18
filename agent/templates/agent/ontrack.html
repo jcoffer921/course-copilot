@@ -74,6 +74,10 @@
       </div>
     </div>
 
+    <div style="margin-top:var(--space-2);display:flex;flex-direction:column;gap:2px">
+      <button type="button" class="btn btn-ghost" style="justify-content:flex-start;width:100%;padding:7px 10px" onClick="{{ openAddClass }}">+ Add class</button>
+    </div>
+
     <div style="margin-top:auto;padding-top:var(--space-6);border-top:1px solid var(--color-neutral-200);display:flex;align-items:center;gap:10px">
       <div style="width:30px;height:30px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-800);display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:13px;flex:none">J</div>
       <div style="font-size:13px;line-height:1.3">
@@ -517,6 +521,44 @@
       </div>
     </sc-if>
 
+  <sc-if value="{{ addClassOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-4)">{{ addClassModalTitle }}</div>
+
+        <sc-if value="{{ !addClassIdLocked }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+            <div>
+              <div style="font-size:13px;margin-bottom:4px">Class name</div>
+              <input class="input" value="{{ addClassName }}" onChange="{{ onAddClassNameChange }}" style="width:100%"/>
+            </div>
+            <div style="font-size:12px;opacity:.55">Will be added as <strong>{{ addClassId }}</strong></div>
+          </div>
+        </sc-if>
+
+        <div style="margin-bottom:var(--space-4)">
+          <div style="font-size:13px;margin-bottom:4px">Syllabus <sc-if value="{{ !addClassIdLocked }}" hint-placeholder-val="{{ true }}">(optional — add it now or later)</sc-if></div>
+          <input type="file" accept=".pdf,.txt,.md" onChange="{{ onAddClassFileChange }}" style="font-size:13px"/>
+        </div>
+
+        <sc-if value="{{ addClassError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ addClassError }}</p>
+        </sc-if>
+
+        <sc-if value="{{ addClassLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Adding your class…</div>
+        </sc-if>
+
+        <sc-if value="{{ !addClassLoading }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeAddClass }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ submitAddClass }}">{{ addClassSubmitLabel }}</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
   </div>
 </div>
 {% endverbatim %}
@@ -538,6 +580,10 @@ function getCookie(name) {
   return cookieValue;
 }
 
+function slugify(name) {
+  return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
+}
+
 class Component extends DCLogic {
   state = {
     tab: 'dashboard', course: 'all',
@@ -548,7 +594,9 @@ class Component extends DCLogic {
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
     chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
-    chatSessionId: null, chatSessions: [], chatSessionsLoading: false, chatSessionsError: null
+    chatSessionId: null, chatSessions: [], chatSessionsLoading: false, chatSessionsError: null,
+    addClassOpen: false, addClassName: '', addClassId: '', addClassIdLocked: false,
+    addClassFile: null, addClassLoading: false, addClassError: null
   };
 
   _quizSeq = 0;
@@ -557,6 +605,7 @@ class Component extends DCLogic {
   _uploadSeq = 0;
   _chatSeq = 0;
   _sessionsSeq = 0;
+  _addClassSeq = 0;
 
   navBtn(active) {
     return {
@@ -808,6 +857,72 @@ class Component extends DCLogic {
       });
   }
 
+  openAddClass() {
+    this.setState({
+      addClassOpen: true, addClassName: '', addClassId: '', addClassIdLocked: false,
+      addClassFile: null, addClassLoading: false, addClassError: null
+    });
+  }
+
+  openAddClassForDraft(courseId, courseName) {
+    this.setState({
+      addClassOpen: true, addClassName: courseName, addClassId: courseId, addClassIdLocked: true,
+      addClassFile: null, addClassLoading: false, addClassError: null
+    });
+  }
+
+  closeAddClass() {
+    this._addClassSeq++;
+    this.setState({
+      addClassOpen: false, addClassName: '', addClassId: '', addClassIdLocked: false,
+      addClassFile: null, addClassLoading: false, addClassError: null
+    });
+  }
+
+  submitAddClass() {
+    const s = this.state;
+    if (s.addClassIdLocked) {
+      if (!s.addClassFile) { this.setState({ addClassError: 'Choose a syllabus file to upload.' }); return; }
+    } else {
+      if (!s.addClassName.trim() || !s.addClassId) { this.setState({ addClassError: 'Enter a class name.' }); return; }
+    }
+    const seq = ++this._addClassSeq;
+    this.setState({ addClassLoading: true, addClassError: null });
+
+    const onDone = ({ ok, status, data }) => {
+      if (seq !== this._addClassSeq) return;
+      if (status === 409) { this.setState({ addClassLoading: false, addClassError: data.detail || 'That class already exists.' }); return; }
+      if (!ok) { this.setState({ addClassLoading: false, addClassError: data.detail || 'Could not create that class.' }); return; }
+      this.closeAddClass();
+      this.loadDashboard();
+    };
+    const onError = (e) => {
+      if (seq !== this._addClassSeq) return;
+      this.setState({ addClassLoading: false, addClassError: 'Network error: ' + e.message });
+    };
+
+    if (s.addClassFile) {
+      const body = new FormData();
+      body.append('file', s.addClassFile);
+      body.append('course_name', s.addClassName);
+      fetch(`/api/courses/${s.addClassId}/syllabus/extract/`, {
+        method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }, body: body
+      })
+        .then(r => r.json().then(data => ({ ok: r.ok, status: r.status, data })))
+        .then(onDone)
+        .catch(onError);
+      return;
+    }
+
+    fetch(`/api/courses/${s.addClassId}/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ course_name: s.addClassName })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, status: r.status, data })))
+      .then(onDone)
+      .catch(onError);
+  }
+
   renderVals() {
     const s = this.state;
     const realCourseIds = Object.keys(s.courseMeta || {}).sort();
@@ -848,6 +963,18 @@ class Component extends DCLogic {
       dotStyle: 'width:8px;height:8px;border-radius:99px;background:var(--color-neutral-400);flex:none',
       onClick: () => selectCourse(d.course_id)
     })));
+
+    const onAddClassNameChange = (e) => {
+      const name = e.target.value;
+      if (s.addClassIdLocked) {
+        this.setState({ addClassName: name });
+      } else {
+        this.setState({ addClassName: name, addClassId: slugify(name) });
+      }
+    };
+    const onAddClassFileChange = (e) => this.setState({ addClassFile: e.target.files[0] || null, addClassError: null });
+    const addClassModalTitle = s.addClassIdLocked ? ('Add syllabus — ' + s.addClassName) : 'Add a class';
+    const addClassSubmitLabel = s.addClassIdLocked ? 'Upload syllabus' : 'Add class';
 
     const goToQuiz = (courseId) => {
       const hasNotes = !!(courseMetaFor(courseId) && courseMetaFor(courseId).notes_count > 0);
@@ -1091,6 +1218,19 @@ class Component extends DCLogic {
       navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
       courseChipStyleAll: this.courseChip(s.course === 'all'),
       courseChips: courseChips,
+      openAddClass: () => this.openAddClass(),
+      addClassOpen: s.addClassOpen,
+      addClassName: s.addClassName,
+      addClassId: s.addClassId,
+      addClassIdLocked: s.addClassIdLocked,
+      addClassModalTitle: addClassModalTitle,
+      addClassSubmitLabel: addClassSubmitLabel,
+      onAddClassNameChange: onAddClassNameChange,
+      onAddClassFileChange: onAddClassFileChange,
+      addClassError: s.addClassError,
+      addClassLoading: s.addClassLoading,
+      closeAddClass: () => this.closeAddClass(),
+      submitAddClass: () => this.submitAddClass(),
       selectAll: () => selectCourse('all'),
       goDashboard: () => setTab('dashboard'),
       goChat: () => setTab('chat'),
