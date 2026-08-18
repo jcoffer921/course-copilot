@@ -144,3 +144,25 @@ def test_build_dashboard_notes_count_reflects_multiple_lectures(isolated_courses
     data = dashboard.build_dashboard()
 
     assert data["courses"]["cs101"]["notes_count"] == 2
+
+
+def test_build_dashboard_includes_drafts(isolated_courses_dir):
+    storage.write_course_draft("newclass", "New Class")
+    _seed_course("cs101", topics=["A"], grading=[], dates=[])
+
+    data = dashboard.build_dashboard()
+
+    assert data["drafts"] == [{
+        "course_id": "newclass", "course_name": "New Class",
+        "created_at": data["drafts"][0]["created_at"],
+    }]
+    assert "newclass" not in data["courses"]
+    assert "cs101" in data["courses"]
+
+
+def test_build_dashboard_drafts_empty_when_none_exist(isolated_courses_dir):
+    _seed_course("cs101", topics=["A"], grading=[], dates=[])
+
+    data = dashboard.build_dashboard()
+
+    assert data["drafts"] == []

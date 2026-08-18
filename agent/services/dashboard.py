@@ -83,4 +83,5 @@ def build_dashboard() -> dict:
         "deadlines": reminders.upcoming_deadlines(within_days=14, course_ids=good_course_ids),
         "streak": streak.current_streak(),
         "courses": courses,
+        "drafts": reminders.list_draft_courses(),
     }
