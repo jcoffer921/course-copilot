@@ -7,6 +7,7 @@ calendar_sync.py which actually commits specific events to Google Calendar.
 """
 
 from datetime import date, datetime, timedelta
+import json
 
 from . import storage
 
@@ -19,6 +20,30 @@ def list_courses() -> list:
         p.name for p in storage.COURSES_DIR.iterdir()
         if p.is_dir() and (p / "syllabus.json").exists()
     )
+
+
+def list_draft_courses() -> list:
+    """Returns every course as {"course_id", "course_name", "created_at"}
+    that has course.json but not syllabus.json — a class with a name but no
+    syllabus uploaded yet — sorted by course_id. A course.json that fails to
+    parse is skipped rather than raising, matching list_courses()'s "never
+    fail the whole scan over one bad entry" shape."""
+    if not storage.COURSES_DIR.exists():
+        return []
+    drafts = []
+    for p in sorted(storage.COURSES_DIR.iterdir(), key=lambda p: p.name):
+        if not p.is_dir():
+            continue
+        if (p / "syllabus.json").exists():
+            continue
+        course_json = p / "course.json"
+        if not course_json.exists():
+            continue
+        try:
+            drafts.append(json.loads(course_json.read_text(encoding="utf-8")))
+        except json.JSONDecodeError:
+            continue
+    return drafts
 
 
 def upcoming_deadlines(within_days: int = None, course_ids: list = None) -> list:

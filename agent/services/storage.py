@@ -9,7 +9,7 @@ auth/session/admin tables, never for course content.
 
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # project root
@@ -486,3 +486,33 @@ def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out_path
+
+
+class CourseAlreadyExistsError(Exception):
+    """Raised when a course_id already has either course.json or syllabus.json."""
+
+
+def write_course_draft(course_id: str, course_name: str) -> Path:
+    """Writes course.json — a class that has a name but no syllabus yet.
+    Raises InvalidCourseIdError (via _course_dir) for a bad slug, and
+    CourseAlreadyExistsError if course_id already has course.json or
+    syllabus.json — a draft can't collide with itself or a real course."""
+    out_dir = _course_dir(course_id)
+    course_path = out_dir / "course.json"
+    syllabus_path = out_dir / "syllabus.json"
+
+    if course_path.exists():
+        raise CourseAlreadyExistsError(f"'{course_id}' already exists as a draft class")
+    if syllabus_path.exists():
+        raise CourseAlreadyExistsError(f"'{course_id}' already exists as a class")
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    course_path.write_text(
+        json.dumps({
+            "course_id": course_id,
+            "course_name": course_name,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }, indent=2),
+        encoding="utf-8",
+    )
+    return course_path
