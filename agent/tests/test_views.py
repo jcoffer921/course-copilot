@@ -109,6 +109,38 @@ def test_domain_suggestions_view_404s_without_syllabus(isolated_courses_dir, api
     assert response.status_code == 404
 
 
+def test_create_course_draft_returns_201(isolated_courses_dir, api_client):
+    response = api_client.post(
+        "/api/courses/newclass/", {"course_name": "New Class"}, format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data == {"course_id": "newclass", "course_name": "New Class"}
+    assert (isolated_courses_dir / "newclass" / "course.json").exists()
+
+
+def test_create_course_draft_rejects_blank_name(isolated_courses_dir, api_client):
+    response = api_client.post("/api/courses/newclass/", {"course_name": ""}, format="json")
+
+    assert response.status_code == 400
+
+
+def test_create_course_draft_conflicts_with_existing_draft(isolated_courses_dir, api_client):
+    api_client.post("/api/courses/newclass/", {"course_name": "New Class"}, format="json")
+
+    response = api_client.post("/api/courses/newclass/", {"course_name": "New Class"}, format="json")
+
+    assert response.status_code == 409
+
+
+def test_create_course_draft_conflicts_with_existing_real_course(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.post("/api/courses/cs101/", {"course_name": "Intro to CS"}, format="json")
+
+    assert response.status_code == 409
+
+
 class _NeverCalledMessages:
     async def create(self, **kwargs):
         raise AssertionError(

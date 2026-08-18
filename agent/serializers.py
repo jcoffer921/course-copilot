@@ -19,6 +19,10 @@ class ChunkNotesRequestSerializer(serializers.Serializer):
     overwrite = serializers.BooleanField(required=False, default=False)
 
 
+class CreateCourseDraftRequestSerializer(serializers.Serializer):
+    course_name = serializers.CharField(allow_blank=False)
+
+
 class IngestReferenceRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
     title = serializers.CharField(required=False, allow_blank=True, default=None)

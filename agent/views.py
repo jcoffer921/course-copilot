@@ -8,6 +8,7 @@ from .serializers import (
     ApproveDomainsRequestSerializer,
     AskRequestSerializer,
     ChunkNotesRequestSerializer,
+    CreateCourseDraftRequestSerializer,
     ExtractSyllabusRequestSerializer,
     GenerateQuestionRequestSerializer,
     IngestReferenceRequestSerializer,
@@ -77,6 +78,35 @@ class ExtractSyllabusView(APIView):
 
         return Response(
             {"course_id": course_id, "syllabus": data, "warnings": warnings},
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class CourseDraftCreateView(APIView):
+    """
+    POST /api/courses/<course_id>/
+    body: {"course_name": "..."}
+
+    Creates a draft class — a name with no syllabus yet. 409 if course_id
+    already exists as either a draft or a real (syllabus'd) course.
+    """
+
+    async def post(self, request, course_id):
+        serializer = CreateCourseDraftRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        course_name = serializer.validated_data["course_name"]
+
+        try:
+            await sync_to_async(storage.write_course_draft)(course_id, course_name)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.CourseAlreadyExistsError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+
+        return Response(
+            {"course_id": course_id, "course_name": course_name},
             status=status.HTTP_201_CREATED,
         )
 
