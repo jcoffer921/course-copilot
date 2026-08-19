@@ -242,13 +242,19 @@ def test_grade_needed_reports_impossible_target_with_ceiling(isolated_courses_di
 
 
 def test_grade_needed_already_guaranteed_reports_zero(isolated_courses_dir):
+    # 2 entered @ 100/100, 2 remaining of 4 total: even scoring 0 on both
+    # remaining items, the category floors at (100+100+0+0)/4 = 50%. So a
+    # target at or below that floor (40) is already guaranteed; the brief's
+    # plain formula gives p_needed = max((40-50)/0.5, 0) = 0 for this case.
+    # (A target of 60 here is NOT already guaranteed — p_needed would
+    # correctly be 20, not 0 — so 60 was the wrong choice for this test.)
     _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
     _seed_items("cs101", [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 100, "max_points": 100},
         {"id": "2", "component": "Homework", "title": "HW2", "score": 100, "max_points": 100},
     ])
 
-    result = grades.grade_needed("cs101", 60)
+    result = grades.grade_needed("cs101", 40)
 
     assert result["p_needed"] == 0
     assert result["achievable"] is True

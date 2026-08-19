@@ -139,14 +139,6 @@ def grade_needed(course_id: str, target_pct: float) -> dict:
     grading = syllabus.get("grading", [])
     items = storage.read_grades(course_id)["items"]
 
-    # Check if current grade (from entered items only) already meets target
-    current = current_grade(course_id)
-    if current["overall_pct"] is not None and current["overall_pct"] >= target_pct:
-        return {
-            "target_pct": target_pct, "locked": False, "p_needed": 0.0,
-            "achievable": True, "ceiling_pct": None, "notes": [],
-        }
-
     total_weight = sum(g.get("weight_pct", 0) for g in grading) or 100.0
     locked_contribution = 0.0  # A: pct points already locked in, on a 0-100 scale
     remaining_slope = 0.0  # B: pct points contributed per unit of p
