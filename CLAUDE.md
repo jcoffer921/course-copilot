@@ -40,6 +40,9 @@ course-copilot/
       quiz.py                  # question generation from chunks + quiz_history.json logging
       mastery.py                # EWMA topic scoring, rebuilds mastery_scores.json from quiz_history.json
       reminders.py               # read-only deadline digest across all courses, no writes
+      grades.py                  # grade calculation engine: current_grade, add/update/delete item
+                                 # CRUD, grade_needed (what-if solver), missable_by_category,
+                                 # all_courses_summary, find_orphaned_components
     views.py               # async DRF views (adrf.views.APIView)
     urls.py
     management/commands/
@@ -52,6 +55,7 @@ course-copilot/
       quiz.py                  # CLI wrapper — generates a question, prompts, records the attempt
       mastery.py                # CLI wrapper (--rebuild / --weak-topics)
       reminders.py                # CLI wrapper (--within-days / --course-id)
+      grades.py                   # CLI wrapper (--add / --list / --whatif / --set-grading)
     tests/                  # pytest (pytest-django + pytest-asyncio); live-API tests skip
                             # cleanly without ANTHROPIC_API_KEY set
   courses/
@@ -65,6 +69,9 @@ course-copilot/
         <session_id>.json # multi-turn grounded Q&A conversation history
       quiz_history.json   # append-only event log: every attempt, questions asked, correct/incorrect
       mastery_scores.json # derived from quiz_history.json — never hand-edited, always rebuildable
+      grades.json         # entered scores (score/max_points) against syllabus.json's grading
+                          # categories — user-editable CRUD, not an append-only log; absent
+                          # until the first grade is added
       trusted_domains.json # human-approved web-search domains — absent until at least one is approved
   test-syllabi/           # sample syllabi for testing extraction
   test-notes/             # sample lecture notes + slide decks for testing chunk_notes
@@ -83,10 +90,15 @@ same pattern as `extract_syllabus`. No logic duplicated between the two.
   "course_id": "string",
   "course_name": "string",
   "dates": [{"date": "YYYY-MM-DD", "title": "string", "type": "exam|assignment|reading|other"}],
-  "grading": [{"component": "string", "weight_pct": 0}],
-  "topics": ["string"]
+  "grading": [{"component": "string", "weight_pct": 0, "total_items": 0, "drop_lowest": 0}],
+  "topics": ["string"],
+  "grade_scale": {"passing_pct": 0, "cutoffs": [{"letter": "string", "min_pct": 0}]}
 }
 ```
+
+`total_items`, `drop_lowest` (per grading-category entry), and `grade_scale` (top-level) are all
+optional — absent entirely means "use the default scale / no what-if projection for that
+category," the same "absence is a normal state" convention `trusted_domains.json` documents below.
 
 **notes/<lecture_id>.json**
 ```json
@@ -206,6 +218,28 @@ itself a source of truth; safe to delete and regenerate at any time.
 starting from a neutral 0.5. "status" thresholds: weak < 0.4 <= developing < 0.7 <=
 strong. `weak_topics()` returns "scores" sorted weakest-first; quiz.py uses that
 ordering to bias which topic (and one of its chunks) gets quizzed next.
+
+**grades.json** — entered scores against `syllabus.json`'s grading categories. Unlike
+`quiz_history.json`, this is directly user-editable (add/edit/delete), not an append-only
+log.
+```json
+{
+  "course_id": "string",
+  "items": [
+    {
+      "id": "string",
+      "component": "string",
+      "title": "string",
+      "score": 0,
+      "max_points": 0,
+      "date": "YYYY-MM-DD"
+    }
+  ]
+}
+```
+
+`component` must match a `component` string in that course's `syllabus.json` `grading`
+array. `date` is optional. `score` may exceed `max_points` (extra credit).
 
 ## Build order (done, in this order)
 
