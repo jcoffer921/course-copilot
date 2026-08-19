@@ -403,6 +403,33 @@ class GradeItemDetailView(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
+class GradesWhatIfView(APIView):
+    """GET /api/courses/<course_id>/grades/whatif/?target=<pct>"""
+
+    async def get(self, request, course_id):
+        target_raw = request.query_params.get("target")
+        try:
+            target_pct = float(target_raw)
+        except (TypeError, ValueError):
+            return Response({"detail": "query param 'target' must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            needed = await sync_to_async(grades.grade_needed)(course_id, target_pct)
+            missable = await sync_to_async(grades.missable_by_category)(course_id, target_pct)
+        except storage.CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"grade_needed": needed, "missable_by_category": missable}, status=status.HTTP_200_OK)
+
+
+class GradesSummaryView(APIView):
+    """GET /api/grades/summary/ — all-courses rollup."""
+
+    async def get(self, request):
+        data = await sync_to_async(grades.all_courses_summary)()
+        return Response(data, status=status.HTTP_200_OK)
+
+
 class MasteryView(APIView):
     """GET /api/courses/<course_id>/mastery/ — topic scores, weakest-first.
     [] if mastery_scores.json hasn't been built yet (POST .../mastery/rebuild/ first)."""

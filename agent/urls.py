@@ -15,6 +15,7 @@ urlpatterns = [
     path("courses/<slug:course_id>/grades/", views.GradesView.as_view(), name="grades-detail"),
     path("courses/<slug:course_id>/grades/items/", views.GradeItemsView.as_view(), name="grade-items"),
     path("courses/<slug:course_id>/grades/items/<str:item_id>/", views.GradeItemDetailView.as_view(), name="grade-item-detail"),
+    path("courses/<slug:course_id>/grades/whatif/", views.GradesWhatIfView.as_view(), name="grades-whatif"),
     path("courses/<slug:course_id>/mastery/", views.MasteryView.as_view(), name="mastery"),
     path("courses/<slug:course_id>/mastery/rebuild/", views.MasteryRebuildView.as_view(), name="mastery-rebuild"),
     path("courses/<slug:course_id>/quiz/generate/", views.QuizGenerateView.as_view(), name="quiz-generate"),
@@ -30,4 +31,5 @@ urlpatterns = [
     path("courses/<slug:course_id>/", views.CourseDraftCreateView.as_view(), name="course-create-draft"),
     path("reminders/", views.RemindersView.as_view(), name="reminders"),
     path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
+    path("grades/summary/", views.GradesSummaryView.as_view(), name="grades-summary"),
 ]
