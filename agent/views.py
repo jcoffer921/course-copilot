@@ -11,10 +11,11 @@ from .serializers import (
     CreateCourseDraftRequestSerializer,
     ExtractSyllabusRequestSerializer,
     GenerateQuestionRequestSerializer,
+    GradingConfigRequestSerializer,
     IngestReferenceRequestSerializer,
     RecordAttemptRequestSerializer,
 )
-from .services import chunk_notes, dashboard, domain_suggestions, mastery, quiz, references, reminders, sessions, storage
+from .services import chunk_notes, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
@@ -293,6 +294,44 @@ class DomainsView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response({"course_id": course_id, "domains": domains}, status=status.HTTP_200_OK)
+
+
+class GradingConfigView(APIView):
+    """
+    GET /api/courses/<course_id>/grading/ — the grading array plus the
+    effective grade scale (the course's own, or the default one if it
+    hasn't set one).
+
+    PUT /api/courses/<course_id>/grading/
+    body: {"grading": [{"component", "weight_pct", "total_items"?, "drop_lowest"?}, ...], "grade_scale"?: {...}}
+    """
+
+    async def get(self, request, course_id):
+        syllabus = await sync_to_async(storage.read_syllabus)(course_id)
+        if syllabus is None:
+            return Response({"detail": f"no syllabus found for '{course_id}'"}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            "grading": syllabus.get("grading", []),
+            "grade_scale": syllabus.get("grade_scale") or grades.DEFAULT_GRADE_SCALE,
+        }, status=status.HTTP_200_OK)
+
+    async def put(self, request, course_id):
+        serializer = GradingConfigRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        grading = serializer.validated_data["grading"]
+        grade_scale = serializer.validated_data.get("grade_scale")
+        errors = storage.validate_grading_config(grading, grade_scale)
+        if errors:
+            return Response({"detail": "invalid grading config", "errors": errors}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        try:
+            await sync_to_async(storage.write_grading_config)(course_id, grading, grade_scale)
+        except storage.CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"grading": grading, "grade_scale": grade_scale or grades.DEFAULT_GRADE_SCALE}, status=status.HTTP_200_OK)
 
 
 class MasteryView(APIView):

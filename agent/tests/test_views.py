@@ -172,3 +172,54 @@ def test_ask_returns_500_not_crash_on_corrupt_reference_file(isolated_courses_di
 
     assert response.status_code == 500
     assert "detail" in response.data
+
+
+def test_grading_config_get_returns_default_scale_when_unset(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test", "dates": [],
+        "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
+    })
+
+    response = api_client.get("/api/courses/cs101/grading/")
+
+    assert response.status_code == 200
+    assert response.data["grading"] == [{"component": "Homework", "weight_pct": 100}]
+    assert response.data["grade_scale"]["passing_pct"] == 60
+
+
+def test_grading_config_get_404s_without_syllabus(isolated_courses_dir, api_client):
+    response = api_client.get("/api/courses/cs101/grading/")
+    assert response.status_code == 404
+
+
+def test_grading_config_put_updates_categories(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.put(
+        "/api/courses/cs101/grading/",
+        {"grading": [{"component": "Homework", "weight_pct": 100, "total_items": 5}]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    updated = storage.read_syllabus("cs101")
+    assert updated["grading"] == [{"component": "Homework", "weight_pct": 100, "total_items": 5, "drop_lowest": None}]
+
+
+def test_grading_config_put_rejects_invalid_total_items(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.put(
+        "/api/courses/cs101/grading/",
+        {"grading": [{"component": "Homework", "weight_pct": 100, "total_items": 0}]},
+        format="json",
+    )
+
+    assert response.status_code == 422
+
+
+def test_grading_config_put_404s_without_syllabus(isolated_courses_dir, api_client):
+    response = api_client.put(
+        "/api/courses/cs101/grading/", {"grading": []}, format="json",
+    )
+    assert response.status_code == 404

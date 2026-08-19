@@ -48,3 +48,15 @@ class RecordAttemptRequestSerializer(serializers.Serializer):
     question = serializers.CharField(allow_blank=False)
     correct_answer = serializers.CharField(allow_blank=False)
     user_answer = serializers.CharField(allow_blank=False)
+
+
+class GradingCategorySerializer(serializers.Serializer):
+    component = serializers.CharField(allow_blank=False)
+    weight_pct = serializers.FloatField()
+    total_items = serializers.IntegerField(required=False, allow_null=True, default=None)
+    drop_lowest = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
+class GradingConfigRequestSerializer(serializers.Serializer):
+    grading = GradingCategorySerializer(many=True)
+    grade_scale = serializers.DictField(required=False, allow_null=True, default=None)

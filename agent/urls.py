@@ -11,6 +11,7 @@ urlpatterns = [
     path("courses/<slug:course_id>/references/", views.ReferencesView.as_view(), name="references"),
     path("courses/<slug:course_id>/domains/suggest/", views.DomainSuggestionsView.as_view(), name="domains-suggest"),
     path("courses/<slug:course_id>/domains/", views.DomainsView.as_view(), name="domains"),
+    path("courses/<slug:course_id>/grading/", views.GradingConfigView.as_view(), name="grading-config"),
     path("courses/<slug:course_id>/mastery/", views.MasteryView.as_view(), name="mastery"),
     path("courses/<slug:course_id>/mastery/rebuild/", views.MasteryRebuildView.as_view(), name="mastery-rebuild"),
     path("courses/<slug:course_id>/quiz/generate/", views.QuizGenerateView.as_view(), name="quiz-generate"),
