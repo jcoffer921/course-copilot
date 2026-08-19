@@ -218,6 +218,38 @@ def test_grading_config_put_rejects_invalid_total_items(isolated_courses_dir, ap
     assert response.status_code == 422
 
 
+def test_grading_config_put_accepts_non_summing_weights_with_warning(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.put(
+        "/api/courses/cs101/grading/",
+        {"grading": [{"component": "Homework", "weight_pct": 50}]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert any("sum to" in w for w in response.data["warnings"])
+
+
+def test_grading_config_put_warns_about_orphaned_grades(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test", "dates": [],
+        "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
+    })
+    storage.write_grades("cs101", {"course_id": "cs101", "items": [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 90, "max_points": 100},
+    ]})
+
+    response = api_client.put(
+        "/api/courses/cs101/grading/",
+        {"grading": [{"component": "Assignments", "weight_pct": 100}]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert any("Homework" in w for w in response.data["warnings"])
+
+
 def test_grading_config_put_404s_without_syllabus(isolated_courses_dir, api_client):
     response = api_client.put(
         "/api/courses/cs101/grading/", {"grading": []}, format="json",

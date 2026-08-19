@@ -325,15 +325,28 @@ class GradingConfigView(APIView):
         grading = serializer.validated_data["grading"]
         grade_scale = serializer.validated_data.get("grade_scale")
         errors = storage.validate_grading_config(grading, grade_scale)
-        if errors:
-            return Response({"detail": "invalid grading config", "errors": errors}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        blocking = [e for e in errors if not e.startswith("WARNING")]
+        warnings = [e for e in errors if e.startswith("WARNING")]
+
+        if blocking:
+            return Response({"detail": "invalid grading config", "errors": blocking}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        orphaned = await sync_to_async(grades.find_orphaned_components)(course_id, grading)
+        warnings += [
+            f"WARNING: '{c}' has entered grades that won't count toward your grade anymore — "
+            f"no matching category in the new setup"
+            for c in orphaned
+        ]
 
         try:
             await sync_to_async(storage.write_grading_config)(course_id, grading, grade_scale)
         except storage.CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({"grading": grading, "grade_scale": grade_scale or grades.DEFAULT_GRADE_SCALE}, status=status.HTTP_200_OK)
+        return Response(
+            {"grading": grading, "grade_scale": grade_scale or grades.DEFAULT_GRADE_SCALE, "warnings": warnings},
+            status=status.HTTP_200_OK,
+        )
 
 
 class GradesView(APIView):
