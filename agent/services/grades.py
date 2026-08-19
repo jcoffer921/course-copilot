@@ -105,6 +105,12 @@ def add_item(course_id: str, component: str, title: str, score: float, max_point
 
 
 def update_item(course_id: str, item_id: str, **fields) -> dict:
+    if "component" in fields:
+        syllabus = _require_syllabus(course_id)
+        valid_components = {g["component"] for g in syllabus.get("grading", [])}
+        if fields["component"] not in valid_components:
+            raise ValueError(f"'{fields['component']}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
+
     data = storage.read_grades(course_id)
     for item in data["items"]:
         if item["id"] == item_id:
@@ -126,6 +132,16 @@ def delete_item(course_id: str, item_id: str) -> None:
         raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
     data["items"] = remaining
     storage.write_grades(course_id, data)
+
+
+def find_orphaned_components(course_id: str, new_grading: list) -> list:
+    """Components with entered grade items that would no longer match any
+    category in new_grading — a rename or removal would silently orphan
+    those items (still visible in the Grades list, but no longer counted
+    toward the computed grade)."""
+    items = storage.read_grades(course_id)["items"]
+    new_components = {g["component"] for g in new_grading}
+    return sorted({i["component"] for i in items if i["component"] not in new_components})
 
 
 def grade_needed(course_id: str, target_pct: float) -> dict:
@@ -230,6 +246,14 @@ def missable_by_category(course_id: str, target_pct: float) -> list:
         kept = pcts[d:]
         kept_sum = sum(kept)
         denom = len(kept) + remaining
+
+        best_projected = (kept_sum + remaining * 100) / denom
+        if best_projected < target_pct:
+            results.append({
+                "component": component, "remaining": remaining, "missable": None,
+                "omitted_reason": f"target not reachable in this category even at 100% on everything remaining (best possible: {round(best_projected, 2)}%)",
+            })
+            continue
 
         missable = 0
         for k in range(remaining, -1, -1):

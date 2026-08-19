@@ -170,6 +170,32 @@ def test_update_item_raises_for_unknown_id(isolated_courses_dir):
         grades.update_item("cs101", "nope", score=1)
 
 
+def test_update_item_rejects_unknown_component(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+    item = grades.add_item("cs101", "Homework", "HW 1", 90, 100)
+
+    with pytest.raises(ValueError):
+        grades.update_item("cs101", item["id"], component="Nonexistent")
+
+
+def test_find_orphaned_components_detects_renamed_category(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+    grades.add_item("cs101", "Homework", "HW 1", 90, 100)
+
+    orphaned = grades.find_orphaned_components("cs101", [{"component": "Assignments", "weight_pct": 100}])
+
+    assert orphaned == ["Homework"]
+
+
+def test_find_orphaned_components_empty_when_category_kept(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+    grades.add_item("cs101", "Homework", "HW 1", 90, 100)
+
+    orphaned = grades.find_orphaned_components("cs101", [{"component": "Homework", "weight_pct": 100}])
+
+    assert orphaned == []
+
+
 def test_delete_item_removes_it(isolated_courses_dir):
     _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
     item = grades.add_item("cs101", "Homework", "HW 1", 90, 100)
@@ -326,6 +352,17 @@ def test_missable_by_category_zero_when_must_ace_everything(isolated_courses_dir
 
     hw = next(r for r in result if r["component"] == "Homework")
     assert hw["missable"] == 0
+
+
+def test_missable_by_category_omits_when_target_unreachable_even_at_best_case(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+    _seed_items("cs101", [{"id": "1", "component": "Homework", "title": "HW1", "score": 50, "max_points": 100}])
+
+    result = grades.missable_by_category("cs101", 90)
+
+    hw = next(r for r in result if r["component"] == "Homework")
+    assert hw["missable"] is None
+    assert "not reachable" in hw["omitted_reason"]
 
 
 def test_missable_by_category_omits_category_without_total_items(isolated_courses_dir):
