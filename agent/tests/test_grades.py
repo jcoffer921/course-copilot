@@ -208,3 +208,93 @@ def test_update_item_rejects_invalid_update(isolated_courses_dir):
         grades.update_item("cs101", item["id"], max_points=0)
 
     assert storage.read_grades("cs101")["items"][0]["max_points"] == 100  # unchanged
+
+
+def test_grade_needed_solves_flat_score_for_remaining_items(isolated_courses_dir):
+    # One category, 100% weight, 4 total items, 2 entered averaging 80%.
+    # To reach 90% overall: (80*2 + p*2)/4 = 90 -> p = 100.
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+    _seed_items("cs101", [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 80, "max_points": 100},
+        {"id": "2", "component": "Homework", "title": "HW2", "score": 80, "max_points": 100},
+    ])
+
+    result = grades.grade_needed("cs101", 90)
+
+    assert result["locked"] is False
+    assert result["p_needed"] == pytest.approx(100.0)
+    assert result["achievable"] is True
+    assert result["ceiling_pct"] is None
+
+
+def test_grade_needed_reports_impossible_target_with_ceiling(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+    _seed_items("cs101", [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 10, "max_points": 100},
+        {"id": "2", "component": "Homework", "title": "HW2", "score": 10, "max_points": 100},
+    ])
+
+    result = grades.grade_needed("cs101", 99)
+
+    assert result["achievable"] is False
+    assert result["p_needed"] > 100
+    assert result["ceiling_pct"] == pytest.approx(55.0)  # (10+10+100+100)/4
+
+
+def test_grade_needed_already_guaranteed_reports_zero(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+    _seed_items("cs101", [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 100, "max_points": 100},
+        {"id": "2", "component": "Homework", "title": "HW2", "score": 100, "max_points": 100},
+    ])
+
+    result = grades.grade_needed("cs101", 60)
+
+    assert result["p_needed"] == 0
+    assert result["achievable"] is True
+
+
+def test_grade_needed_locked_when_nothing_left(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 2}])
+    _seed_items("cs101", [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 80, "max_points": 100},
+        {"id": "2", "component": "Homework", "title": "HW2", "score": 80, "max_points": 100},
+    ])
+
+    result = grades.grade_needed("cs101", 90)
+
+    assert result["locked"] is True
+    assert result["p_needed"] is None
+    assert result["ceiling_pct"] == pytest.approx(80.0)
+    assert result["achievable"] is False
+
+
+def test_grade_needed_category_without_total_items_is_treated_as_closed(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Participation", "weight_pct": 100}])
+    _seed_items("cs101", [
+        {"id": "1", "component": "Participation", "title": "P1", "score": 70, "max_points": 100},
+    ])
+
+    result = grades.grade_needed("cs101", 90)
+
+    assert result["locked"] is True
+    assert result["ceiling_pct"] == pytest.approx(70.0)
+
+
+def test_grade_needed_notes_empty_category_with_no_total_items(isolated_courses_dir):
+    _seed_syllabus("cs101", [
+        {"component": "Homework", "weight_pct": 50, "total_items": 2},
+        {"component": "Extra Credit", "weight_pct": 50},  # no items, no total_items
+    ])
+    _seed_items("cs101", [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 80, "max_points": 100},
+    ])
+
+    result = grades.grade_needed("cs101", 90)
+
+    assert any("Extra Credit" in note for note in result["notes"])
+
+
+def test_grade_needed_raises_without_syllabus(isolated_courses_dir):
+    with pytest.raises(storage.CourseNotFoundError):
+        grades.grade_needed("cs101", 90)

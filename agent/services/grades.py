@@ -126,3 +126,75 @@ def delete_item(course_id: str, item_id: str) -> None:
         raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
     data["items"] = remaining
     storage.write_grades(course_id, data)
+
+
+def grade_needed(course_id: str, target_pct: float) -> dict:
+    """Solves the flat score 'p' needed on every remaining ungraded item
+    (across every category that has total_items set) to hit target_pct
+    overall. A category without total_items is treated as closed — its
+    current average (or 0 with no entries at all) is locked in as final,
+    and that's flagged in 'notes' since it silently caps the achievable
+    grade."""
+    syllabus = _require_syllabus(course_id)
+    grading = syllabus.get("grading", [])
+    items = storage.read_grades(course_id)["items"]
+
+    # Check if current grade (from entered items only) already meets target
+    current = current_grade(course_id)
+    if current["overall_pct"] is not None and current["overall_pct"] >= target_pct:
+        return {
+            "target_pct": target_pct, "locked": False, "p_needed": 0.0,
+            "achievable": True, "ceiling_pct": None, "notes": [],
+        }
+
+    total_weight = sum(g.get("weight_pct", 0) for g in grading) or 100.0
+    locked_contribution = 0.0  # A: pct points already locked in, on a 0-100 scale
+    remaining_slope = 0.0  # B: pct points contributed per unit of p
+    notes = []
+
+    for g in grading:
+        component = g["component"]
+        weight = g.get("weight_pct", 0)
+        total_items = g.get("total_items")
+        drop_lowest = g.get("drop_lowest") or 0
+
+        pcts = _category_pcts(items, component)
+        entered_count = len(pcts)
+        d = min(drop_lowest, max(entered_count - 1, 0))
+        kept = pcts[d:]
+        kept_sum = sum(kept)
+        kept_count = len(kept)
+
+        if total_items is None:
+            remaining = 0
+            if entered_count == 0:
+                notes.append(
+                    f"{component} has no items entered and no total_items set — "
+                    f"its 0% is currently capping your achievable grade"
+                )
+        else:
+            remaining = max(total_items - entered_count, 0)
+
+        denom = kept_count + remaining
+        if denom == 0:
+            continue
+
+        locked_contribution += weight * (kept_sum / denom) / total_weight
+        remaining_slope += weight * (remaining / denom) / total_weight
+
+    if remaining_slope == 0:
+        return {
+            "target_pct": target_pct, "locked": True, "p_needed": None,
+            "achievable": locked_contribution >= target_pct,
+            "ceiling_pct": round(locked_contribution, 2), "notes": notes,
+        }
+
+    p_needed = max((target_pct - locked_contribution) / remaining_slope, 0)
+    achievable = p_needed <= 100
+    ceiling = locked_contribution + remaining_slope * 100
+
+    return {
+        "target_pct": target_pct, "locked": False,
+        "p_needed": round(p_needed, 2), "achievable": achievable,
+        "ceiling_pct": None if achievable else round(ceiling, 2), "notes": notes,
+    }
