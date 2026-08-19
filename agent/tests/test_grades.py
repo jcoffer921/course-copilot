@@ -359,3 +359,52 @@ def test_missable_by_category_accounts_for_entered_scores(isolated_courses_dir):
 
     hw = next(r for r in result if r["component"] == "Homework")
     assert hw["missable"] == 1
+
+
+def test_all_courses_summary_averages_only_graded_courses(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "HW", "weight_pct": 100}])
+    _seed_items("cs101", [{"id": "1", "component": "HW", "title": "HW1", "score": 80, "max_points": 100}])
+    _seed_syllabus("psyc201", [{"component": "HW", "weight_pct": 100}])  # no items entered
+
+    result = grades.all_courses_summary()
+
+    assert result["average_pct"] == 80.0
+    assert result["excluded_count"] == 1
+    cs101 = next(c for c in result["courses"] if c["course_id"] == "cs101")
+    assert cs101["current_pct"] == 80.0
+    psyc201 = next(c for c in result["courses"] if c["course_id"] == "psyc201")
+    assert psyc201["current_pct"] is None
+
+
+def test_all_courses_summary_null_average_when_nothing_graded(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "HW", "weight_pct": 100}])
+
+    result = grades.all_courses_summary()
+
+    assert result["average_pct"] is None
+    assert result["excluded_count"] == 1
+
+
+def test_all_courses_summary_no_courses_at_all(isolated_courses_dir):
+    result = grades.all_courses_summary()
+
+    assert result["average_pct"] is None
+    assert result["courses"] == []
+    assert result["excluded_count"] == 0
+
+
+def test_all_courses_summary_isolates_corrupt_course(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "HW", "weight_pct": 100}])
+    _seed_items("cs101", [{"id": "1", "component": "HW", "title": "HW1", "score": 80, "max_points": 100}])
+
+    bad_dir = isolated_courses_dir / "badcourse"
+    bad_dir.mkdir()
+    (bad_dir / "syllabus.json").write_text('{"course_id": "badcourse", "course_name": "Bad", "dates": [], "grading": [], "topics": []}', encoding="utf-8")
+    (bad_dir / "grades.json").write_text("{not valid json", encoding="utf-8")
+
+    result = grades.all_courses_summary()
+
+    bad = next(c for c in result["courses"] if c["course_id"] == "badcourse")
+    assert "error" in bad
+    cs101 = next(c for c in result["courses"] if c["course_id"] == "cs101")
+    assert cs101["current_pct"] == 80.0

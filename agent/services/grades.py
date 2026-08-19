@@ -241,3 +241,31 @@ def missable_by_category(course_id: str, target_pct: float) -> list:
         results.append({"component": component, "remaining": remaining, "missable": missable, "omitted_reason": None})
 
     return results
+
+
+def all_courses_summary() -> dict:
+    """Plain average of current_grade() across courses that have at least
+    one graded item, following dashboard.build_dashboard()'s per-course
+    try/except isolation — one corrupt course doesn't break the rollup for
+    the rest."""
+    courses = []
+    grades_total = 0.0
+    graded_count = 0
+
+    for course_id in reminders.list_courses():
+        try:
+            g = current_grade(course_id)
+            syllabus = storage.read_syllabus(course_id)
+            entry = {
+                "course_id": course_id, "course_name": syllabus.get("course_name", course_id),
+                "current_pct": g["overall_pct"], "letter": g["letter"],
+            }
+            if g["overall_pct"] is not None:
+                grades_total += g["overall_pct"]
+                graded_count += 1
+        except (storage.SyllabusStorageError, storage.GradesStorageError) as e:
+            entry = {"course_id": course_id, "error": str(e)}
+        courses.append(entry)
+
+    average_pct = round(grades_total / graded_count, 2) if graded_count > 0 else None
+    return {"average_pct": average_pct, "excluded_count": len(courses) - graded_count, "courses": courses}
