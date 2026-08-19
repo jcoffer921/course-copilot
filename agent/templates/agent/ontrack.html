@@ -372,7 +372,7 @@
           </div>
         </sc-if>
 
-        <sc-if value="{{ !gradesLoading }}" hint-placeholder-val="{{ true }}">
+        <sc-if value="{{ gradesShowContent }}" hint-placeholder-val="{{ true }}">
           <sc-if value="{{ !gradesHasGradingSetup }}" hint-placeholder-val="{{ false }}">
             <div class="card elev-sm" style="padding:var(--space-6)">
               <div class="card-title" style="margin-bottom:8px">No grading categories set up yet</div>
@@ -1123,6 +1123,7 @@ class Component extends DCLogic {
       dropLabel: c.drop_lowest > 0 ? `Lowest ${c.drop_lowest} dropped` : null,
     }));
     const gradesHasGradingSetup = gradesCategoriesTotal > 0;
+    const gradesShowContent = !s.gradesLoading && !s.gradesError;
     const courseMetaLoaded = s.courseMeta !== null;
     const courseIsDraft = s.course !== 'all' && s.courseDrafts.some(d => d.course_id === s.course);
     const draftName = courseIsDraft ? (s.courseDrafts.find(d => d.course_id === s.course) || {}).course_name : null;
@@ -1476,6 +1477,7 @@ class Component extends DCLogic {
       gradesOverallPct: gradesOverallPct, gradesOverallLetter: gradesOverallLetter,
       gradesCategoriesLabel: gradesCategoriesLabel, gradesItemsCount: gradesItemsCount,
       gradesBreakdownRows: gradesBreakdownRows, gradesHasGradingSetup: gradesHasGradingSetup,
+      gradesShowContent: gradesShowContent,
       retryGrades: () => this.loadGrades(s.course),
       practiceWeak: practiceWeak,
       courseName: courseDisplayName,
