@@ -5,6 +5,7 @@ from rest_framework import status
 from rest_framework.response import Response
 
 from .serializers import (
+    AddGradeItemRequestSerializer,
     ApproveDomainsRequestSerializer,
     AskRequestSerializer,
     ChunkNotesRequestSerializer,
@@ -14,6 +15,7 @@ from .serializers import (
     GradingConfigRequestSerializer,
     IngestReferenceRequestSerializer,
     RecordAttemptRequestSerializer,
+    UpdateGradeItemRequestSerializer,
 )
 from .services import chunk_notes, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
@@ -332,6 +334,73 @@ class GradingConfigView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
         return Response({"grading": grading, "grade_scale": grade_scale or grades.DEFAULT_GRADE_SCALE}, status=status.HTTP_200_OK)
+
+
+class GradesView(APIView):
+    """GET /api/courses/<course_id>/grades/ — every entered item plus the
+    current grade breakdown (grades.current_grade()), which itself includes
+    the effective grade_scale."""
+
+    async def get(self, request, course_id):
+        try:
+            grade = await sync_to_async(grades.current_grade)(course_id)
+            items = (await sync_to_async(storage.read_grades)(course_id))["items"]
+        except storage.CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except storage.GradesStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"items": items, "grade": grade}, status=status.HTTP_200_OK)
+
+
+class GradeItemsView(APIView):
+    """POST /api/courses/<course_id>/grades/items/
+    body: {"component", "title", "score", "max_points", "date"?}"""
+
+    async def post(self, request, course_id):
+        serializer = AddGradeItemRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        d = serializer.validated_data
+
+        try:
+            item = await sync_to_async(grades.add_item)(
+                course_id, d["component"], d["title"], d["score"], d["max_points"], d.get("date"),
+            )
+        except storage.CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(item, status=status.HTTP_201_CREATED)
+
+
+class GradeItemDetailView(APIView):
+    """PATCH /api/courses/<course_id>/grades/items/<item_id>/ — partial update.
+    DELETE /api/courses/<course_id>/grades/items/<item_id>/"""
+
+    async def patch(self, request, course_id, item_id):
+        serializer = UpdateGradeItemRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        fields = {k: v for k, v in serializer.validated_data.items() if v is not None}
+
+        try:
+            item = await sync_to_async(grades.update_item)(course_id, item_id, **fields)
+        except grades.ItemNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(item, status=status.HTTP_200_OK)
+
+    async def delete(self, request, course_id, item_id):
+        try:
+            await sync_to_async(grades.delete_item)(course_id, item_id)
+        except grades.ItemNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class MasteryView(APIView):

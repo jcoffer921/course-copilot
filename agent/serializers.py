@@ -60,3 +60,19 @@ class GradingCategorySerializer(serializers.Serializer):
 class GradingConfigRequestSerializer(serializers.Serializer):
     grading = GradingCategorySerializer(many=True)
     grade_scale = serializers.DictField(required=False, allow_null=True, default=None)
+
+
+class AddGradeItemRequestSerializer(serializers.Serializer):
+    component = serializers.CharField(allow_blank=False)
+    title = serializers.CharField(allow_blank=False)
+    score = serializers.FloatField(min_value=0)
+    max_points = serializers.FloatField(min_value=0.01)
+    date = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+
+
+class UpdateGradeItemRequestSerializer(serializers.Serializer):
+    component = serializers.CharField(required=False, allow_blank=False, default=None)
+    title = serializers.CharField(required=False, allow_blank=False, default=None)
+    score = serializers.FloatField(required=False, min_value=0, default=None)
+    max_points = serializers.FloatField(required=False, min_value=0.01, default=None)
+    date = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
