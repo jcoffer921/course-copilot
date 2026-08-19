@@ -2721,6 +2721,222 @@ Click through Dashboard, Ask Cora, Progress, and Quiz for `cs101` and for "All C
 
 ---
 
+## Task 18: Frontend — grading setup form (added post-review)
+
+**Why this task exists:** the final whole-branch review (after Task 17) found that `total_items`/`drop_lowest`/category weights could only be configured via the CLI (`manage.py grades <id> --set-grading`) or a raw API call to `GET/PUT /api/courses/<id>/grading/` (Task 8) — never from the browser. Since the what-if card requires `total_items` to project anything, this left the feature's headline capability unreachable for a browser-only user. This task closes that gap with a lightweight in-app form; it does not touch `grade_scale` (out of scope — the default scale is sufficient to unblock what-if).
+
+**Files:**
+- Modify: `agent/templates/agent/ontrack.html`
+
+**Interfaces:**
+- Consumes: `GET/PUT /api/courses/<course_id>/grading/` (Task 8, already built and reviewed) — `PUT` body `{"grading": [{"component", "weight_pct", "total_items"?, "drop_lowest"?}, ...]}`, `422` response shape `{"detail": "invalid grading config", "errors": [...]}` where entries starting with `"WARNING"` are non-blocking (Task 2's `storage.validate_grading_config`).
+- Produces: `openGradingSetup()`, `closeGradingSetup()`, `addGradingSetupCategory()`, `removeGradingSetupCategory(index)`, `updateGradingSetupField(index, field, value)`, `submitGradingSetup()`
+
+This file has no existing precedent for a dynamically add/removable list of rows inside a modal (the Add-grade modal has fixed fields, not an array) — this task introduces that pattern for the first time. Follow the existing modal/button/input conventions (overlay + `card elev-md`, `class="input"`, `btn btn-primary`/`btn btn-secondary`/`btn btn-ghost`) exactly as the Add-grade modal (Task 14) does.
+
+**Line numbers will not match any earlier task's brief** — this is a fresh task written after Tasks 12-17 already shifted everything. Locate insertion points by searching for content markers named below.
+
+- [ ] **Step 1: Add state fields and a class-field sequence counter**
+
+In the `state = { ... }` block (search for `addGradeDate: '', addGradeLoading: false, addGradeError: null,` — the last line Task 14 added), add a new line after it:
+
+```javascript
+    gradingSetupOpen: false, gradingSetupCategories: [], gradingSetupLoading: false, gradingSetupError: null,
+```
+
+In the class-field block (search for `_gradesSummarySeq = 0;` — the last sequence counter declared there), add a new line after it. **Declare this as a proper class field, not a lazy-init guard** — Task 17 found and fixed exactly this mistake (`_addGradeSeq` was used without ever being declared as a field, causing `++undefined` to silently produce `NaN` and permanently break the response-sequencing guard):
+
+```javascript
+  _gradingSetupSeq = 0;
+```
+
+- [ ] **Step 2: Add the CRUD/form methods**
+
+Add these methods to the `Component` class, right after `submitAddGrade()`'s closing `}` (search for `deleteGradeItem(itemId) {` — insert immediately before it):
+
+```javascript
+  openGradingSetup() {
+    const s = this.state;
+    const categories = (s.gradesBreakdown ? s.gradesBreakdown.categories : []).map(c => ({
+      component: c.component, weight_pct: String(c.weight_pct),
+      total_items: c.total_items != null ? String(c.total_items) : '',
+      drop_lowest: c.drop_lowest ? String(c.drop_lowest) : '',
+    }));
+    this.setState({ gradingSetupOpen: true, gradingSetupCategories: categories, gradingSetupError: null, gradingSetupLoading: false });
+  }
+
+  closeGradingSetup() {
+    this._gradingSetupSeq++;
+    this.setState({ gradingSetupOpen: false, gradingSetupCategories: [], gradingSetupError: null, gradingSetupLoading: false });
+  }
+
+  addGradingSetupCategory() {
+    this.setState({
+      gradingSetupCategories: this.state.gradingSetupCategories.concat([{ component: '', weight_pct: '', total_items: '', drop_lowest: '' }]),
+    });
+  }
+
+  removeGradingSetupCategory(index) {
+    this.setState({ gradingSetupCategories: this.state.gradingSetupCategories.filter((_, i) => i !== index) });
+  }
+
+  updateGradingSetupField(index, field, value) {
+    const categories = this.state.gradingSetupCategories.map((c, i) => i === index ? Object.assign({}, c, { [field]: value }) : c);
+    this.setState({ gradingSetupCategories: categories });
+  }
+
+  submitGradingSetup() {
+    const s = this.state;
+    const courseId = s.course;
+    const grading = [];
+    for (const c of s.gradingSetupCategories) {
+      if (!c.component.trim()) { this.setState({ gradingSetupError: 'Every category needs a name.' }); return; }
+      const weight = parseFloat(c.weight_pct);
+      if (isNaN(weight)) { this.setState({ gradingSetupError: `Enter a weight % for ${c.component}.` }); return; }
+      const entry = { component: c.component.trim(), weight_pct: weight };
+      if (c.total_items.trim()) {
+        const totalItems = parseInt(c.total_items, 10);
+        if (isNaN(totalItems) || totalItems < 1) { this.setState({ gradingSetupError: `Total items for ${c.component} must be a positive whole number.` }); return; }
+        entry.total_items = totalItems;
+      }
+      if (c.drop_lowest.trim()) {
+        const dropLowest = parseInt(c.drop_lowest, 10);
+        if (isNaN(dropLowest) || dropLowest < 0) { this.setState({ gradingSetupError: `Drop-lowest for ${c.component} must be a non-negative whole number.` }); return; }
+        entry.drop_lowest = dropLowest;
+      }
+      grading.push(entry);
+    }
+
+    const seq = ++this._gradingSetupSeq;
+    this.setState({ gradingSetupLoading: true, gradingSetupError: null });
+    fetch(`/api/courses/${courseId}/grading/`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ grading: grading })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._gradingSetupSeq) return;
+        if (!ok) {
+          const blocking = (data.errors || []).filter(e => !e.startsWith('WARNING'));
+          this.setState({ gradingSetupLoading: false, gradingSetupError: blocking.join('; ') || data.detail || 'Could not save grading setup.' });
+          return;
+        }
+        this.closeGradingSetup();
+        this.loadGrades(courseId);
+      })
+      .catch(e => {
+        if (seq !== this._gradingSetupSeq) return;
+        this.setState({ gradingSetupLoading: false, gradingSetupError: 'Network error: ' + e.message });
+      });
+  }
+```
+
+- [ ] **Step 3: Add template vars in `renderVals()`**
+
+Add alongside the other `grades*`/`addGrade*` computed vars (search for `const gradesBreakdownRows =` from Task 13, add after its closing `}));`):
+
+```javascript
+    const gradingSetupRows = s.gradingSetupCategories.map((c, i) => ({
+      component: c.component, weight_pct: c.weight_pct, total_items: c.total_items, drop_lowest: c.drop_lowest,
+      onComponentChange: (e) => this.updateGradingSetupField(i, 'component', e.target.value),
+      onWeightChange: (e) => this.updateGradingSetupField(i, 'weight_pct', e.target.value),
+      onTotalItemsChange: (e) => this.updateGradingSetupField(i, 'total_items', e.target.value),
+      onDropLowestChange: (e) => this.updateGradingSetupField(i, 'drop_lowest', e.target.value),
+      onRemove: () => this.removeGradingSetupCategory(i),
+    }));
+```
+
+Add these to the object `renderVals()` returns (alongside the other `grades*`/`addGrade*` keys):
+
+```javascript
+      gradingSetupOpen: s.gradingSetupOpen, gradingSetupRows: gradingSetupRows,
+      gradingSetupLoading: s.gradingSetupLoading, gradingSetupError: s.gradingSetupError,
+      openGradingSetup: () => this.openGradingSetup(),
+      closeGradingSetup: () => this.closeGradingSetup(),
+      addGradingSetupCategory: () => this.addGradingSetupCategory(),
+      submitGradingSetup: () => this.submitGradingSetup(),
+```
+
+- [ ] **Step 4: Add entry points into the form**
+
+Two entry points, both opening the same modal via `openGradingSetup`:
+
+1. On the "Grading breakdown" card's header (search for `<div class="card-title" style="margin-bottom:var(--space-4)">Grading breakdown</div>` from Task 13), replace that single line with a flex header matching the "Grades" card's header pattern from Task 14 (search `<div class="card-title" style="margin:0">Grades</div>` for the exact pattern to mirror):
+
+```html
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
+                <div class="card-title" style="margin:0">Grading breakdown</div>
+                <button type="button" class="btn btn-ghost" onClick="{{ openGradingSetup }}">Edit categories</button>
+              </div>
+```
+
+2. On the empty-state card (search for `No grading categories set up yet` from Task 13), add a button after the existing explanatory `<p class="card-body" ...>` line, still inside that same card:
+
+```html
+              <button type="button" class="btn btn-primary" onClick="{{ openGradingSetup }}">Set up grading categories</button>
+```
+
+- [ ] **Step 5: Add the modal markup**
+
+As a top-level sibling `<sc-if>`, immediately after the Add-grade modal's closing `</sc-if>` (from Task 14 — search for `submitAddGrade }}">{{ addGradeSubmitLabel }}` and find that block's closing `</sc-if>` a few lines below it):
+
+```html
+    <sc-if value="{{ gradingSetupOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+        <div class="card elev-md" style="padding:var(--space-6);width:560px;max-width:92vw;max-height:80vh;overflow-y:auto">
+          <div class="card-title" style="margin:0 0 var(--space-4)">Edit grading categories</div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-4)">
+            <sc-for list="{{ gradingSetupRows }}" as="row" hint-placeholder-count="3">
+              <div style="display:flex;gap:8px;align-items:center">
+                <input class="input" placeholder="Category name" value="{{ row.component }}" onChange="{{ row.onComponentChange }}" style="flex:2;min-width:0"/>
+                <input class="input" placeholder="Weight %" value="{{ row.weight_pct }}" onChange="{{ row.onWeightChange }}" style="flex:1;min-width:0"/>
+                <input class="input" placeholder="Total items" value="{{ row.total_items }}" onChange="{{ row.onTotalItemsChange }}" style="flex:1;min-width:0"/>
+                <input class="input" placeholder="Drop lowest" value="{{ row.drop_lowest }}" onChange="{{ row.onDropLowestChange }}" style="flex:1;min-width:0"/>
+                <button type="button" class="btn btn-ghost" onClick="{{ row.onRemove }}">Remove</button>
+              </div>
+            </sc-for>
+          </div>
+
+          <button type="button" class="btn btn-secondary" onClick="{{ addGradingSetupCategory }}" style="margin-bottom:var(--space-4)">+ Add category</button>
+
+          <sc-if value="{{ gradingSetupError }}" hint-placeholder-val="{{ false }}">
+            <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ gradingSetupError }}</p>
+          </sc-if>
+
+          <sc-if value="{{ gradingSetupLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.7;padding:8px 0">Saving…</div>
+          </sc-if>
+
+          <sc-if value="{{ !gradingSetupLoading }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:8px">
+              <button type="button" class="btn btn-secondary" onClick="{{ closeGradingSetup }}">Cancel</button>
+              <button type="button" class="btn btn-primary" onClick="{{ submitGradingSetup }}">Save</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+```
+
+- [ ] **Step 6: Manually verify**
+
+No automated test exists for this file. Start the dev server on a non-default port, confirm HTTP 200 with no template error. Then, using a real browser (or careful diff/binding audit if no browser tooling is available — state explicitly which you used):
+- Open Grade Calculator for a course with NO `grading` array yet. Click "Set up grading categories" on the empty-state card. Confirm the modal opens with zero rows. Click "+ Add category" twice, fill in two categories (e.g. "Homework" 60%, "Exams" 40%, one with a `total_items` value), click Save. Confirm the modal closes, the grading breakdown card now shows both categories, and no console error appears.
+- Open the same course's Grade Calculator again, click "Edit categories" on the breakdown card. Confirm the modal opens PRE-FILLED with the existing categories (including `total_items` as a real value, not blank). Change a weight, remove a category, click Save. Confirm the change reflects in the breakdown card.
+- Try saving with an empty category name — confirm `gradingSetupError` shows a clear message and no request is sent (client-side validation) — or, if you'd rather test the server-side path, try a `total_items` of `0` and confirm the 422 response's blocking (non-`WARNING`) error surfaces in `gradingSetupError`.
+- Confirm the What-if card now produces real (non-"locked at 0%") projections once at least one category has `total_items` set — this is the whole point of this task.
+- Rigorous binding audit: every new `{{ }}` reference added in this task resolves to a key in `renderVals()`'s returned object. List them and confirm zero unresolved.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add agent/templates/agent/ontrack.html
+git commit -m "feat: add in-app grading categories setup form"
+```
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** every section of `docs/superpowers/specs/2026-08-18-grade-calculator-design.md` maps to a task — data model (Tasks 1-2), `current_grade`/renormalization/drop-lowest (Task 3), CRUD (Task 4), `grade_needed` (Task 5), `missable_by_category` (Task 6), `all_courses_summary` (Task 7), all six API endpoints (Tasks 8-10), CLI (Task 11), nav/bounce behavior + stat cards + breakdown (Tasks 12-13), grades list + modal (Task 14), what-if card (Task 15), all-courses view (Task 16).
