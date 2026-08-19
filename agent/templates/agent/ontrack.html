@@ -56,6 +56,10 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
         Quiz
       </button>
+      <button type="button" onClick="{{ goGrades }}" style="{{ navBtnStyleGrades }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        Grade Calculator
+      </button>
     </div>
 
     <div style="margin-top:var(--space-6)">
@@ -612,6 +616,11 @@ class Component extends DCLogic {
     dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
     quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
+    gradesLoading: false, gradesError: null, gradesItems: [], gradesBreakdown: null,
+    gradesWhatIfTarget: '', gradesWhatIfLoading: false, gradesWhatIfError: null, gradesWhatIf: null,
+    gradesSummaryLoading: false, gradesSummaryError: null, gradesSummary: null,
+    addGradeOpen: false, addGradeEditingId: null, addGradeComponent: '', addGradeTitle: '',
+    addGradeScore: '', addGradeMaxPoints: '', addGradeDate: '', addGradeLoading: false, addGradeError: null,
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
     chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
@@ -628,6 +637,9 @@ class Component extends DCLogic {
   _chatSeq = 0;
   _sessionsSeq = 0;
   _addClassSeq = 0;
+  _gradesSeq = 0;
+  _gradesWhatIfSeq = 0;
+  _gradesSummarySeq = 0;
 
   navBtn(active) {
     return {
@@ -797,6 +809,61 @@ class Component extends DCLogic {
       .catch(e => {
         if (seq !== this._quizSeq) return;
         this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message, quizErrorSource: 'generate' });
+      });
+  }
+
+  loadGrades(courseId) {
+    const seq = ++this._gradesSeq;
+    this.setState({ gradesLoading: true, gradesError: null });
+    fetch(`/api/courses/${courseId}/grades/`)
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._gradesSeq) return;
+        if (!ok) { this.setState({ gradesLoading: false, gradesError: data.detail || 'Could not load grades.' }); return; }
+        const defaultTarget = (data.grade.grade_scale && data.grade.grade_scale.passing_pct) || 60;
+        this.setState({
+          gradesLoading: false, gradesItems: data.items, gradesBreakdown: data.grade,
+          gradesWhatIfTarget: this.state.gradesWhatIfTarget || String(defaultTarget),
+        });
+        this.loadGradesWhatIf(courseId);
+      })
+      .catch(e => {
+        if (seq !== this._gradesSeq) return;
+        this.setState({ gradesLoading: false, gradesError: 'Network error: ' + e.message });
+      });
+  }
+
+  loadGradesWhatIf(courseId) {
+    const target = this.state.gradesWhatIfTarget;
+    if (!target) return;
+    const seq = ++this._gradesWhatIfSeq;
+    this.setState({ gradesWhatIfLoading: true, gradesWhatIfError: null });
+    fetch(`/api/courses/${courseId}/grades/whatif/?target=${encodeURIComponent(target)}`)
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._gradesWhatIfSeq) return;
+        if (!ok) { this.setState({ gradesWhatIfLoading: false, gradesWhatIfError: data.detail || 'Could not compute what-if.' }); return; }
+        this.setState({ gradesWhatIfLoading: false, gradesWhatIf: data });
+      })
+      .catch(e => {
+        if (seq !== this._gradesWhatIfSeq) return;
+        this.setState({ gradesWhatIfLoading: false, gradesWhatIfError: 'Network error: ' + e.message });
+      });
+  }
+
+  loadGradesSummary() {
+    const seq = ++this._gradesSummarySeq;
+    this.setState({ gradesSummaryLoading: true, gradesSummaryError: null });
+    fetch('/api/grades/summary/')
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._gradesSummarySeq) return;
+        if (!ok) { this.setState({ gradesSummaryLoading: false, gradesSummaryError: data.detail || 'Could not load the semester summary.' }); return; }
+        this.setState({ gradesSummaryLoading: false, gradesSummary: data });
+      })
+      .catch(e => {
+        if (seq !== this._gradesSummarySeq) return;
+        this.setState({ gradesSummaryLoading: false, gradesSummaryError: 'Network error: ' + e.message });
       });
   }
 
@@ -1035,6 +1102,11 @@ class Component extends DCLogic {
         this.loadDashboardRecent(s.course);
         return;
       }
+      if (t === 'grades' && s.course === 'all') {
+        this.setState({ tab: t });
+        this.loadGradesSummary();
+        return;
+      }
       const targetCourse = s.course === 'all'
         ? (fallbackCourse || (s.courseDrafts[0] && s.courseDrafts[0].course_id) || null)
         : s.course;
@@ -1052,6 +1124,9 @@ class Component extends DCLogic {
         this.setState({ tab: t, course: targetCourse });
         this.loadDashboard();
         this.loadDashboardRecent(targetCourse);
+      } else if (t === 'grades') {
+        this.setState({ tab: t, course: targetCourse, gradesWhatIfTarget: '' });
+        this.loadGrades(targetCourse);
       } else {
         this.setState({ tab: t, course: targetCourse });
       }
@@ -1065,6 +1140,7 @@ class Component extends DCLogic {
         this.setState(bounce ? { course: 'all', tab: 'dashboard' } : { course: 'all' });
         if (bounce) this.loadDashboard();
         this.loadDashboardRecent('all');
+        if (s.tab === 'grades') { this.setState({ course: 'all' }); this.loadGradesSummary(); }
         return;
       }
       if (s.tab === 'quiz') {
@@ -1080,6 +1156,9 @@ class Component extends DCLogic {
       } else if (s.tab === 'progress') {
         this.setState({ course: courseId });
         this.loadDashboardRecent(courseId);
+      } else if (s.tab === 'grades') {
+        this.setState({ course: courseId, gradesWhatIfTarget: '' });
+        this.loadGrades(courseId);
       } else {
         this.setState({ course: courseId });
       }
@@ -1282,10 +1361,12 @@ class Component extends DCLogic {
       isChat: s.tab === 'chat',
       isProgress: s.tab === 'progress',
       isQuiz: s.tab === 'quiz',
+      isGrades: s.tab === 'grades',
       navBtnStyleDashboard: this.navBtn(s.tab === 'dashboard'),
       navBtnStyleChat: this.navBtn(s.tab === 'chat'),
       navBtnStyleProgress: this.navBtn(s.tab === 'progress'),
       navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
+      navBtnStyleGrades: this.navBtn(s.tab === 'grades'),
       courseChipStyleAll: this.courseChip(s.course === 'all'),
       courseChips: courseChips,
       openAddClass: () => this.openAddClass(),
@@ -1311,6 +1392,7 @@ class Component extends DCLogic {
       goChat: () => setTab('chat'),
       goProgress: () => setTab('progress'),
       goQuiz: () => setTab('quiz'),
+      goGrades: () => setTab('grades'),
       practiceWeak: practiceWeak,
       courseName: courseDisplayName,
       courseIdUpper: s.course === 'all' ? 'ALL COURSES' : s.course.toUpperCase(),
