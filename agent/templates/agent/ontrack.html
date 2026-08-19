@@ -1149,7 +1149,18 @@ class Component extends DCLogic {
     const courseId = this.state.course;
     fetch(`/api/courses/${courseId}/grades/items/${itemId}/`, {
       method: 'DELETE', headers: { 'X-CSRFToken': getCookie('csrftoken') }
-    }).then(() => this.loadGrades(courseId));
+    })
+      .then(r => {
+        if (!r.ok) {
+          return r.json().then(data => {
+            this.setState({ gradesError: data.detail || 'Could not delete that grade.' });
+          });
+        }
+        this.loadGrades(courseId);
+      })
+      .catch(e => {
+        this.setState({ gradesError: 'Network error: ' + e.message });
+      });
   }
 
   openAddClass() {
