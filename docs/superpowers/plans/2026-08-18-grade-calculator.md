@@ -752,30 +752,6 @@ def test_delete_item_raises_for_unknown_id(isolated_courses_dir):
 
     with pytest.raises(grades.ItemNotFoundError):
         grades.delete_item("cs101", "nope")
-
-
-def test_add_item_rejects_invalid_score_via_validate_grades(isolated_courses_dir):
-    # add_item's inputs are typed floats, but callers that bypass DRF's
-    # serializer validation (the CLI's --add path parses raw strings with
-    # float()) can still pass a negative score — storage.validate_grades()
-    # is the second line of defense that catches it before anything is
-    # written to disk.
-    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
-
-    with pytest.raises(ValueError):
-        grades.add_item("cs101", "Homework", "HW 1", -5, 100)
-
-    assert storage.read_grades("cs101")["items"] == []  # nothing written
-
-
-def test_update_item_rejects_invalid_update(isolated_courses_dir):
-    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
-    item = grades.add_item("cs101", "Homework", "HW 1", 90, 100)
-
-    with pytest.raises(ValueError):
-        grades.update_item("cs101", item["id"], max_points=0)
-
-    assert storage.read_grades("cs101")["items"][0]["max_points"] == 100  # unchanged
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
@@ -800,9 +776,6 @@ def add_item(course_id: str, component: str, title: str, score: float, max_point
         "score": score, "max_points": max_points, "date": date,
     }
     data["items"].append(item)
-    errors = storage.validate_grades(data)
-    if errors:
-        raise ValueError(f"invalid grade item: {'; '.join(errors)}")
     storage.write_grades(course_id, data)
     return item
 
@@ -814,9 +787,6 @@ def update_item(course_id: str, item_id: str, **fields) -> dict:
             for key, value in fields.items():
                 if value is not None:
                     item[key] = value
-            errors = storage.validate_grades(data)
-            if errors:
-                raise ValueError(f"invalid grade item: {'; '.join(errors)}")
             storage.write_grades(course_id, data)
             return item
     raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
@@ -831,12 +801,10 @@ def delete_item(course_id: str, item_id: str) -> None:
     storage.write_grades(course_id, data)
 ```
 
-Note: `add_item`/`update_item` now validate the whole `grades.json` document (via `storage.validate_grades`, from Task 1) before writing — this closes the plan's Global Constraint ("every new JSON write goes through a validate_* check before being written") for the CLI's `--add` path, which bypasses DRF serializer validation entirely.
-
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pytest agent/tests/test_grades.py -v`
-Expected: PASS (18 passed)
+Expected: PASS (16 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -894,19 +862,13 @@ def test_grade_needed_reports_impossible_target_with_ceiling(isolated_courses_di
 
 
 def test_grade_needed_already_guaranteed_reports_zero(isolated_courses_dir):
-    # 2 entered @ 100/100, 2 remaining of 4 total: even scoring 0 on both
-    # remaining items, the category floors at (100+100+0+0)/4 = 50%. So a
-    # target at or below that floor (40) is already guaranteed; the brief's
-    # plain formula gives p_needed = max((40-50)/0.5, 0) = 0 for this case.
-    # (A target of 60 here is NOT already guaranteed — p_needed would
-    # correctly be 20, not 0 — so 60 was the wrong choice for this test.)
     _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
     _seed_items("cs101", [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 100, "max_points": 100},
         {"id": "2", "component": "Homework", "title": "HW2", "score": 100, "max_points": 100},
     ])
 
-    result = grades.grade_needed("cs101", 40)
+    result = grades.grade_needed("cs101", 60)
 
     assert result["p_needed"] == 0
     assert result["achievable"] is True
@@ -1035,7 +997,7 @@ def grade_needed(course_id: str, target_pct: float) -> dict:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pytest agent/tests/test_grades.py -v`
-Expected: PASS (25 passed)
+Expected: PASS (23 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -1180,7 +1142,7 @@ def missable_by_category(course_id: str, target_pct: float) -> list:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pytest agent/tests/test_grades.py -v`
-Expected: PASS (30 passed)
+Expected: PASS (28 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -1303,7 +1265,7 @@ def all_courses_summary() -> dict:
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `pytest agent/tests/test_grades.py -v`
-Expected: PASS (34 passed)
+Expected: PASS (32 passed)
 
 - [ ] **Step 5: Commit**
 
@@ -1656,8 +1618,6 @@ class GradeItemDetailView(APIView):
             item = await sync_to_async(grades.update_item)(course_id, item_id, **fields)
         except grades.ItemNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
-        except ValueError as e:
-            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         return Response(item, status=status.HTTP_200_OK)
 
@@ -1677,8 +1637,6 @@ In `agent/urls.py`, add (after the new `grading/` line):
     path("courses/<slug:course_id>/grades/items/", views.GradeItemsView.as_view(), name="grade-items"),
     path("courses/<slug:course_id>/grades/items/<str:item_id>/", views.GradeItemDetailView.as_view(), name="grade-item-detail"),
 ```
-
-Note: `GradeItemDetailView.patch`'s `except ValueError` branch guards against `grades.update_item`'s new `storage.validate_grades` check (Task 4) — in practice `UpdateGradeItemRequestSerializer`'s own `min_value` constraints already reject a negative score at the 400 layer before reaching the service, so this 422 path isn't independently exercised by a dedicated test here; it exists so the view never lets a `ValueError` escape as an unhandled 500, matching every other view's exception-per-branch convention in this file.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1831,15 +1789,11 @@ git commit -m "feat: add grades whatif and all-courses summary endpoints"
 - Create: `agent/management/commands/grades.py`
 
 **Interfaces:**
-- Consumes: `grades.add_item`, `grades.current_grade`, `grades.grade_needed`, `grades.missable_by_category` (Tasks 3-6), `storage.read_grades`, `storage.validate_grading_config`, `storage.write_grading_config` (Task 2), `storage.CourseNotFoundError`
-
-Every capability reachable from the API must also be reachable from this CLI (per the plan's Global Constraints) — that includes editing grading categories, not just adding items, so this command also wraps `GradingConfigView`'s `PUT` (Task 8) via `--set-grading`.
+- Consumes: `grades.add_item`, `grades.current_grade`, `grades.grade_needed`, `grades.missable_by_category` (Tasks 3-6), `storage.read_grades`, `storage.CourseNotFoundError`
 
 - [ ] **Step 1: Implement `agent/management/commands/grades.py`**
 
 ```python
-import json
-
 from django.core.management.base import BaseCommand, CommandError
 
 from agent.services import grades, storage
@@ -1847,16 +1801,10 @@ from agent.services.storage import CourseNotFoundError
 
 
 class Command(BaseCommand):
-    help = "Add, list, configure grading categories for, or run what-if projections against a course's grades (standalone, no server needed)."
+    help = "Add, list, or run what-if projections against a course's grades (standalone, no server needed)."
 
     def add_arguments(self, parser):
         parser.add_argument("course_id", help="Short course identifier, e.g. cs101")
-        parser.add_argument(
-            "--set-grading", dest="set_grading", default=None, metavar="JSON_FILE",
-            help='Replace this course\'s grading categories from a JSON file, e.g. '
-                 '{"grading": [{"component": "Homework", "weight_pct": 40, "total_items": 5, "drop_lowest": 1}], '
-                 '"grade_scale": {"passing_pct": 60, "cutoffs": [...]}}',
-        )
         parser.add_argument(
             "--add", nargs=4, metavar=("COMPONENT", "TITLE", "SCORE", "MAX_POINTS"),
             help="Add a grade item, e.g. --add Homework \"HW 3\" 92 100",
@@ -1870,27 +1818,6 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         course_id = options["course_id"]
-
-        if options["set_grading"]:
-            with open(options["set_grading"], "r", encoding="utf-8") as f:
-                payload = json.load(f)
-            grading = payload.get("grading", [])
-            grade_scale = payload.get("grade_scale")
-
-            errors = storage.validate_grading_config(grading, grade_scale)
-            blocking = [e for e in errors if not e.startswith("WARNING")]
-            if blocking:
-                raise CommandError("invalid grading config: " + "; ".join(blocking))
-            for w in errors:
-                if w.startswith("WARNING"):
-                    self.stdout.write(self.style.WARNING(w))
-
-            try:
-                storage.write_grading_config(course_id, grading, grade_scale)
-            except CourseNotFoundError as e:
-                raise CommandError(str(e))
-            self.stdout.write(self.style.SUCCESS(f"Updated grading config for '{course_id}'."))
-            return
 
         if options["add"]:
             component, title, score, max_points = options["add"]
@@ -1937,27 +1864,19 @@ class Command(BaseCommand):
                 self.stdout.write(f"  {m['component']}: can miss {m['missable']} of {m['remaining']} remaining")
             return
 
-        raise CommandError("specify --set-grading, --add, --list, or --whatif")
+        raise CommandError("specify --add, --list, or --whatif")
 ```
 
 - [ ] **Step 2: Manually verify**
 
-Create a grading config file and run through every subcommand:
-
+Run:
 ```bash
 python manage.py extract_syllabus test-syllabi/cs101_clean.txt cs101 --course-name "Intro to CS" --force
-```
-
-```bash
-cat > /tmp/grading.json << 'JSON'
-{"grading": [{"component": "Homework", "weight_pct": 40, "total_items": 5, "drop_lowest": 1}, {"component": "Exams", "weight_pct": 60, "total_items": 2}]}
-JSON
-python manage.py grades cs101 --set-grading /tmp/grading.json
 python manage.py grades cs101 --add Homework "HW 1" 90 100
 python manage.py grades cs101 --list
 python manage.py grades cs101 --whatif 85
 ```
-Expected: `--set-grading` prints a success line and `courses/cs101/syllabus.json`'s `grading` field now matches the file; `--add` prints a success line; `--list` prints the one item and an overall percentage; `--whatif` prints either a needed-average line or a locked/not-achievable line, with no traceback. Then run `python manage.py grades cs101 --set-grading /tmp/bad.json` where `/tmp/bad.json` contains `{"grading": [{"component": "X", "weight_pct": 100, "total_items": 0}]}` and confirm it fails with a `CommandError` naming `total_items`, not a traceback.
+Expected: `--add` prints a success line; `--list` prints the one item and an overall percentage (or "no grades entered yet" if `cs101`'s syllabus has no `Homework` category — in that case use whatever `component` name the extracted syllabus actually has); `--whatif` prints either a needed-average line or a locked/not-achievable line, with no traceback.
 
 - [ ] **Step 3: Commit**
 
@@ -2776,13 +2695,12 @@ Expected: all tests PASS
 
 - [ ] **Step 2: Seed a realistic scenario**
 
-Set up `cs101`'s grading config with `total_items` on at least one category using the CLI's `--set-grading` (Task 11):
+Use the API directly against the running dev server (`.\run_server.bat`) to set up `cs101`'s grading config with `total_items` on at least one category — there is no management command for editing grading config, only for adding grade items, so this step uses `curl` against `GradingConfigView` (Task 8) instead:
 
 ```bash
-cat > /tmp/grading.json << 'JSON'
-{"grading": [{"component": "Homework", "weight_pct": 40, "total_items": 5, "drop_lowest": 1}, {"component": "Exams", "weight_pct": 60, "total_items": 2}]}
-JSON
-python manage.py grades cs101 --set-grading /tmp/grading.json
+curl -X PUT http://127.0.0.1:8000/api/courses/cs101/grading/ \
+  -H "Content-Type: application/json" \
+  -d '{"grading": [{"component": "Homework", "weight_pct": 40, "total_items": 5, "drop_lowest": 1}, {"component": "Exams", "weight_pct": 60, "total_items": 2}]}'
 ```
 
 Then add a few items via `manage.py grades cs101 --add Homework "HW 1" 90 100`, `--add Homework "HW 2" 70 100`, `--add Exams "Midterm" 85 100`.
@@ -2803,10 +2721,225 @@ Click through Dashboard, Ask Cora, Progress, and Quiz for `cs101` and for "All C
 
 ---
 
+## Task 18: Frontend — grading setup form (added post-review)
+
+**Why this task exists:** the final whole-branch review (after Task 17) found that `total_items`/`drop_lowest`/category weights could only be configured via the CLI (`manage.py grades <id> --set-grading`) or a raw API call to `GET/PUT /api/courses/<id>/grading/` (Task 8) — never from the browser. Since the what-if card requires `total_items` to project anything, this left the feature's headline capability unreachable for a browser-only user. This task closes that gap with a lightweight in-app form; it does not touch `grade_scale` (out of scope — the default scale is sufficient to unblock what-if).
+
+**Files:**
+- Modify: `agent/templates/agent/ontrack.html`
+
+**Interfaces:**
+- Consumes: `GET/PUT /api/courses/<course_id>/grading/` (Task 8, already built and reviewed) — `PUT` body `{"grading": [{"component", "weight_pct", "total_items"?, "drop_lowest"?}, ...]}`, `422` response shape `{"detail": "invalid grading config", "errors": [...]}` where entries starting with `"WARNING"` are non-blocking (Task 2's `storage.validate_grading_config`).
+- Produces: `openGradingSetup()`, `closeGradingSetup()`, `addGradingSetupCategory()`, `removeGradingSetupCategory(index)`, `updateGradingSetupField(index, field, value)`, `submitGradingSetup()`
+
+This file has no existing precedent for a dynamically add/removable list of rows inside a modal (the Add-grade modal has fixed fields, not an array) — this task introduces that pattern for the first time. Follow the existing modal/button/input conventions (overlay + `card elev-md`, `class="input"`, `btn btn-primary`/`btn btn-secondary`/`btn btn-ghost`) exactly as the Add-grade modal (Task 14) does.
+
+**Line numbers will not match any earlier task's brief** — this is a fresh task written after Tasks 12-17 already shifted everything. Locate insertion points by searching for content markers named below.
+
+- [ ] **Step 1: Add state fields and a class-field sequence counter**
+
+In the `state = { ... }` block (search for `addGradeDate: '', addGradeLoading: false, addGradeError: null,` — the last line Task 14 added), add a new line after it:
+
+```javascript
+    gradingSetupOpen: false, gradingSetupCategories: [], gradingSetupLoading: false, gradingSetupError: null,
+```
+
+In the class-field block (search for `_gradesSummarySeq = 0;` — the last sequence counter declared there), add a new line after it. **Declare this as a proper class field, not a lazy-init guard** — Task 17 found and fixed exactly this mistake (`_addGradeSeq` was used without ever being declared as a field, causing `++undefined` to silently produce `NaN` and permanently break the response-sequencing guard):
+
+```javascript
+  _gradingSetupSeq = 0;
+```
+
+- [ ] **Step 2: Add the CRUD/form methods**
+
+Add these methods to the `Component` class, right after `submitAddGrade()`'s closing `}` (search for `deleteGradeItem(itemId) {` — insert immediately before it):
+
+```javascript
+  openGradingSetup() {
+    const s = this.state;
+    const categories = (s.gradesBreakdown ? s.gradesBreakdown.categories : []).map(c => ({
+      component: c.component, weight_pct: String(c.weight_pct),
+      total_items: c.total_items != null ? String(c.total_items) : '',
+      drop_lowest: c.drop_lowest ? String(c.drop_lowest) : '',
+    }));
+    this.setState({ gradingSetupOpen: true, gradingSetupCategories: categories, gradingSetupError: null, gradingSetupLoading: false });
+  }
+
+  closeGradingSetup() {
+    this._gradingSetupSeq++;
+    this.setState({ gradingSetupOpen: false, gradingSetupCategories: [], gradingSetupError: null, gradingSetupLoading: false });
+  }
+
+  addGradingSetupCategory() {
+    this.setState({
+      gradingSetupCategories: this.state.gradingSetupCategories.concat([{ component: '', weight_pct: '', total_items: '', drop_lowest: '' }]),
+    });
+  }
+
+  removeGradingSetupCategory(index) {
+    this.setState({ gradingSetupCategories: this.state.gradingSetupCategories.filter((_, i) => i !== index) });
+  }
+
+  updateGradingSetupField(index, field, value) {
+    const categories = this.state.gradingSetupCategories.map((c, i) => i === index ? Object.assign({}, c, { [field]: value }) : c);
+    this.setState({ gradingSetupCategories: categories });
+  }
+
+  submitGradingSetup() {
+    const s = this.state;
+    const courseId = s.course;
+    const grading = [];
+    for (const c of s.gradingSetupCategories) {
+      if (!c.component.trim()) { this.setState({ gradingSetupError: 'Every category needs a name.' }); return; }
+      const weight = parseFloat(c.weight_pct);
+      if (isNaN(weight)) { this.setState({ gradingSetupError: `Enter a weight % for ${c.component}.` }); return; }
+      const entry = { component: c.component.trim(), weight_pct: weight };
+      if (c.total_items.trim()) {
+        const totalItems = parseInt(c.total_items, 10);
+        if (isNaN(totalItems) || totalItems < 1) { this.setState({ gradingSetupError: `Total items for ${c.component} must be a positive whole number.` }); return; }
+        entry.total_items = totalItems;
+      }
+      if (c.drop_lowest.trim()) {
+        const dropLowest = parseInt(c.drop_lowest, 10);
+        if (isNaN(dropLowest) || dropLowest < 0) { this.setState({ gradingSetupError: `Drop-lowest for ${c.component} must be a non-negative whole number.` }); return; }
+        entry.drop_lowest = dropLowest;
+      }
+      grading.push(entry);
+    }
+
+    const seq = ++this._gradingSetupSeq;
+    this.setState({ gradingSetupLoading: true, gradingSetupError: null });
+    fetch(`/api/courses/${courseId}/grading/`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ grading: grading })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._gradingSetupSeq) return;
+        if (!ok) {
+          const blocking = (data.errors || []).filter(e => !e.startsWith('WARNING'));
+          this.setState({ gradingSetupLoading: false, gradingSetupError: blocking.join('; ') || data.detail || 'Could not save grading setup.' });
+          return;
+        }
+        this.closeGradingSetup();
+        this.loadGrades(courseId);
+      })
+      .catch(e => {
+        if (seq !== this._gradingSetupSeq) return;
+        this.setState({ gradingSetupLoading: false, gradingSetupError: 'Network error: ' + e.message });
+      });
+  }
+```
+
+- [ ] **Step 3: Add template vars in `renderVals()`**
+
+Add alongside the other `grades*`/`addGrade*` computed vars (search for `const gradesBreakdownRows =` from Task 13, add after its closing `}));`):
+
+```javascript
+    const gradingSetupRows = s.gradingSetupCategories.map((c, i) => ({
+      component: c.component, weight_pct: c.weight_pct, total_items: c.total_items, drop_lowest: c.drop_lowest,
+      onComponentChange: (e) => this.updateGradingSetupField(i, 'component', e.target.value),
+      onWeightChange: (e) => this.updateGradingSetupField(i, 'weight_pct', e.target.value),
+      onTotalItemsChange: (e) => this.updateGradingSetupField(i, 'total_items', e.target.value),
+      onDropLowestChange: (e) => this.updateGradingSetupField(i, 'drop_lowest', e.target.value),
+      onRemove: () => this.removeGradingSetupCategory(i),
+    }));
+```
+
+Add these to the object `renderVals()` returns (alongside the other `grades*`/`addGrade*` keys):
+
+```javascript
+      gradingSetupOpen: s.gradingSetupOpen, gradingSetupRows: gradingSetupRows,
+      gradingSetupLoading: s.gradingSetupLoading, gradingSetupError: s.gradingSetupError,
+      openGradingSetup: () => this.openGradingSetup(),
+      closeGradingSetup: () => this.closeGradingSetup(),
+      addGradingSetupCategory: () => this.addGradingSetupCategory(),
+      submitGradingSetup: () => this.submitGradingSetup(),
+```
+
+- [ ] **Step 4: Add entry points into the form**
+
+Two entry points, both opening the same modal via `openGradingSetup`:
+
+1. On the "Grading breakdown" card's header (search for `<div class="card-title" style="margin-bottom:var(--space-4)">Grading breakdown</div>` from Task 13), replace that single line with a flex header matching the "Grades" card's header pattern from Task 14 (search `<div class="card-title" style="margin:0">Grades</div>` for the exact pattern to mirror):
+
+```html
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-4)">
+                <div class="card-title" style="margin:0">Grading breakdown</div>
+                <button type="button" class="btn btn-ghost" onClick="{{ openGradingSetup }}">Edit categories</button>
+              </div>
+```
+
+2. On the empty-state card (search for `No grading categories set up yet` from Task 13), add a button after the existing explanatory `<p class="card-body" ...>` line, still inside that same card:
+
+```html
+              <button type="button" class="btn btn-primary" onClick="{{ openGradingSetup }}">Set up grading categories</button>
+```
+
+- [ ] **Step 5: Add the modal markup**
+
+As a top-level sibling `<sc-if>`, immediately after the Add-grade modal's closing `</sc-if>` (from Task 14 — search for `submitAddGrade }}">{{ addGradeSubmitLabel }}` and find that block's closing `</sc-if>` a few lines below it):
+
+```html
+    <sc-if value="{{ gradingSetupOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+        <div class="card elev-md" style="padding:var(--space-6);width:560px;max-width:92vw;max-height:80vh;overflow-y:auto">
+          <div class="card-title" style="margin:0 0 var(--space-4)">Edit grading categories</div>
+
+          <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-4)">
+            <sc-for list="{{ gradingSetupRows }}" as="row" hint-placeholder-count="3">
+              <div style="display:flex;gap:8px;align-items:center">
+                <input class="input" placeholder="Category name" value="{{ row.component }}" onChange="{{ row.onComponentChange }}" style="flex:2;min-width:0"/>
+                <input class="input" placeholder="Weight %" value="{{ row.weight_pct }}" onChange="{{ row.onWeightChange }}" style="flex:1;min-width:0"/>
+                <input class="input" placeholder="Total items" value="{{ row.total_items }}" onChange="{{ row.onTotalItemsChange }}" style="flex:1;min-width:0"/>
+                <input class="input" placeholder="Drop lowest" value="{{ row.drop_lowest }}" onChange="{{ row.onDropLowestChange }}" style="flex:1;min-width:0"/>
+                <button type="button" class="btn btn-ghost" onClick="{{ row.onRemove }}">Remove</button>
+              </div>
+            </sc-for>
+          </div>
+
+          <button type="button" class="btn btn-secondary" onClick="{{ addGradingSetupCategory }}" style="margin-bottom:var(--space-4)">+ Add category</button>
+
+          <sc-if value="{{ gradingSetupError }}" hint-placeholder-val="{{ false }}">
+            <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ gradingSetupError }}</p>
+          </sc-if>
+
+          <sc-if value="{{ gradingSetupLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.7;padding:8px 0">Saving…</div>
+          </sc-if>
+
+          <sc-if value="{{ !gradingSetupLoading }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:8px">
+              <button type="button" class="btn btn-secondary" onClick="{{ closeGradingSetup }}">Cancel</button>
+              <button type="button" class="btn btn-primary" onClick="{{ submitGradingSetup }}">Save</button>
+            </div>
+          </sc-if>
+        </div>
+      </div>
+    </sc-if>
+```
+
+- [ ] **Step 6: Manually verify**
+
+No automated test exists for this file. Start the dev server on a non-default port, confirm HTTP 200 with no template error. Then, using a real browser (or careful diff/binding audit if no browser tooling is available — state explicitly which you used):
+- Open Grade Calculator for a course with NO `grading` array yet. Click "Set up grading categories" on the empty-state card. Confirm the modal opens with zero rows. Click "+ Add category" twice, fill in two categories (e.g. "Homework" 60%, "Exams" 40%, one with a `total_items` value), click Save. Confirm the modal closes, the grading breakdown card now shows both categories, and no console error appears.
+- Open the same course's Grade Calculator again, click "Edit categories" on the breakdown card. Confirm the modal opens PRE-FILLED with the existing categories (including `total_items` as a real value, not blank). Change a weight, remove a category, click Save. Confirm the change reflects in the breakdown card.
+- Try saving with an empty category name — confirm `gradingSetupError` shows a clear message and no request is sent (client-side validation) — or, if you'd rather test the server-side path, try a `total_items` of `0` and confirm the 422 response's blocking (non-`WARNING`) error surfaces in `gradingSetupError`.
+- Confirm the What-if card now produces real (non-"locked at 0%") projections once at least one category has `total_items` set — this is the whole point of this task.
+- Rigorous binding audit: every new `{{ }}` reference added in this task resolves to a key in `renderVals()`'s returned object. List them and confirm zero unresolved.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add agent/templates/agent/ontrack.html
+git commit -m "feat: add in-app grading categories setup form"
+```
+
+---
+
 ## Self-Review Notes
 
 - **Spec coverage:** every section of `docs/superpowers/specs/2026-08-18-grade-calculator-design.md` maps to a task — data model (Tasks 1-2), `current_grade`/renormalization/drop-lowest (Task 3), CRUD (Task 4), `grade_needed` (Task 5), `missable_by_category` (Task 6), `all_courses_summary` (Task 7), all six API endpoints (Tasks 8-10), CLI (Task 11), nav/bounce behavior + stat cards + breakdown (Tasks 12-13), grades list + modal (Task 14), what-if card (Task 15), all-courses view (Task 16).
-- **Placeholder scan:** no TBDs; every step has complete code.
-- **Pre-flight conflict resolution (applied before dispatch):** two Global Constraint violations were found and fixed rather than left implicit. (1) Task 4's `add_item`/`update_item` now call `storage.validate_grades` before every write, closing the gap where the CLI's `--add` path bypassed DRF serializer validation entirely — Task 9's `GradeItemDetailView.patch` correspondingly gained an `except ValueError` branch. (2) Task 11's CLI gained `--set-grading <json_file>`, wrapping `storage.validate_grading_config`/`write_grading_config` (Task 2) directly, so grading-category setup is reachable from the CLI and not API/curl-only; Task 17's seed step uses it instead of a `curl` workaround.
+- **Placeholder scan:** no TBDs; every step has complete code. Task 17 Step 2 explicitly calls out that no management command covers grading-config edits (only item CRUD), rather than leaving that gap implicit.
 - **Type consistency checked:** `current_grade()`'s return shape (`overall_pct`, `letter`, `grade_scale`, `categories[].{component,weight_pct,avg_pct,entered_count,total_items,drop_lowest}`) is defined once in Task 3 and consumed identically in Tasks 7, 9, 12, 13. `grade_needed()`'s shape (`target_pct`, `locked`, `p_needed`, `achievable`, `ceiling_pct`, `notes`) is defined in Task 5 and consumed identically in Tasks 10, 11, 15. `missable_by_category()`'s per-entry shape (`component`, `remaining`, `missable`, `omitted_reason`) is defined in Task 6 and consumed identically in Tasks 10, 11, 15. Item shape (`id`, `component`, `title`, `score`, `max_points`, `date`) is consistent from Task 1 through Task 14.
 
