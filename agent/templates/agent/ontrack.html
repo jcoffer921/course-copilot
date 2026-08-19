@@ -361,6 +361,39 @@
         <h1 style="font-family:var(--font-heading);font-size:28px;margin:0 0 4px">Grade Calculator</h1>
         <p style="margin:0 0 var(--space-6);opacity:.65;font-size:14.5px">{{ courseName }}</p>
 
+        <sc-if value="{{ isGradesAllCourses }}" hint-placeholder-val="{{ false }}">
+          <sc-if value="{{ gradesSummaryLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.6;padding:12px 0">Loading…</div>
+          </sc-if>
+          <sc-if value="{{ gradesSummaryError }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;padding:12px 0;display:flex;align-items:center;gap:10px">
+              <span style="opacity:.7">{{ gradesSummaryError }}</span>
+              <button type="button" class="btn btn-secondary" onClick="{{ retryGradesSummary }}">Try again</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ !gradesSummaryLoading }}" hint-placeholder-val="{{ true }}">
+            <div class="card elev-sm" style="padding:var(--space-6);margin-bottom:var(--space-6)">
+              <div style="font-size:12.5px;opacity:.65;margin-bottom:var(--space-2)">Semester average</div>
+              <div style="font-family:var(--font-heading);font-size:32px">{{ gradesSummaryAveragePct }}</div>
+              <sc-if value="{{ gradesSummaryExcludedLabel }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:12px;opacity:.55;margin-top:4px">{{ gradesSummaryExcludedLabel }}</div>
+              </sc-if>
+            </div>
+
+            <div class="card elev-sm" style="padding:0;overflow:hidden">
+              <sc-for list="{{ gradesSummaryRows }}" as="row" hint-placeholder-count="2">
+                <div style="display:flex;align-items:center;gap:var(--space-3);padding:14px var(--space-6);border-bottom:1px solid var(--color-neutral-200);cursor:pointer" onClick="{{ row.onClick }}">
+                  <div style="flex:1;min-width:0;font-size:14px;font-weight:600">{{ row.name }}</div>
+                  <div style="font-size:12.5px;opacity:.65;width:140px">{{ row.letterLabel }}</div>
+                  <div style="font-size:16px;font-weight:700;width:70px;text-align:right">{{ row.pctLabel }}</div>
+                </div>
+              </sc-for>
+            </div>
+          </sc-if>
+        </sc-if>
+
+        <sc-if value="{{ !isGradesAllCourses }}" hint-placeholder-val="{{ true }}">
+
         <sc-if value="{{ gradesLoading }}" hint-placeholder-val="{{ false }}">
           <div style="font-size:13px;opacity:.6;padding:12px 0">Loading…</div>
         </sc-if>
@@ -472,6 +505,7 @@
               </sc-if>
             </div>
           </sc-if>
+        </sc-if>
         </sc-if>
       </div>
     </sc-if>
@@ -1364,6 +1398,17 @@ class Component extends DCLogic {
     const gradesMissableOmitted = (whatIf ? whatIf.missable_by_category : [])
       .filter(m => m.omitted_reason)
       .map(m => ({ label: `${m.component}: ${m.omitted_reason}` }));
+    const gradesSummaryAveragePct = s.gradesSummary && s.gradesSummary.average_pct !== null
+      ? Math.round(s.gradesSummary.average_pct) + '%' : 'No grades entered yet';
+    const gradesSummaryExcludedLabel = (s.gradesSummary && s.gradesSummary.excluded_count > 0)
+      ? `${s.gradesSummary.excluded_count} course(s) excluded — no grades entered yet` : '';
+    const gradesSummaryRows = (s.gradesSummary ? s.gradesSummary.courses : []).map(c => ({
+      courseId: c.course_id,
+      name: c.course_name || (c.course_id || '').toUpperCase(),
+      pctLabel: c.error ? 'Error' : (c.current_pct !== null && c.current_pct !== undefined ? Math.round(c.current_pct) + '%' : '—'),
+      letterLabel: c.error ? c.error : (c.letter || 'No grade yet'),
+      onClick: () => selectCourse(c.course_id),
+    }));
     const onAddGradeTitleChange = (e) => this.setState({ addGradeTitle: e.target.value });
     const onAddGradeScoreChange = (e) => this.setState({ addGradeScore: e.target.value });
     const onAddGradeMaxPointsChange = (e) => this.setState({ addGradeMaxPoints: e.target.value });
@@ -1688,6 +1733,7 @@ class Component extends DCLogic {
       isProgress: s.tab === 'progress',
       isQuiz: s.tab === 'quiz',
       isGrades: s.tab === 'grades',
+      isGradesAllCourses: s.tab === 'grades' && s.course === 'all',
       navBtnStyleDashboard: this.navBtn(s.tab === 'dashboard'),
       navBtnStyleChat: this.navBtn(s.tab === 'chat'),
       navBtnStyleProgress: this.navBtn(s.tab === 'progress'),
@@ -1720,6 +1766,10 @@ class Component extends DCLogic {
       goQuiz: () => setTab('quiz'),
       goGrades: () => setTab('grades'),
       gradesLoading: s.gradesLoading, gradesError: s.gradesError,
+      gradesSummaryLoading: s.gradesSummaryLoading, gradesSummaryError: s.gradesSummaryError,
+      gradesSummaryAveragePct: gradesSummaryAveragePct, gradesSummaryExcludedLabel: gradesSummaryExcludedLabel,
+      gradesSummaryRows: gradesSummaryRows,
+      retryGradesSummary: () => this.loadGradesSummary(),
       gradesOverallPct: gradesOverallPct, gradesOverallLetter: gradesOverallLetter,
       gradesCategoriesLabel: gradesCategoriesLabel, gradesItemsCount: gradesItemsCount,
       gradesBreakdownRows: gradesBreakdownRows, gradesHasGradingSetup: gradesHasGradingSetup,
