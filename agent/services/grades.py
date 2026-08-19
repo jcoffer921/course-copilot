@@ -1,0 +1,85 @@
+"""
+Grade calculation and CRUD. Pure computation over storage.py's syllabus.json
+(grading categories/weights) and grades.json (entered scores) — no
+async/API calls here, same boundary as mastery.py.
+"""
+
+import uuid
+
+from . import reminders, storage
+
+DEFAULT_GRADE_SCALE = {
+    "passing_pct": 60,
+    "cutoffs": [
+        {"letter": "A", "min_pct": 93}, {"letter": "A-", "min_pct": 90},
+        {"letter": "B+", "min_pct": 87}, {"letter": "B", "min_pct": 83}, {"letter": "B-", "min_pct": 80},
+        {"letter": "C+", "min_pct": 77}, {"letter": "C", "min_pct": 73}, {"letter": "C-", "min_pct": 70},
+        {"letter": "D+", "min_pct": 67}, {"letter": "D", "min_pct": 63}, {"letter": "D-", "min_pct": 60},
+    ],
+}
+
+
+class ItemNotFoundError(Exception):
+    """Raised when item_id doesn't match any entry in a course's grades.json."""
+
+
+def _require_syllabus(course_id: str) -> dict:
+    syllabus = storage.read_syllabus(course_id)
+    if syllabus is None:
+        raise storage.CourseNotFoundError(f"no syllabus found for '{course_id}'")
+    return syllabus
+
+
+def _letter_for(pct: float, grade_scale: dict) -> str:
+    cutoffs = sorted(grade_scale.get("cutoffs") or [], key=lambda c: -c["min_pct"])
+    for c in cutoffs:
+        if pct >= c["min_pct"]:
+            return c["letter"]
+    return "F"
+
+
+def _category_pcts(items: list, component: str) -> list:
+    return sorted(i["score"] / i["max_points"] * 100 for i in items if i["component"] == component)
+
+
+def current_grade(course_id: str) -> dict:
+    """"My grade right now" — categories with zero entered items are
+    excluded entirely (not treated as 0%), and the overall percentage is a
+    weighted average renormalized across only the categories that have
+    data, so an ungraded Final Exam doesn't crater today's number."""
+    syllabus = _require_syllabus(course_id)
+    grading = syllabus.get("grading", [])
+    items = storage.read_grades(course_id)["items"]
+    grade_scale = syllabus.get("grade_scale") or DEFAULT_GRADE_SCALE
+
+    categories = []
+    graded_weight = 0.0
+    weighted_sum = 0.0
+
+    for g in grading:
+        component = g["component"]
+        weight = g.get("weight_pct", 0)
+        pcts = _category_pcts(items, component)
+        entered_count = len(pcts)
+        drop_lowest = g.get("drop_lowest") or 0
+
+        avg_pct = None
+        if entered_count > 0:
+            d = min(drop_lowest, entered_count - 1)
+            kept = pcts[d:]
+            avg_pct = round(sum(kept) / len(kept), 2)
+            graded_weight += weight
+            weighted_sum += weight * avg_pct
+
+        categories.append({
+            "component": component, "weight_pct": weight, "avg_pct": avg_pct,
+            "entered_count": entered_count, "total_items": g.get("total_items"), "drop_lowest": drop_lowest,
+        })
+
+    overall_pct = round(weighted_sum / graded_weight, 2) if graded_weight > 0 else None
+    letter = _letter_for(overall_pct, grade_scale) if overall_pct is not None else None
+
+    return {
+        "course_id": course_id, "overall_pct": overall_pct, "letter": letter,
+        "grade_scale": grade_scale, "categories": categories,
+    }
