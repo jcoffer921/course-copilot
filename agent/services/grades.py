@@ -190,3 +190,54 @@ def grade_needed(course_id: str, target_pct: float) -> dict:
         "p_needed": round(p_needed, 2), "achievable": achievable,
         "ceiling_pct": None if achievable else round(ceiling, 2), "notes": notes,
     }
+
+
+def missable_by_category(course_id: str, target_pct: float) -> list:
+    """Per category (never blended across categories — a missed final exam
+    and a missed homework aren't comparable): assuming every other
+    remaining item in this category scores 100%, the largest number of
+    remaining items that can score 0% while this category's own average
+    still meets target_pct."""
+    syllabus = _require_syllabus(course_id)
+    grading = syllabus.get("grading", [])
+    items = storage.read_grades(course_id)["items"]
+
+    results = []
+    for g in grading:
+        component = g["component"]
+        total_items = g.get("total_items")
+        drop_lowest = g.get("drop_lowest") or 0
+
+        pcts = _category_pcts(items, component)
+        entered_count = len(pcts)
+
+        if total_items is None:
+            results.append({
+                "component": component, "remaining": None, "missable": None,
+                "omitted_reason": "total_items not set for this category",
+            })
+            continue
+
+        remaining = max(total_items - entered_count, 0)
+        if remaining == 0:
+            results.append({
+                "component": component, "remaining": 0, "missable": None,
+                "omitted_reason": "no remaining items in this category",
+            })
+            continue
+
+        d = min(drop_lowest, max(entered_count - 1, 0))
+        kept = pcts[d:]
+        kept_sum = sum(kept)
+        denom = len(kept) + remaining
+
+        missable = 0
+        for k in range(remaining, -1, -1):
+            projected = (kept_sum + (remaining - k) * 100) / denom
+            if projected >= target_pct:
+                missable = k
+                break
+
+        results.append({"component": component, "remaining": remaining, "missable": missable, "omitted_reason": None})
+
+    return results

@@ -304,3 +304,58 @@ def test_grade_needed_notes_empty_category_with_no_total_items(isolated_courses_
 def test_grade_needed_raises_without_syllabus(isolated_courses_dir):
     with pytest.raises(storage.CourseNotFoundError):
         grades.grade_needed("cs101", 90)
+
+
+def test_missable_by_category_computes_max_missable(isolated_courses_dir):
+    # 4 total, 0 entered, target 75%: missing k of 4 while acing the rest
+    # must keep (4-k)*100/4 >= 75 -> k <= 1.
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+
+    result = grades.missable_by_category("cs101", 75)
+
+    hw = next(r for r in result if r["component"] == "Homework")
+    assert hw["remaining"] == 4
+    assert hw["missable"] == 1
+    assert hw["omitted_reason"] is None
+
+
+def test_missable_by_category_zero_when_must_ace_everything(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+
+    result = grades.missable_by_category("cs101", 100)
+
+    hw = next(r for r in result if r["component"] == "Homework")
+    assert hw["missable"] == 0
+
+
+def test_missable_by_category_omits_category_without_total_items(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Participation", "weight_pct": 100}])
+
+    result = grades.missable_by_category("cs101", 75)
+
+    p = next(r for r in result if r["component"] == "Participation")
+    assert p["missable"] is None
+    assert p["omitted_reason"] is not None
+
+
+def test_missable_by_category_omits_category_with_nothing_remaining(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 1}])
+    _seed_items("cs101", [{"id": "1", "component": "Homework", "title": "HW1", "score": 80, "max_points": 100}])
+
+    result = grades.missable_by_category("cs101", 75)
+
+    hw = next(r for r in result if r["component"] == "Homework")
+    assert hw["remaining"] == 0
+    assert hw["missable"] is None
+    assert hw["omitted_reason"] is not None
+
+
+def test_missable_by_category_accounts_for_entered_scores(isolated_courses_dir):
+    # 1 entered at 100%, 3 remaining, target 75%: (100 + (3-k)*100)/4 >= 75 -> k <= 1.
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100, "total_items": 4}])
+    _seed_items("cs101", [{"id": "1", "component": "Homework", "title": "HW1", "score": 100, "max_points": 100}])
+
+    result = grades.missable_by_category("cs101", 75)
+
+    hw = next(r for r in result if r["component"] == "Homework")
+    assert hw["missable"] == 1
