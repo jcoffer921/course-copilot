@@ -65,6 +65,10 @@ class QuizStorageError(Exception):
     """Raised when quiz_history.json or mastery_scores.json on disk is corrupt/unreadable."""
 
 
+class GradesStorageError(Exception):
+    """Raised when grades.json on disk is corrupt/unreadable."""
+
+
 class CourseNotFoundError(Exception):
     """Raised when no syllabus.json exists yet for the given course_id.
 
@@ -281,6 +285,111 @@ def validate_trusted_domains(data: dict) -> list:
     return errors
 
 
+def validate_grades(data: dict) -> list:
+    """Returns a list of error strings. An empty list means the data is
+    valid. No non-blocking WARNING entries here — a grade item either has a
+    usable score or it doesn't."""
+    errors = []
+
+    def require(key, expected_type):
+        if key not in data:
+            errors.append(f"missing required field: '{key}'")
+        elif not isinstance(data[key], expected_type):
+            errors.append(f"field '{key}' must be {expected_type.__name__}, got {type(data[key]).__name__}")
+
+    require("course_id", str)
+    require("items", list)
+    if errors:
+        return errors
+
+    seen_ids = set()
+    for i, item in enumerate(data["items"]):
+        if not isinstance(item, dict):
+            errors.append(f"items[{i}] is not an object")
+            continue
+
+        for key in ("id", "component", "title"):
+            if key not in item or not isinstance(item[key], str) or not item[key].strip():
+                errors.append(f"items[{i}].{key} must be a non-empty string")
+        item_id = item.get("id")
+        if item_id in seen_ids:
+            errors.append(f"items[{i}].id is a duplicate: {item_id!r}")
+        seen_ids.add(item_id)
+
+        for key in ("score", "max_points"):
+            value = item.get(key)
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                errors.append(f"items[{i}].{key} must be numeric")
+            elif value < 0:
+                errors.append(f"items[{i}].{key} must be non-negative")
+        max_points = item.get("max_points")
+        if isinstance(max_points, (int, float)) and not isinstance(max_points, bool) and max_points <= 0:
+            errors.append(f"items[{i}].max_points must be greater than 0")
+
+        if item.get("date"):
+            try:
+                datetime.strptime(item["date"], "%Y-%m-%d")
+            except ValueError:
+                errors.append(f"items[{i}].date is not YYYY-MM-DD: {item['date']!r}")
+
+    return errors
+
+
+def validate_grading_config(grading: list, grade_scale: dict = None) -> list:
+    """Returns a list of error strings. Entries starting with 'WARNING' are
+    non-blocking. An empty list means the data is valid."""
+    errors = []
+    if not isinstance(grading, list):
+        return ["'grading' must be a list"]
+
+    for i, g in enumerate(grading):
+        if not isinstance(g, dict) or "component" not in g or "weight_pct" not in g:
+            errors.append(f"grading[{i}] missing 'component' or 'weight_pct': {g}")
+            continue
+        if not isinstance(g["weight_pct"], (int, float)):
+            errors.append(f"grading[{i}].weight_pct must be numeric: {g['weight_pct']!r}")
+
+        total_items = g.get("total_items")
+        if total_items is not None and (not isinstance(total_items, int) or isinstance(total_items, bool) or total_items < 1):
+            errors.append(f"grading[{i}].total_items must be a positive integer: {total_items!r}")
+
+        drop_lowest = g.get("drop_lowest")
+        if drop_lowest is not None:
+            if not isinstance(drop_lowest, int) or isinstance(drop_lowest, bool) or drop_lowest < 0:
+                errors.append(f"grading[{i}].drop_lowest must be a non-negative integer: {drop_lowest!r}")
+            elif isinstance(total_items, int) and drop_lowest >= total_items:
+                errors.append(
+                    f"WARNING: grading[{i}].drop_lowest ({drop_lowest}) >= total_items ({total_items}) "
+                    f"— would drop every item in this category"
+                )
+
+    total_weight = sum(
+        g.get("weight_pct", 0) for g in grading
+        if isinstance(g, dict) and isinstance(g.get("weight_pct"), (int, float))
+    )
+    if grading and abs(total_weight - 100) > 0.5:
+        errors.append(f"WARNING: grading weights sum to {total_weight}, not 100 (not blocking, but check the source)")
+
+    if grade_scale is not None:
+        if not isinstance(grade_scale, dict):
+            errors.append("'grade_scale' must be an object")
+        else:
+            passing_pct = grade_scale.get("passing_pct")
+            if passing_pct is not None and not isinstance(passing_pct, (int, float)):
+                errors.append(f"grade_scale.passing_pct must be numeric: {passing_pct!r}")
+            cutoffs = grade_scale.get("cutoffs", [])
+            if not isinstance(cutoffs, list):
+                errors.append("'grade_scale.cutoffs' must be a list")
+            else:
+                for i, c in enumerate(cutoffs):
+                    if not isinstance(c, dict) or "letter" not in c or "min_pct" not in c:
+                        errors.append(f"grade_scale.cutoffs[{i}] missing 'letter' or 'min_pct': {c}")
+                    elif not isinstance(c["min_pct"], (int, float)):
+                        errors.append(f"grade_scale.cutoffs[{i}].min_pct must be numeric: {c['min_pct']!r}")
+
+    return errors
+
+
 # --------------------------------------------------------------------------
 # Read / write — plain sync I/O, wrapped with sync_to_async at the call site
 # --------------------------------------------------------------------------
@@ -473,6 +582,32 @@ def write_mastery_scores(course_id: str, data: dict) -> Path:
     return out_path
 
 
+def read_grades(course_id: str) -> dict:
+    """Returns the parsed grades.json dict ({"course_id", "items"}). Returns
+    an empty skeleton if it doesn't exist yet — a course with no grades
+    entered yet is a normal state, not an error, same convention as
+    read_quiz_history."""
+    path = _course_dir(course_id) / "grades.json"
+    if not path.exists():
+        return {"course_id": course_id, "items": []}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise GradesStorageError(f"grades.json for '{course_id}' is corrupt: {e}")
+
+
+def write_grades(course_id: str, data: dict) -> Path:
+    """Writes grades.json. Always overwrites — grade items are directly
+    user-editable (add/edit/delete), not an append-only log like
+    quiz_history.json, so there's no destructive-conflict case to guard
+    against the way write_syllabus/write_notes do."""
+    out_dir = _course_dir(course_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "grades.json"
+    out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return out_path
+
+
 def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
     """Writes syllabus.json. Raises FileExistsError if it already exists and
     overwrite=False — callers are responsible for the plan-then-pause
@@ -486,6 +621,21 @@ def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out_path
+
+
+def write_grading_config(course_id: str, grading: list, grade_scale: dict = None) -> Path:
+    """Merges 'grading' and (if provided) 'grade_scale' into the course's
+    existing syllabus.json. Raises CourseNotFoundError if no syllabus exists
+    yet — grading categories can only be edited on a real course, not a
+    draft. grade_scale is left untouched when omitted from the call, so
+    editing categories doesn't require re-specifying the scale every time."""
+    syllabus = read_syllabus(course_id)
+    if syllabus is None:
+        raise CourseNotFoundError(f"no syllabus found for '{course_id}'")
+    syllabus["grading"] = grading
+    if grade_scale is not None:
+        syllabus["grade_scale"] = grade_scale
+    return write_syllabus(course_id, syllabus, overwrite=True)
 
 
 class CourseAlreadyExistsError(Exception):
