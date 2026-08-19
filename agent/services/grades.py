@@ -83,3 +83,46 @@ def current_grade(course_id: str) -> dict:
         "course_id": course_id, "overall_pct": overall_pct, "letter": letter,
         "grade_scale": grade_scale, "categories": categories,
     }
+
+
+def add_item(course_id: str, component: str, title: str, score: float, max_points: float, date: str = None) -> dict:
+    syllabus = _require_syllabus(course_id)
+    valid_components = {g["component"] for g in syllabus.get("grading", [])}
+    if component not in valid_components:
+        raise ValueError(f"'{component}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
+
+    data = storage.read_grades(course_id)
+    item = {
+        "id": uuid.uuid4().hex, "component": component, "title": title,
+        "score": score, "max_points": max_points, "date": date,
+    }
+    data["items"].append(item)
+    errors = storage.validate_grades(data)
+    if errors:
+        raise ValueError(f"invalid grade item: {'; '.join(errors)}")
+    storage.write_grades(course_id, data)
+    return item
+
+
+def update_item(course_id: str, item_id: str, **fields) -> dict:
+    data = storage.read_grades(course_id)
+    for item in data["items"]:
+        if item["id"] == item_id:
+            for key, value in fields.items():
+                if value is not None:
+                    item[key] = value
+            errors = storage.validate_grades(data)
+            if errors:
+                raise ValueError(f"invalid grade item: {'; '.join(errors)}")
+            storage.write_grades(course_id, data)
+            return item
+    raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
+
+
+def delete_item(course_id: str, item_id: str) -> None:
+    data = storage.read_grades(course_id)
+    remaining = [i for i in data["items"] if i["id"] != item_id]
+    if len(remaining) == len(data["items"]):
+        raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
+    data["items"] = remaining
+    storage.write_grades(course_id, data)

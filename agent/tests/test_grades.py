@@ -125,3 +125,86 @@ def test_current_grade_letter_f_below_lowest_cutoff(isolated_courses_dir):
     result = grades.current_grade("cs101")
 
     assert result["letter"] == "F"
+
+
+def test_add_item_appends_and_returns_item(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+
+    item = grades.add_item("cs101", "Homework", "HW 1", 90, 100, "2026-01-10")
+
+    assert item["component"] == "Homework"
+    assert item["title"] == "HW 1"
+    assert item["score"] == 90
+    assert item["id"]  # generated
+    stored = storage.read_grades("cs101")["items"]
+    assert len(stored) == 1
+    assert stored[0]["id"] == item["id"]
+
+
+def test_add_item_rejects_unknown_component(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+
+    with pytest.raises(ValueError):
+        grades.add_item("cs101", "Nonexistent", "X", 1, 1)
+
+
+def test_add_item_raises_without_syllabus(isolated_courses_dir):
+    with pytest.raises(storage.CourseNotFoundError):
+        grades.add_item("cs101", "Homework", "X", 1, 1)
+
+
+def test_update_item_changes_only_given_fields(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+    item = grades.add_item("cs101", "Homework", "HW 1", 90, 100)
+
+    updated = grades.update_item("cs101", item["id"], score=95)
+
+    assert updated["score"] == 95
+    assert updated["title"] == "HW 1"  # unchanged
+
+
+def test_update_item_raises_for_unknown_id(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+
+    with pytest.raises(grades.ItemNotFoundError):
+        grades.update_item("cs101", "nope", score=1)
+
+
+def test_delete_item_removes_it(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+    item = grades.add_item("cs101", "Homework", "HW 1", 90, 100)
+
+    grades.delete_item("cs101", item["id"])
+
+    assert storage.read_grades("cs101")["items"] == []
+
+
+def test_delete_item_raises_for_unknown_id(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+
+    with pytest.raises(grades.ItemNotFoundError):
+        grades.delete_item("cs101", "nope")
+
+
+def test_add_item_rejects_invalid_score_via_validate_grades(isolated_courses_dir):
+    # add_item's inputs are typed floats, but callers that bypass DRF's
+    # serializer validation (the CLI's --add path parses raw strings with
+    # float()) can still pass a negative score — storage.validate_grades()
+    # is the second line of defense that catches it before anything is
+    # written to disk.
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+
+    with pytest.raises(ValueError):
+        grades.add_item("cs101", "Homework", "HW 1", -5, 100)
+
+    assert storage.read_grades("cs101")["items"] == []  # nothing written
+
+
+def test_update_item_rejects_invalid_update(isolated_courses_dir):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}])
+    item = grades.add_item("cs101", "Homework", "HW 1", 90, 100)
+
+    with pytest.raises(ValueError):
+        grades.update_item("cs101", item["id"], max_points=0)
+
+    assert storage.read_grades("cs101")["items"][0]["max_points"] == 100  # unchanged
