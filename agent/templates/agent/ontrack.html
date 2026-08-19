@@ -433,6 +433,44 @@
                 </div>
               </sc-for>
             </div>
+
+            <div class="card elev-sm" style="padding:var(--space-6)">
+              <div class="card-title" style="margin-bottom:var(--space-4)">What-if</div>
+              <div style="display:flex;align-items:flex-end;gap:8px;margin-bottom:var(--space-4)">
+                <div>
+                  <div style="font-size:13px;margin-bottom:4px">Target grade (%)</div>
+                  <input class="input" value="{{ gradesWhatIfTarget }}" onChange="{{ onGradesWhatIfTargetChange }}" style="width:100px"/>
+                </div>
+                <button type="button" class="btn btn-secondary" onClick="{{ runGradesWhatIf }}">Calculate</button>
+                <button type="button" class="btn btn-ghost" onClick="{{ setGradesWhatIfToPassing }}">Set to passing</button>
+              </div>
+
+              <sc-if value="{{ gradesWhatIfLoading }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13px;opacity:.6;padding:8px 0">Calculating…</div>
+              </sc-if>
+
+              <sc-if value="{{ gradesWhatIfError }}" hint-placeholder-val="{{ false }}">
+                <p style="font-size:13px;opacity:.7;margin:0">{{ gradesWhatIfError }}</p>
+              </sc-if>
+
+              <sc-if value="{{ hasGradesWhatIf }}" hint-placeholder-val="{{ false }}">
+                <p style="font-size:14.5px;margin:0 0 var(--space-4)">{{ gradesWhatIfSummary }}</p>
+
+                <sc-for list="{{ gradesWhatIfNotes }}" as="note" hint-placeholder-count="1">
+                  <p style="font-size:12.5px;opacity:.7;margin:0 0 8px">{{ note }}</p>
+                </sc-for>
+
+                <div style="font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin:var(--space-4) 0 var(--space-2)">How many can you miss?</div>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <sc-for list="{{ gradesMissableRows }}" as="row" hint-placeholder-count="2">
+                    <div style="font-size:13.5px">{{ row.label }}</div>
+                  </sc-for>
+                  <sc-for list="{{ gradesMissableOmitted }}" as="row" hint-placeholder-count="0">
+                    <div style="font-size:12.5px;opacity:.55">{{ row.label }}</div>
+                  </sc-for>
+                </div>
+              </sc-if>
+            </div>
           </sc-if>
         </sc-if>
       </div>
@@ -1292,6 +1330,40 @@ class Component extends DCLogic {
       onEdit: () => this.openEditGrade(item),
       onDelete: () => this.deleteGradeItem(item.id),
     }));
+    const onGradesWhatIfTargetChange = (e) => {
+      this.setState({ gradesWhatIfTarget: e.target.value });
+    };
+    const setGradesWhatIfToPassing = () => {
+      const passing = (s.gradesBreakdown && s.gradesBreakdown.grade_scale && s.gradesBreakdown.grade_scale.passing_pct) || 60;
+      this.setState({ gradesWhatIfTarget: String(passing) });
+      this.loadGradesWhatIf(s.course);
+    };
+    const runGradesWhatIf = () => this.loadGradesWhatIf(s.course);
+
+    const whatIf = s.gradesWhatIf;
+    const gradesWhatIfSummary = (() => {
+      if (!whatIf) return '';
+      const n = whatIf.grade_needed;
+      if (n.locked) {
+        return n.achievable
+          ? `Your grade is locked at ${n.ceiling_pct}% — you've already hit this target.`
+          : `Your grade is locked at ${n.ceiling_pct}% — this target is no longer reachable.`;
+      }
+      if (!n.achievable) {
+        return `Not achievable: you'd need to average ${n.p_needed}% on everything remaining (max possible is ${n.ceiling_pct}%).`;
+      }
+      if (n.p_needed <= 0) {
+        return `Already guaranteed — you'd hit this target even scoring 0 on everything remaining.`;
+      }
+      return `You need to average ${n.p_needed}% on everything remaining to hit this target.`;
+    })();
+    const gradesWhatIfNotes = whatIf ? whatIf.grade_needed.notes : [];
+    const gradesMissableRows = (whatIf ? whatIf.missable_by_category : [])
+      .filter(m => !m.omitted_reason)
+      .map(m => ({ label: `${m.component}: can miss ${m.missable} of ${m.remaining} remaining` }));
+    const gradesMissableOmitted = (whatIf ? whatIf.missable_by_category : [])
+      .filter(m => m.omitted_reason)
+      .map(m => ({ label: `${m.component}: ${m.omitted_reason}` }));
     const onAddGradeTitleChange = (e) => this.setState({ addGradeTitle: e.target.value });
     const onAddGradeScoreChange = (e) => this.setState({ addGradeScore: e.target.value });
     const onAddGradeMaxPointsChange = (e) => this.setState({ addGradeMaxPoints: e.target.value });
@@ -1652,7 +1724,14 @@ class Component extends DCLogic {
       gradesCategoriesLabel: gradesCategoriesLabel, gradesItemsCount: gradesItemsCount,
       gradesBreakdownRows: gradesBreakdownRows, gradesHasGradingSetup: gradesHasGradingSetup,
       gradesShowContent: gradesShowContent,
-      gradesItemRows: gradesItemRows, addGradeOpen: s.addGradeOpen, addGradeModalTitle: addGradeModalTitle,
+      gradesItemRows: gradesItemRows,
+      gradesWhatIfTarget: s.gradesWhatIfTarget, onGradesWhatIfTargetChange: onGradesWhatIfTargetChange,
+      setGradesWhatIfToPassing: setGradesWhatIfToPassing, runGradesWhatIf: runGradesWhatIf,
+      gradesWhatIfLoading: s.gradesWhatIfLoading, gradesWhatIfError: s.gradesWhatIfError,
+      gradesWhatIfSummary: gradesWhatIfSummary, gradesWhatIfNotes: gradesWhatIfNotes,
+      gradesMissableRows: gradesMissableRows, gradesMissableOmitted: gradesMissableOmitted,
+      hasGradesWhatIf: !!whatIf,
+      addGradeOpen: s.addGradeOpen, addGradeModalTitle: addGradeModalTitle,
       addGradeSubmitLabel: addGradeSubmitLabel, addGradeComponentChips: addGradeComponentChips,
       addGradeTitle: s.addGradeTitle, addGradeScore: s.addGradeScore, addGradeMaxPoints: s.addGradeMaxPoints,
       addGradeDate: s.addGradeDate, addGradeLoading: s.addGradeLoading, addGradeError: s.addGradeError,
