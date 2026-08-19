@@ -843,6 +843,7 @@ class Component extends DCLogic {
   _chatSeq = 0;
   _sessionsSeq = 0;
   _addClassSeq = 0;
+  _addGradeSeq = 0;
   _gradesSeq = 0;
   _gradesWhatIfSeq = 0;
   _gradesSummarySeq = 0;
@@ -1172,7 +1173,7 @@ class Component extends DCLogic {
   }
 
   closeAddGrade() {
-    this._addGradeSeq = (this._addGradeSeq || 0) + 1;
+    this._addGradeSeq++;
     this.setState({
       addGradeOpen: false, addGradeEditingId: null, addGradeComponent: '', addGradeTitle: '',
       addGradeScore: '', addGradeMaxPoints: '', addGradeDate: '', addGradeLoading: false, addGradeError: null,
