@@ -413,8 +413,80 @@
                 </sc-for>
               </div>
             </div>
+
+            <div class="card elev-sm" style="padding:0;overflow:hidden;margin-bottom:var(--space-6)">
+              <div style="display:flex;align-items:center;justify-content:space-between;padding:var(--space-4) var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
+                <div class="card-title" style="margin:0">Grades</div>
+                <button type="button" class="btn btn-primary" onClick="{{ openAddGrade }}">Add grade</button>
+              </div>
+              <sc-if value="{{ !gradesItemRows.length }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:var(--space-6);font-size:13px;opacity:.6">No grades entered yet.</div>
+              </sc-if>
+              <sc-for list="{{ gradesItemRows }}" as="row" hint-placeholder-count="3">
+                <div style="display:flex;align-items:center;gap:var(--space-3);padding:12px var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
+                  <span class="tag tag-neutral">{{ row.component }}</span>
+                  <div style="flex:1;min-width:0;font-size:13.5px">{{ row.title }}</div>
+                  <div style="font-size:12.5px;opacity:.65;width:80px">{{ row.dateLabel }}</div>
+                  <div style="font-size:14px;font-weight:600;width:80px;text-align:right">{{ row.scoreLabel }}</div>
+                  <button type="button" class="btn btn-ghost" onClick="{{ row.onEdit }}">Edit</button>
+                  <button type="button" class="btn btn-ghost" onClick="{{ row.onDelete }}">Delete</button>
+                </div>
+              </sc-for>
+            </div>
           </sc-if>
         </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ addGradeOpen }}" hint-placeholder-val="{{ false }}">
+      <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+        <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
+          <div class="card-title" style="margin:0 0 var(--space-4)">{{ addGradeModalTitle }}</div>
+
+          <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+            <div>
+              <div style="font-size:13px;margin-bottom:6px">Category</div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap">
+                <sc-for list="{{ addGradeComponentChips }}" as="chip" hint-placeholder-count="3">
+                  <button type="button" onClick="{{ chip.onClick }}" style="{{ chip.style }}">{{ chip.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;margin-bottom:4px">Title</div>
+              <input class="input" placeholder="e.g. HW 3" value="{{ addGradeTitle }}" onChange="{{ onAddGradeTitleChange }}" style="width:100%"/>
+            </div>
+            <div style="display:flex;gap:12px">
+              <div style="flex:1">
+                <div style="font-size:13px;margin-bottom:4px">Score</div>
+                <input class="input" placeholder="92" value="{{ addGradeScore }}" onChange="{{ onAddGradeScoreChange }}" style="width:100%"/>
+              </div>
+              <div style="flex:1">
+                <div style="font-size:13px;margin-bottom:4px">Out of</div>
+                <input class="input" placeholder="100" value="{{ addGradeMaxPoints }}" onChange="{{ onAddGradeMaxPointsChange }}" style="width:100%"/>
+              </div>
+            </div>
+            <div>
+              <div style="font-size:13px;margin-bottom:4px">Date (optional)</div>
+              <input class="input" placeholder="YYYY-MM-DD" value="{{ addGradeDate }}" onChange="{{ onAddGradeDateChange }}" style="width:100%"/>
+            </div>
+          </div>
+
+          <sc-if value="{{ addGradeError }}" hint-placeholder-val="{{ false }}">
+            <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ addGradeError }}</p>
+          </sc-if>
+
+          <sc-if value="{{ addGradeLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.7;padding:8px 0">Saving…</div>
+          </sc-if>
+
+          <sc-if value="{{ !addGradeLoading }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;gap:8px">
+              <button type="button" class="btn btn-secondary" onClick="{{ closeAddGrade }}">Cancel</button>
+              <button type="button" class="btn btn-primary" onClick="{{ submitAddGrade }}">{{ addGradeSubmitLabel }}</button>
+            </div>
+          </sc-if>
+        </div>
       </div>
     </sc-if>
 
@@ -1009,6 +1081,77 @@ class Component extends DCLogic {
       });
   }
 
+  openAddGrade() {
+    const s = this.state;
+    const firstComponent = s.gradesBreakdown && s.gradesBreakdown.categories[0] ? s.gradesBreakdown.categories[0].component : '';
+    this.setState({
+      addGradeOpen: true, addGradeEditingId: null, addGradeComponent: firstComponent,
+      addGradeTitle: '', addGradeScore: '', addGradeMaxPoints: '', addGradeDate: '',
+      addGradeLoading: false, addGradeError: null,
+    });
+  }
+
+  openEditGrade(item) {
+    this.setState({
+      addGradeOpen: true, addGradeEditingId: item.id, addGradeComponent: item.component,
+      addGradeTitle: item.title, addGradeScore: String(item.score), addGradeMaxPoints: String(item.max_points),
+      addGradeDate: item.date || '', addGradeLoading: false, addGradeError: null,
+    });
+  }
+
+  closeAddGrade() {
+    this._addGradeSeq = (this._addGradeSeq || 0) + 1;
+    this.setState({
+      addGradeOpen: false, addGradeEditingId: null, addGradeComponent: '', addGradeTitle: '',
+      addGradeScore: '', addGradeMaxPoints: '', addGradeDate: '', addGradeLoading: false, addGradeError: null,
+    });
+  }
+
+  submitAddGrade() {
+    const s = this.state;
+    if (!s.addGradeComponent) { this.setState({ addGradeError: 'Choose a category.' }); return; }
+    if (!s.addGradeTitle) { this.setState({ addGradeError: 'Enter a title.' }); return; }
+    const score = parseFloat(s.addGradeScore);
+    const maxPoints = parseFloat(s.addGradeMaxPoints);
+    if (isNaN(score) || isNaN(maxPoints) || maxPoints <= 0) {
+      this.setState({ addGradeError: 'Enter a valid score and max points.' });
+      return;
+    }
+
+    const seq = ++this._addGradeSeq;
+    const courseId = s.course;
+    const body = { component: s.addGradeComponent, title: s.addGradeTitle, score: score, max_points: maxPoints, date: s.addGradeDate || null };
+    this.setState({ addGradeLoading: true, addGradeError: null });
+
+    const url = s.addGradeEditingId
+      ? `/api/courses/${courseId}/grades/items/${s.addGradeEditingId}/`
+      : `/api/courses/${courseId}/grades/items/`;
+    const method = s.addGradeEditingId ? 'PATCH' : 'POST';
+
+    fetch(url, {
+      method: method, headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify(body)
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._addGradeSeq) return;
+        if (!ok) { this.setState({ addGradeLoading: false, addGradeError: data.detail || 'Could not save that grade.' }); return; }
+        this.closeAddGrade();
+        this.loadGrades(courseId);
+      })
+      .catch(e => {
+        if (seq !== this._addGradeSeq) return;
+        this.setState({ addGradeLoading: false, addGradeError: 'Network error: ' + e.message });
+      });
+  }
+
+  deleteGradeItem(itemId) {
+    const courseId = this.state.course;
+    fetch(`/api/courses/${courseId}/grades/items/${itemId}/`, {
+      method: 'DELETE', headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    }).then(() => this.loadGrades(courseId));
+  }
+
   openAddClass() {
     this.setState({
       addClassOpen: true, addClassName: '', addClassId: '', addClassIdLocked: false,
@@ -1124,6 +1267,26 @@ class Component extends DCLogic {
     }));
     const gradesHasGradingSetup = gradesCategoriesTotal > 0;
     const gradesShowContent = !s.gradesLoading && !s.gradesError;
+    const chipStyle = (selected) => 'padding:6px 12px;border-radius:99px;cursor:pointer;font-size:12.5px;font-family:var(--font-body);' +
+      (selected ? 'border:1px solid var(--color-accent-700);background:var(--color-accent-100);font-weight:600' : 'border:1px solid var(--color-neutral-200);background:#fff');
+    const addGradeComponentChips = (s.gradesBreakdown ? s.gradesBreakdown.categories : []).map(c => ({
+      label: c.component,
+      style: chipStyle(s.addGradeComponent === c.component),
+      onClick: () => this.setState({ addGradeComponent: c.component }),
+    }));
+    const gradesItemRows = s.gradesItems.map(item => ({
+      id: item.id, component: item.component, title: item.title,
+      scoreLabel: item.score + '/' + item.max_points,
+      dateLabel: item.date || '',
+      onEdit: () => this.openEditGrade(item),
+      onDelete: () => this.deleteGradeItem(item.id),
+    }));
+    const onAddGradeTitleChange = (e) => this.setState({ addGradeTitle: e.target.value });
+    const onAddGradeScoreChange = (e) => this.setState({ addGradeScore: e.target.value });
+    const onAddGradeMaxPointsChange = (e) => this.setState({ addGradeMaxPoints: e.target.value });
+    const onAddGradeDateChange = (e) => this.setState({ addGradeDate: e.target.value });
+    const addGradeModalTitle = s.addGradeEditingId ? 'Edit grade' : 'Add grade';
+    const addGradeSubmitLabel = s.addGradeEditingId ? 'Save' : 'Add';
     const courseMetaLoaded = s.courseMeta !== null;
     const courseIsDraft = s.course !== 'all' && s.courseDrafts.some(d => d.course_id === s.course);
     const draftName = courseIsDraft ? (s.courseDrafts.find(d => d.course_id === s.course) || {}).course_name : null;
@@ -1478,6 +1641,15 @@ class Component extends DCLogic {
       gradesCategoriesLabel: gradesCategoriesLabel, gradesItemsCount: gradesItemsCount,
       gradesBreakdownRows: gradesBreakdownRows, gradesHasGradingSetup: gradesHasGradingSetup,
       gradesShowContent: gradesShowContent,
+      gradesItemRows: gradesItemRows, addGradeOpen: s.addGradeOpen, addGradeModalTitle: addGradeModalTitle,
+      addGradeSubmitLabel: addGradeSubmitLabel, addGradeComponentChips: addGradeComponentChips,
+      addGradeTitle: s.addGradeTitle, addGradeScore: s.addGradeScore, addGradeMaxPoints: s.addGradeMaxPoints,
+      addGradeDate: s.addGradeDate, addGradeLoading: s.addGradeLoading, addGradeError: s.addGradeError,
+      onAddGradeTitleChange: onAddGradeTitleChange, onAddGradeScoreChange: onAddGradeScoreChange,
+      onAddGradeMaxPointsChange: onAddGradeMaxPointsChange, onAddGradeDateChange: onAddGradeDateChange,
+      openAddGrade: () => this.openAddGrade(),
+      closeAddGrade: () => this.closeAddGrade(),
+      submitAddGrade: () => this.submitAddGrade(),
       retryGrades: () => this.loadGrades(s.course),
       practiceWeak: practiceWeak,
       courseName: courseDisplayName,
