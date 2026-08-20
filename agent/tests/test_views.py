@@ -14,8 +14,11 @@ def isolated_courses_dir(tmp_path, monkeypatch):
 
 
 @pytest.fixture
-def api_client():
-    return APIClient()
+def api_client(django_user_model):
+    user = django_user_model.objects.create_user(username="test-user")
+    client = APIClient()
+    client.force_authenticate(user=user)
+    return client
 
 
 def _seed_syllabus(course_id):
@@ -455,3 +458,19 @@ def test_grades_summary_empty_when_no_courses(isolated_courses_dir, api_client):
 
     assert response.status_code == 200
     assert response.data["courses"] == []
+
+
+def test_anonymous_request_to_api_is_rejected(isolated_courses_dir):
+    from rest_framework.test import APIClient
+    anonymous_client = APIClient()  # deliberately not the (soon-to-be authenticated) api_client fixture
+
+    response = anonymous_client.get("/api/courses/cs101/syllabus/")
+
+    assert response.status_code == 401
+
+
+def test_anonymous_request_to_ontrack_page_redirects_to_login(client):
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert response.url.startswith("/accounts/login/")

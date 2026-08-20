@@ -1,5 +1,6 @@
 from adrf.views import APIView
 from asgiref.sync import sync_to_async
+from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.response import Response
@@ -739,6 +740,7 @@ class SessionDetailView(APIView):
         return Response(session)
 
 
+@login_required
 def ontrack_page(request):
     """GET / — serves the OnTrack UI mockup (DC pseudo-component app).
 
