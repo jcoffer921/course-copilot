@@ -315,6 +315,7 @@ class GradingConfigView(APIView):
         return Response({
             "grading": syllabus.get("grading", []),
             "grade_scale": syllabus.get("grade_scale") or grades.DEFAULT_GRADE_SCALE,
+            "category_choices": storage.GRADING_CATEGORY_CHOICES,
         }, status=status.HTTP_200_OK)
 
     async def put(self, request, course_id):

@@ -257,6 +257,15 @@ def test_grading_config_put_404s_without_syllabus(isolated_courses_dir, api_clie
     assert response.status_code == 404
 
 
+def test_grading_config_get_includes_category_choices(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.get("/api/courses/cs101/grading/")
+
+    assert response.status_code == 200
+    assert response.data["category_choices"] == storage.GRADING_CATEGORY_CHOICES
+
+
 def test_grades_get_returns_items_and_breakdown(isolated_courses_dir, api_client):
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
