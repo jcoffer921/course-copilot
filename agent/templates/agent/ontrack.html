@@ -112,7 +112,7 @@
       <div style="width:30px;height:30px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-800);display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:13px;flex:none">{{ userInitial }}</div>
       <div style="font-size:13px;line-height:1.3;flex:1;min-width:0">
         <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ currentUserEmail }}</div>
-        <a href="/accounts/logout/" style="font-size:12px">Sign out</a>
+        <button type="button" onClick="{{ signOut }}" style="font-size:12px;background:none;border:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer">Sign out</button>
       </div>
     </div>
   </div>
@@ -1632,6 +1632,12 @@ class Component extends DCLogic {
       });
   }
 
+  signOut() {
+    fetch('/accounts/logout/', { method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
+      .then(() => { location.href = '/'; })
+      .catch(() => { location.href = '/'; });
+  }
+
   openAddClass() {
     this.setState({
       addClassOpen: true, addClassName: '', addClassId: '', addClassIdLocked: false,
@@ -2268,6 +2274,7 @@ class Component extends DCLogic {
       navBtnStyleGrades: this.navBtn(s.tab === 'grades'),
       courseChipStyleAll: this.courseChip(s.course === 'all'),
       courseChips: courseChips,
+      signOut: () => this.signOut(),
       openAddClass: () => this.openAddClass(),
       addClassOpen: s.addClassOpen,
       addClassName: s.addClassName,

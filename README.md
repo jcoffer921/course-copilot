@@ -30,6 +30,16 @@ pip install -r requirements.txt
 
 export ANTHROPIC_API_KEY=sk-ant-...    # Windows: set ANTHROPIC_API_KEY=sk-ant-...
 
+# Google Sign-In — all three are required, the app is unusable without them
+# (every page redirects to a login that raises if these are unset). Get the
+# client ID/secret from a Google Cloud Console OAuth client.
+export GOOGLE_OAUTH_CLIENT_ID=your-client-id.apps.googleusercontent.com
+export GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
+# Comma-separated allow-list of Google account emails permitted to sign in.
+# Fails closed by design: leaving this empty/unset blocks everyone — that's
+# a deliberate security property, not a bug to work around.
+export ALLOWED_GOOGLE_EMAILS=you@example.com,teammate@example.com
+
 python manage.py migrate        # sets up Django's own tables (sqlite) — one-time
 ```
 

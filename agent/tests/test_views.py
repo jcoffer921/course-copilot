@@ -469,6 +469,19 @@ def test_anonymous_request_to_api_is_rejected(isolated_courses_dir):
     assert response.status_code == 401
 
 
+@pytest.mark.django_db
+def test_basic_auth_with_valid_password_is_rejected(isolated_courses_dir, django_user_model):
+    import base64
+
+    user = django_user_model.objects.create_user(username="has-password", password="correct-horse-battery-staple")
+    client = APIClient()
+    credentials = base64.b64encode(b"has-password:correct-horse-battery-staple").decode()
+
+    response = client.get("/api/courses/cs101/syllabus/", HTTP_AUTHORIZATION=f"Basic {credentials}")
+
+    assert response.status_code == 401
+
+
 def test_anonymous_request_to_ontrack_page_redirects_to_login(client):
     response = client.get("/")
 

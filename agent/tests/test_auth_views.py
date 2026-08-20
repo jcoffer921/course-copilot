@@ -53,7 +53,7 @@ def test_google_callback_creates_account_and_logs_in_allowed_email(client, monke
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
          patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
         build_flow.return_value = _mock_flow_with_credentials()
-        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com"}
+        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com", "email_verified": True}
 
         response = client.get("/accounts/callback/?state=expected-state&code=abc")
 
@@ -113,12 +113,69 @@ def test_google_callback_rejects_disallowed_email_and_creates_no_account(client,
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
          patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
         build_flow.return_value = _mock_flow_with_credentials()
-        verify_id_token.return_value = {"sub": "sub-999", "email": "stranger@example.com"}
+        verify_id_token.return_value = {"sub": "sub-999", "email": "stranger@example.com", "email_verified": True}
 
         response = client.get("/accounts/callback/?state=expected-state&code=abc")
 
     assert response.status_code == 403
     assert not GoogleAccount.objects.filter(google_sub="sub-999").exists()
+    assert "_auth_user_id" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_callback_returns_400_when_email_claim_missing(client, monkeypatch):
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-123", "email_verified": True}  # no "email"
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 400
+    assert not GoogleAccount.objects.exists()
+    assert "_auth_user_id" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_callback_returns_400_when_sub_claim_missing(client, monkeypatch):
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"email": "jordan@example.com", "email_verified": True}  # no "sub"
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 400
+    assert not GoogleAccount.objects.exists()
+    assert "_auth_user_id" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_callback_returns_400_when_email_not_verified(client, monkeypatch):
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com", "email_verified": False}
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 400
+    assert not GoogleAccount.objects.exists()
     assert "_auth_user_id" not in client.session
 
 
@@ -131,11 +188,30 @@ def test_google_logout_clears_session(client, monkeypatch):
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
          patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
         build_flow.return_value = _mock_flow_with_credentials()
-        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com"}
+        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com", "email_verified": True}
+        client.get("/accounts/callback/?state=expected-state&code=abc")
+    assert "_auth_user_id" in client.session
+
+    response = client.post("/accounts/logout/")
+
+    assert response.status_code == 302
+    assert "_auth_user_id" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_logout_rejects_get(client, monkeypatch):
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.save()
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com", "email_verified": True}
         client.get("/accounts/callback/?state=expected-state&code=abc")
     assert "_auth_user_id" in client.session
 
     response = client.get("/accounts/logout/")
 
-    assert response.status_code == 302
-    assert "_auth_user_id" not in client.session
+    assert response.status_code == 405
+    assert "_auth_user_id" in client.session
