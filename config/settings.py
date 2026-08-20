@@ -76,6 +76,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
+# Used by @login_required (added to ontrack_page in Task 4) to know where
+# to send an anonymous visitor — the URL name defined in config/urls.py.
+LOGIN_URL = "google-login"
+
 REST_FRAMEWORK = {
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
     "DEFAULT_PARSER_CLASSES": [
