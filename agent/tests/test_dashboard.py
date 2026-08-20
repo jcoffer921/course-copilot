@@ -166,3 +166,45 @@ def test_build_dashboard_drafts_empty_when_none_exist(isolated_courses_dir):
     data = dashboard.build_dashboard()
 
     assert data["drafts"] == []
+
+
+def test_build_dashboard_marks_synced_deadlines(isolated_courses_dir):
+    from datetime import date, timedelta
+
+    midterm_date = (date.today() + timedelta(days=5)).isoformat()
+    final_date = (date.today() + timedelta(days=10)).isoformat()
+
+    _seed_course(
+        "cs101", topics=["A"],
+        grading=[{"component": "HW", "weight_pct": 100}],
+        dates=[
+            {"date": midterm_date, "title": "Midterm", "type": "exam"},
+            {"date": final_date, "title": "Final", "type": "exam"},
+        ],
+    )
+    storage.append_calendar_sync_record("cs101", {
+        "date": midterm_date, "title": "Midterm", "type": "exam",
+        "google_event_id": "evt-1", "synced_at": "2026-08-20T00:00:00+00:00",
+    })
+
+    data = dashboard.build_dashboard()
+
+    by_title = {d["title"]: d for d in data["deadlines"]}
+    assert by_title["Midterm"]["synced"] is True
+    assert by_title["Final"]["synced"] is False
+
+
+def test_build_dashboard_deadlines_unsynced_when_no_calendar_sync_file(isolated_courses_dir):
+    from datetime import date, timedelta
+
+    midterm_date = (date.today() + timedelta(days=5)).isoformat()
+
+    _seed_course(
+        "cs101", topics=["A"],
+        grading=[{"component": "HW", "weight_pct": 100}],
+        dates=[{"date": midterm_date, "title": "Midterm", "type": "exam"}],
+    )
+
+    data = dashboard.build_dashboard()
+
+    assert data["deadlines"][0]["synced"] is False

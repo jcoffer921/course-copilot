@@ -38,6 +38,25 @@ def _merge_topics(syllabus_topics: list, weak_topics: list) -> list:
     return merged
 
 
+def _annotate_synced(deadlines: list) -> list:
+    """Marks each deadline with whether it's already been pushed to Google
+    Calendar, by cross-referencing that course's calendar_sync.json (read
+    once per distinct course_id present in the list, not once per
+    deadline)."""
+    synced_by_course = {}
+    annotated = []
+    for d in deadlines:
+        course_id = d["course_id"]
+        if course_id not in synced_by_course:
+            synced_by_course[course_id] = storage.read_calendar_sync(course_id)
+        is_synced = any(
+            r["date"] == d["date"] and r["title"] == d["title"]
+            for r in synced_by_course[course_id]
+        )
+        annotated.append(dict(d, synced=is_synced))
+    return annotated
+
+
 def _course_summary(course_id: str) -> dict:
     syllabus = storage.read_syllabus(course_id)
     weak_topics = mastery.weak_topics(course_id)
@@ -80,7 +99,7 @@ def build_dashboard() -> dict:
         # course_ids would make upcoming_deadlines() re-scan every course
         # (via its own list_courses() call) including any corrupt one,
         # raising past the per-course isolation this function promises.
-        "deadlines": reminders.upcoming_deadlines(within_days=14, course_ids=good_course_ids),
+        "deadlines": _annotate_synced(reminders.upcoming_deadlines(within_days=14, course_ids=good_course_ids)),
         "streak": streak.current_streak(),
         "courses": courses,
         "drafts": reminders.list_draft_courses(),
