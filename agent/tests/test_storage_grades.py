@@ -169,3 +169,15 @@ def test_validate_grading_config_accepts_every_fixed_category_name():
 
     blocking = [e for e in errors if not e.startswith("WARNING")]
     assert blocking == []
+
+
+def test_validate_grading_config_rejects_duplicate_component_names():
+    grading = [
+        {"component": "Homework", "weight_pct": 50},
+        {"component": "Homework", "weight_pct": 50},
+    ]
+
+    errors = storage.validate_grading_config(grading)
+
+    blocking = [e for e in errors if not e.startswith("WARNING")]
+    assert any("duplicate" in e.lower() and "Homework" in e for e in blocking)

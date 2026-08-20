@@ -367,6 +367,20 @@ def validate_grading_config(grading: list, grade_scale: dict = None) -> list:
                     f"— would drop every item in this category"
                 )
 
+    seen_components = set()
+    duplicate_components = set()
+    for g in grading:
+        if isinstance(g, dict) and "component" in g:
+            component = g["component"]
+            if component in seen_components:
+                duplicate_components.add(component)
+            seen_components.add(component)
+    for component in sorted(duplicate_components):
+        errors.append(
+            f"duplicate grading component {component!r}: current_grade()/grade_needed() "
+            f"assume at most one entry per component name"
+        )
+
     total_weight = sum(
         g.get("weight_pct", 0) for g in grading
         if isinstance(g, dict) and isinstance(g.get("weight_pct"), (int, float))

@@ -405,6 +405,13 @@
           </div>
         </sc-if>
 
+        <sc-if value="{{ gradesNotice }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-4);margin-bottom:var(--space-4);display:flex;align-items:flex-start;gap:10px">
+            <span style="font-size:13px;flex:1">{{ gradesNotice }}</span>
+            <button type="button" class="btn btn-secondary" onClick="{{ dismissGradesNotice }}">Dismiss</button>
+          </div>
+        </sc-if>
+
         <sc-if value="{{ gradesShowContent }}" hint-placeholder-val="{{ true }}">
           <sc-if value="{{ !gradesHasGradingSetup }}" hint-placeholder-val="{{ false }}">
             <div class="card elev-sm" style="padding:var(--space-6)">
@@ -871,7 +878,7 @@ class Component extends DCLogic {
     addGradeOpen: false, addGradeEditingId: null, addGradeComponent: '', addGradeTitle: '',
     addGradeScore: '', addGradeMaxPoints: '', addGradeDate: '', addGradeLoading: false, addGradeError: null,
     gradingSetupOpen: false, gradingSetupCategoryChoices: [], gradingSetupChecked: {}, gradingSetupFields: {},
-    gradingSetupLoading: false, gradingSetupError: null,
+    gradingSetupLoading: false, gradingSetupError: null, gradesNotice: null,
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
     chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
@@ -1339,11 +1346,17 @@ class Component extends DCLogic {
       Homework: ['homework', 'assignment', 'problem set', 'exercise'],
       Tests: ['test'],
       Quizzes: ['quiz'],
+      Projects: ['project', 'presentation', 'capstone'],
       Midterm: ['midterm'],
       Final: ['final'],
-      Projects: ['project', 'presentation', 'capstone'],
     };
-    for (const category of choices) {
+    // Fixed precedence order, independent of `choices`' own ordering: more-specific
+    // keywords (e.g. "project") must be checked before the generic "midterm"/"final"
+    // keywords, so a legacy name like "Final Project" routes to Projects rather than
+    // Final just because 'final' happens to appear earlier in `choices`.
+    const precedence = ['Homework', 'Tests', 'Quizzes', 'Projects', 'Midterm', 'Final'];
+    for (const category of precedence) {
+      if (!choices.includes(category)) continue;
       const keywords = synonyms[category];
       if (keywords && keywords.some(k => lower.includes(k))) return category;
     }
@@ -1410,13 +1423,21 @@ class Component extends DCLogic {
           this.setState({ gradingSetupLoading: false, gradingSetupError: blocking.join('; ') || data.detail || 'Could not save grading setup.' });
           return;
         }
+        const warnings = data.warnings || [];
         this.closeGradingSetup();
         this.loadGrades(courseId);
+        if (warnings.length) {
+          this.setState({ gradesNotice: warnings.join(' ') });
+        }
       })
       .catch(e => {
         if (seq !== this._gradingSetupSeq) return;
         this.setState({ gradingSetupLoading: false, gradingSetupError: 'Network error: ' + e.message });
       });
+  }
+
+  dismissGradesNotice() {
+    this.setState({ gradesNotice: null });
   }
 
   deleteGradeItem(itemId) {
@@ -1981,6 +2002,7 @@ class Component extends DCLogic {
       goQuiz: () => setTab('quiz'),
       goGrades: () => setTab('grades'),
       gradesLoading: s.gradesLoading, gradesError: s.gradesError,
+      gradesNotice: s.gradesNotice, dismissGradesNotice: () => this.dismissGradesNotice(),
       gradesSummaryLoading: s.gradesSummaryLoading, gradesSummaryError: s.gradesSummaryError,
       gradesSummaryAveragePct: gradesSummaryAveragePct, gradesSummaryExcludedLabel: gradesSummaryExcludedLabel,
       gradesSummaryRows: gradesSummaryRows,
