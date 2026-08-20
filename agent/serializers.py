@@ -1,6 +1,12 @@
 from rest_framework import serializers
 
 
+class CalendarSyncRequestSerializer(serializers.Serializer):
+    date = serializers.CharField(allow_blank=False)
+    title = serializers.CharField(allow_blank=False)
+    type = serializers.CharField(allow_blank=False)
+
+
 class ExtractSyllabusRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
     course_name = serializers.CharField(required=False, allow_blank=True, default=None)

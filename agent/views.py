@@ -9,6 +9,7 @@ from .serializers import (
     AddGradeItemRequestSerializer,
     ApproveDomainsRequestSerializer,
     AskRequestSerializer,
+    CalendarSyncRequestSerializer,
     ChunkNotesRequestSerializer,
     CreateCourseDraftRequestSerializer,
     ExtractSyllabusRequestSerializer,
@@ -18,7 +19,7 @@ from .serializers import (
     RecordAttemptRequestSerializer,
     UpdateGradeItemRequestSerializer,
 )
-from .services import chunk_notes, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
+from .services import calendar_sync, chunk_notes, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
@@ -629,6 +630,36 @@ class DashboardView(APIView):
     async def get(self, request):
         data = await sync_to_async(dashboard.build_dashboard)()
         return Response(data, status=status.HTTP_200_OK)
+
+
+class CalendarSyncView(APIView):
+    """
+    POST /api/courses/<course_id>/calendar-sync/
+    body: {"date": "YYYY-MM-DD", "title": "...", "type": "exam|assignment|reading|other"}
+
+    Pushes one deadline into the signed-in user's real Google Calendar as
+    an all-day event. 409 if that (date, title) was already synced; 502 if
+    the user's stored Google credentials can't be refreshed.
+    """
+
+    async def post(self, request, course_id):
+        serializer = CalendarSyncRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            result = await sync_to_async(calendar_sync.add_deadline_to_calendar)(
+                request.user, course_id,
+                serializer.validated_data["date"],
+                serializer.validated_data["title"],
+                serializer.validated_data["type"],
+            )
+        except calendar_sync.AlreadySyncedError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+        except calendar_sync.CalendarAuthError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(result, status=status.HTTP_201_CREATED)
 
 
 class SyllabusDetailView(APIView):

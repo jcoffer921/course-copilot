@@ -487,3 +487,103 @@ def test_anonymous_request_to_ontrack_page_redirects_to_login(client):
 
     assert response.status_code == 302
     assert response.url.startswith("/accounts/login/")
+
+
+@pytest.mark.django_db
+def test_calendar_sync_creates_event(isolated_courses_dir):
+    from datetime import timedelta
+    from unittest.mock import MagicMock, patch
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="valid-token", refresh_token="refresh-token",
+        token_expiry=timezone.now() + timedelta(hours=1),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    mock_service = MagicMock()
+    mock_service.events.return_value.insert.return_value.execute.return_value = {"id": "event-abc"}
+    with patch("agent.services.calendar_sync.build", return_value=mock_service):
+        response = client.post(
+            "/api/courses/cs101/calendar-sync/",
+            {"date": "2026-09-01", "title": "Midterm", "type": "exam"},
+            format="json",
+        )
+
+    assert response.status_code == 201
+    assert response.data == {"google_event_id": "event-abc"}
+
+
+@pytest.mark.django_db
+def test_calendar_sync_rejects_duplicate(isolated_courses_dir):
+    from datetime import timedelta
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+    from agent.services import storage
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="valid-token", refresh_token="refresh-token",
+        token_expiry=timezone.now() + timedelta(hours=1),
+    )
+    storage.append_calendar_sync_record("cs101", {
+        "date": "2026-09-01", "title": "Midterm", "type": "exam",
+        "google_event_id": "evt-1", "synced_at": "2026-08-20T00:00:00+00:00",
+    })
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        "/api/courses/cs101/calendar-sync/",
+        {"date": "2026-09-01", "title": "Midterm", "type": "exam"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+@pytest.mark.django_db
+def test_calendar_sync_returns_502_when_google_auth_fails(isolated_courses_dir):
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="stale-token", refresh_token="revoked-refresh-token",
+        token_expiry=timezone.now() - timedelta(hours=1),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    def _fake_refresh_failure(self, request):
+        from google.auth.exceptions import RefreshError
+        raise RefreshError("invalid_grant")
+
+    with patch("google.oauth2.credentials.Credentials.refresh", _fake_refresh_failure):
+        response = client.post(
+            "/api/courses/cs101/calendar-sync/",
+            {"date": "2026-09-01", "title": "Midterm", "type": "exam"},
+            format="json",
+        )
+
+    assert response.status_code == 502
