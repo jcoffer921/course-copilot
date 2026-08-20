@@ -171,6 +171,11 @@ def test_build_dashboard_drafts_empty_when_none_exist(isolated_courses_dir):
 def test_build_dashboard_marks_synced_deadlines(isolated_courses_dir):
     from datetime import date, timedelta
 
+    # Dates must be within build_dashboard()'s 14-day upcoming_deadlines()
+    # window to appear in data["deadlines"] at all — a fixed far-future date
+    # (e.g. year 2099) would fall outside that window and never show up,
+    # making the assertions below fail with a KeyError instead of testing
+    # anything.
     midterm_date = (date.today() + timedelta(days=5)).isoformat()
     final_date = (date.today() + timedelta(days=10)).isoformat()
 
