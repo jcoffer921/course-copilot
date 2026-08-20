@@ -6,6 +6,7 @@ JSON API, so it doesn't belong in agent/views.py alongside the APIViews.
 
 import logging
 
+from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.http import HttpResponseBadRequest
 from django.shortcuts import redirect, render
@@ -20,8 +21,19 @@ def _redirect_uri(request) -> str:
     return request.build_absolute_uri("/accounts/callback/")
 
 
-def google_login(request):
-    """GET /accounts/login/ — redirects to Google's consent screen.
+def google_login_page(request):
+    """GET /accounts/login/ — the branded landing page (LOGIN_URL points
+    here, so @login_required lands anonymous visitors on this page). An
+    already-authenticated visitor skips straight to the app. Django's
+    messages framework carries a rejection notice here after a disallowed
+    email's callback (see google_callback below)."""
+    if request.user.is_authenticated:
+        return redirect("ontrack")
+    return render(request, "agent/login.html")
+
+
+def google_login_start(request):
+    """GET /accounts/login/start/ — redirects to Google's consent screen.
     access_type=offline + prompt=consent guarantee a refresh token on
     every login (Google only returns one on the very first consent
     otherwise), per the design spec's edge-case notes."""
@@ -67,7 +79,8 @@ def google_callback(request):
         return HttpResponseBadRequest("Google account email is not verified")
 
     if not google_oauth.is_email_allowed(email):
-        return render(request, "agent/not_authorized.html", {"email": email}, status=403)
+        messages.error(request, "That Google account isn't on OnTrack's approved list yet. Try a different account, or contact whoever manages this OnTrack instance.")
+        return redirect("google-login")
 
     user = google_oauth.get_or_create_account(google_sub, email, credentials)
     login(request, user)

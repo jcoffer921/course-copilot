@@ -19,13 +19,33 @@ def _mock_flow_with_credentials():
 
 
 @pytest.mark.django_db
-def test_google_login_redirects_to_google_and_saves_state(client):
+def test_google_login_page_renders_sign_in_button(client):
+    response = client.get("/accounts/login/")
+
+    assert response.status_code == 200
+    assert b"/accounts/login/start/" in response.content
+    assert b"Sign in with Google" in response.content
+
+
+@pytest.mark.django_db
+def test_google_login_page_redirects_authenticated_user_to_ontrack(client, django_user_model):
+    user = django_user_model.objects.create_user(username="already-signed-in")
+    client.force_login(user)
+
+    response = client.get("/accounts/login/")
+
+    assert response.status_code == 302
+    assert response.url == "/"
+
+
+@pytest.mark.django_db
+def test_google_login_start_redirects_to_google_and_saves_state(client):
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
         mock_flow = MagicMock()
         mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?mock=1", "state-xyz")
         build_flow.return_value = mock_flow
 
-        response = client.get("/accounts/login/")
+        response = client.get("/accounts/login/start/")
 
     assert response.status_code == 302
     assert response.url.startswith("https://accounts.google.com/")
@@ -117,9 +137,13 @@ def test_google_callback_rejects_disallowed_email_and_creates_no_account(client,
 
         response = client.get("/accounts/callback/?state=expected-state&code=abc")
 
-    assert response.status_code == 403
+    assert response.status_code == 302
+    assert response.url == "/accounts/login/"
     assert not GoogleAccount.objects.filter(google_sub="sub-999").exists()
     assert "_auth_user_id" not in client.session
+
+    followup = client.get(response.url)
+    assert b"approved list" in followup.content
 
 
 @pytest.mark.django_db
