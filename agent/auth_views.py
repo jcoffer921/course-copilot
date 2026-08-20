@@ -40,6 +40,11 @@ def google_login_start(request):
     flow = google_oauth.build_flow(_redirect_uri(request))
     auth_url, state = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
     request.session["google_oauth_state"] = state
+    # PKCE: Flow generates a code_verifier during authorization_url() above.
+    # This Flow object is discarded once we redirect — the callback builds
+    # a separate one — so the verifier must round-trip through the session
+    # (alongside state) or Google's token endpoint rejects the exchange.
+    request.session["google_oauth_code_verifier"] = flow.code_verifier
     return redirect(auth_url)
 
 
@@ -51,12 +56,14 @@ def google_callback(request):
         return HttpResponseBadRequest("invalid or expired OAuth state")
 
     # State has now been validated as matching — its only job was CSRF
-    # protection for this one request, so clear it before attempting the
-    # token exchange. That way a failed exchange doesn't leave stale state
-    # sitting in the session for a later request to (mis)reuse.
+    # protection for this one request, so clear it (and the paired PKCE
+    # code_verifier) before attempting the token exchange. That way a
+    # failed exchange doesn't leave stale state sitting in the session for
+    # a later request to (mis)reuse.
     del request.session["google_oauth_state"]
+    saved_code_verifier = request.session.pop("google_oauth_code_verifier", None)
 
-    flow = google_oauth.build_flow(_redirect_uri(request), state=saved_state)
+    flow = google_oauth.build_flow(_redirect_uri(request), state=saved_state, code_verifier=saved_code_verifier)
     try:
         flow.fetch_token(code=request.GET.get("code"))
     except Exception:

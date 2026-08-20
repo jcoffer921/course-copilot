@@ -75,3 +75,19 @@ def test_get_or_create_account_keeps_existing_refresh_token_if_google_omits_a_ne
     google_oauth.get_or_create_account("sub-123", "jordan@example.com", _fake_credentials(refresh_token=None))
 
     assert GoogleAccount.objects.get(google_sub="sub-123").refresh_token == "original-refresh"
+
+
+def test_build_flow_carries_a_passed_in_code_verifier(monkeypatch):
+    """google-auth-oauthlib's Flow auto-generates a PKCE code_verifier inside
+    authorization_url() when none is supplied. Since the login-start leg and
+    the callback leg build two separate Flow objects, the callback's Flow
+    must be constructed with the SAME code_verifier the login-start leg
+    generated, or Google's token endpoint rejects the exchange with
+    'invalid_grant: Missing code verifier' (a real failure this test guards
+    against — see agent/auth_views.py's session round-trip)."""
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_ID", "test-client-id")
+    monkeypatch.setenv("GOOGLE_OAUTH_CLIENT_SECRET", "test-client-secret")
+
+    flow = google_oauth.build_flow("http://127.0.0.1:8000/accounts/callback/", code_verifier="saved-verifier-value")
+
+    assert flow.code_verifier == "saved-verifier-value"

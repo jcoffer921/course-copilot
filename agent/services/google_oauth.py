@@ -49,11 +49,21 @@ def _client_config() -> dict:
     }
 
 
-def build_flow(redirect_uri: str, state: str = None) -> Flow:
+def build_flow(redirect_uri: str, state: str = None, code_verifier: str = None) -> Flow:
     """Constructs a google_auth_oauthlib Flow for the authorization-code
     exchange. state=None when starting a new login (Flow generates one);
-    pass the saved state back in on the callback leg."""
-    flow = Flow.from_client_config(_client_config(), scopes=OAUTH_SCOPES, state=state)
+    pass the saved state back in on the callback leg.
+
+    code_verifier: the login-start leg and the callback leg build two
+    SEPARATE Flow objects (the first is discarded after redirecting to
+    Google). Flow auto-generates a PKCE code_verifier inside
+    authorization_url() when none is supplied, so without passing the same
+    value back in here, the callback's fetch_token() sends no verifier and
+    Google's token endpoint rejects the exchange with
+    'invalid_grant: Missing code verifier'. Callers must persist
+    flow.code_verifier (set only after authorization_url() runs) themselves
+    — e.g. in the session, alongside state — and pass it back in here."""
+    flow = Flow.from_client_config(_client_config(), scopes=OAUTH_SCOPES, state=state, code_verifier=code_verifier)
     flow.redirect_uri = redirect_uri
     return flow
 

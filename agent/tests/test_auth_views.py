@@ -43,6 +43,7 @@ def test_google_login_start_redirects_to_google_and_saves_state(client):
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
         mock_flow = MagicMock()
         mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?mock=1", "state-xyz")
+        mock_flow.code_verifier = "generated-verifier"
         build_flow.return_value = mock_flow
 
         response = client.get("/accounts/login/start/")
@@ -50,6 +51,31 @@ def test_google_login_start_redirects_to_google_and_saves_state(client):
     assert response.status_code == 302
     assert response.url.startswith("https://accounts.google.com/")
     assert client.session["google_oauth_state"] == "state-xyz"
+    assert client.session["google_oauth_code_verifier"] == "generated-verifier"
+
+
+@pytest.mark.django_db
+def test_google_callback_passes_saved_code_verifier_to_build_flow(client, monkeypatch):
+    """The PKCE code_verifier google-auth-oauthlib generates during
+    authorization_url() (login-start leg) must be the one used when
+    fetch_token() runs on the callback's separately-constructed Flow —
+    otherwise Google's token endpoint rejects the exchange with
+    'invalid_grant: Missing code verifier'."""
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier-value"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com", "email_verified": True}
+
+        client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert build_flow.call_args.kwargs.get("code_verifier") == "saved-verifier-value"
+    assert "google_oauth_code_verifier" not in client.session
 
 
 @pytest.mark.django_db
