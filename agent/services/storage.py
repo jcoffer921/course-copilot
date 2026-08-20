@@ -19,6 +19,8 @@ VALID_DATE_TYPES = {"exam", "assignment", "reading", "other"}
 
 VALID_NOTE_SOURCES = {"notes", "slides"}
 
+GRADING_CATEGORY_CHOICES = ["Homework", "Tests", "Quizzes", "Midterm", "Final", "Projects", "Other"]
+
 # course_id becomes a path segment under COURSES_DIR — restrict it to a safe
 # charset so values like "../../etc" or an absolute path can't escape courses/.
 COURSE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
@@ -348,6 +350,8 @@ def validate_grading_config(grading: list, grade_scale: dict = None) -> list:
             continue
         if not isinstance(g["weight_pct"], (int, float)):
             errors.append(f"grading[{i}].weight_pct must be numeric: {g['weight_pct']!r}")
+        if g["component"] not in GRADING_CATEGORY_CHOICES:
+            errors.append(f"grading[{i}].component must be one of {GRADING_CATEGORY_CHOICES}: {g['component']!r}")
 
         total_items = g.get("total_items")
         if total_items is not None and (not isinstance(total_items, int) or isinstance(total_items, bool) or total_items < 1):

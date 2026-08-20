@@ -148,3 +148,24 @@ def test_write_grading_config_leaves_grade_scale_untouched_when_omitted(isolated
 def test_write_grading_config_raises_when_no_syllabus_exists(isolated_courses_dir):
     with pytest.raises(storage.CourseNotFoundError):
         storage.write_grading_config("cs101", [{"component": "HW", "weight_pct": 100}])
+
+
+def test_validate_grading_config_rejects_invalid_component_name():
+    grading = [{"component": "Class Participation", "weight_pct": 100}]
+
+    errors = storage.validate_grading_config(grading)
+
+    assert any("component" in e and "must be one of" in e for e in errors)
+    assert not any(e.startswith("WARNING") for e in errors)  # blocking, not a warning
+
+
+def test_validate_grading_config_accepts_every_fixed_category_name():
+    grading = [
+        {"component": name, "weight_pct": 100 / len(storage.GRADING_CATEGORY_CHOICES)}
+        for name in storage.GRADING_CATEGORY_CHOICES
+    ]
+
+    errors = storage.validate_grading_config(grading)
+
+    blocking = [e for e in errors if not e.startswith("WARNING")]
+    assert blocking == []

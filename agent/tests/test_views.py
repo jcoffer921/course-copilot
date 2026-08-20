@@ -242,7 +242,7 @@ def test_grading_config_put_warns_about_orphaned_grades(isolated_courses_dir, ap
 
     response = api_client.put(
         "/api/courses/cs101/grading/",
-        {"grading": [{"component": "Assignments", "weight_pct": 100}]},
+        {"grading": [{"component": "Projects", "weight_pct": 100}]},
         format="json",
     )
 
