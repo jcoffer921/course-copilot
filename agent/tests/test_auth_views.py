@@ -64,6 +64,46 @@ def test_google_callback_creates_account_and_logs_in_allowed_email(client, monke
 
 
 @pytest.mark.django_db
+def test_google_callback_returns_400_when_fetch_token_fails(client, monkeypatch):
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        mock_flow = MagicMock()
+        mock_flow.fetch_token.side_effect = Exception("invalid_grant")
+        build_flow.return_value = mock_flow
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 400
+    verify_id_token.assert_not_called()
+    assert not GoogleAccount.objects.exists()
+    assert "_auth_user_id" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_callback_returns_400_when_verify_id_token_fails(client, monkeypatch):
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.side_effect = Exception("invalid token")
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 400
+    assert not GoogleAccount.objects.exists()
+    assert "_auth_user_id" not in client.session
+
+
+@pytest.mark.django_db
 def test_google_callback_rejects_disallowed_email_and_creates_no_account(client, monkeypatch):
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session

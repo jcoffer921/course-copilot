@@ -33,12 +33,23 @@ def google_callback(request):
     if not saved_state or saved_state != returned_state:
         return HttpResponseBadRequest("invalid or expired OAuth state")
 
-    flow = google_oauth.build_flow(_redirect_uri(request), state=saved_state)
-    flow.fetch_token(code=request.GET.get("code"))
+    # State has now been validated as matching — its only job was CSRF
+    # protection for this one request, so clear it before attempting the
+    # token exchange. That way a failed exchange doesn't leave stale state
+    # sitting in the session for a later request to (mis)reuse.
     del request.session["google_oauth_state"]
 
+    flow = google_oauth.build_flow(_redirect_uri(request), state=saved_state)
+    try:
+        flow.fetch_token(code=request.GET.get("code"))
+    except Exception:
+        return HttpResponseBadRequest("could not exchange authorization code with Google")
+
     credentials = flow.credentials
-    claims = google_oauth.verify_id_token(credentials.id_token)
+    try:
+        claims = google_oauth.verify_id_token(credentials.id_token)
+    except Exception:
+        return HttpResponseBadRequest("could not verify Google ID token")
     email = claims["email"]
     google_sub = claims["sub"]
 
