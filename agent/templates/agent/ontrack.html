@@ -572,18 +572,20 @@
           <div class="card-title" style="margin:0 0 var(--space-4)">Edit grading categories</div>
 
           <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-4)">
-            <sc-for list="{{ gradingSetupRows }}" as="row" hint-placeholder-count="3">
+            <sc-for list="{{ gradingSetupRows }}" as="row" hint-placeholder-count="7">
               <div style="display:flex;gap:8px;align-items:center">
-                <input class="input" placeholder="Category name" value="{{ row.component }}" onChange="{{ row.onComponentChange }}" style="flex:2;min-width:0"/>
-                <input class="input" placeholder="Weight %" value="{{ row.weight_pct }}" onChange="{{ row.onWeightChange }}" style="flex:1;min-width:0"/>
-                <input class="input" placeholder="Total items" value="{{ row.total_items }}" onChange="{{ row.onTotalItemsChange }}" style="flex:1;min-width:0"/>
-                <input class="input" placeholder="Drop lowest" value="{{ row.drop_lowest }}" onChange="{{ row.onDropLowestChange }}" style="flex:1;min-width:0"/>
-                <button type="button" class="btn btn-ghost" onClick="{{ row.onRemove }}">Remove</button>
+                <label style="display:flex;align-items:center;gap:8px;flex:1;cursor:pointer">
+                  <input type="checkbox" checked="{{ row.checked }}" onChange="{{ row.onToggle }}"/>
+                  <span style="font-size:14px;font-weight:600">{{ row.category }}</span>
+                </label>
+                <sc-if value="{{ row.checked }}" hint-placeholder-val="{{ false }}">
+                  <input class="input" placeholder="Weight %" value="{{ row.weight_pct }}" onChange="{{ row.onWeightChange }}" style="flex:1;min-width:0"/>
+                  <input class="input" placeholder="Total items" value="{{ row.total_items }}" onChange="{{ row.onTotalItemsChange }}" style="flex:1;min-width:0"/>
+                  <input class="input" placeholder="Drop lowest" value="{{ row.drop_lowest }}" onChange="{{ row.onDropLowestChange }}" style="flex:1;min-width:0"/>
+                </sc-if>
               </div>
             </sc-for>
           </div>
-
-          <button type="button" class="btn btn-secondary" onClick="{{ addGradingSetupCategory }}" style="margin-bottom:var(--space-4)">+ Add category</button>
 
           <sc-if value="{{ gradingSetupError }}" hint-placeholder-val="{{ false }}">
             <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ gradingSetupError }}</p>
@@ -868,7 +870,8 @@ class Component extends DCLogic {
     gradesSummaryLoading: false, gradesSummaryError: null, gradesSummary: null,
     addGradeOpen: false, addGradeEditingId: null, addGradeComponent: '', addGradeTitle: '',
     addGradeScore: '', addGradeMaxPoints: '', addGradeDate: '', addGradeLoading: false, addGradeError: null,
-    gradingSetupOpen: false, gradingSetupCategories: [], gradingSetupLoading: false, gradingSetupError: null,
+    gradingSetupOpen: false, gradingSetupCategoryChoices: [], gradingSetupChecked: {}, gradingSetupFields: {},
+    gradingSetupLoading: false, gradingSetupError: null,
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
     chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
@@ -1263,51 +1266,104 @@ class Component extends DCLogic {
 
   openGradingSetup() {
     const s = this.state;
-    const categories = (s.gradesBreakdown ? s.gradesBreakdown.categories : []).map(c => ({
-      component: c.component, weight_pct: String(c.weight_pct),
-      total_items: c.total_items != null ? String(c.total_items) : '',
-      drop_lowest: c.drop_lowest ? String(c.drop_lowest) : '',
-    }));
-    this.setState({ gradingSetupOpen: true, gradingSetupCategories: categories, gradingSetupError: null, gradingSetupLoading: false });
+    const courseId = s.course;
+    const seq = ++this._gradingSetupSeq;
+    fetch(`/api/courses/${courseId}/grading/`)
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._gradingSetupSeq) return;
+        if (!ok) { this.setState({ gradesError: data.detail || 'Could not load grading categories.' }); return; }
+
+        const choices = data.category_choices || [];
+        const checked = {};
+        const fields = {};
+        choices.forEach(name => {
+          checked[name] = false;
+          fields[name] = { weight_pct: '', total_items: '', drop_lowest: '' };
+        });
+
+        (data.grading || []).forEach(entry => {
+          const target = choices.includes(entry.component)
+            ? entry.component
+            : this._guessCategoryForLegacyName(entry.component, choices);
+          checked[target] = true;
+          fields[target] = {
+            weight_pct: String(entry.weight_pct),
+            total_items: entry.total_items != null ? String(entry.total_items) : '',
+            drop_lowest: entry.drop_lowest ? String(entry.drop_lowest) : '',
+          };
+        });
+
+        this.setState({
+          gradingSetupOpen: true, gradingSetupCategoryChoices: choices,
+          gradingSetupChecked: checked, gradingSetupFields: fields,
+          gradingSetupError: null, gradingSetupLoading: false,
+        });
+      })
+      .catch(e => {
+        if (seq !== this._gradingSetupSeq) return;
+        this.setState({ gradesError: 'Network error: ' + e.message });
+      });
+  }
+
+  _guessCategoryForLegacyName(name, choices) {
+    const lower = (name || '').toLowerCase();
+    const synonyms = {
+      Homework: ['homework', 'assignment', 'problem set', 'exercise'],
+      Tests: ['test'],
+      Quizzes: ['quiz'],
+      Midterm: ['midterm'],
+      Final: ['final'],
+      Projects: ['project', 'presentation', 'capstone'],
+    };
+    for (const category of choices) {
+      const keywords = synonyms[category];
+      if (keywords && keywords.some(k => lower.includes(k))) return category;
+    }
+    return choices.includes('Other') ? 'Other' : (choices[0] || 'Other');
   }
 
   closeGradingSetup() {
     this._gradingSetupSeq++;
-    this.setState({ gradingSetupOpen: false, gradingSetupCategories: [], gradingSetupError: null, gradingSetupLoading: false });
-  }
-
-  addGradingSetupCategory() {
     this.setState({
-      gradingSetupCategories: this.state.gradingSetupCategories.concat([{ component: '', weight_pct: '', total_items: '', drop_lowest: '' }]),
+      gradingSetupOpen: false, gradingSetupCategoryChoices: [], gradingSetupChecked: {}, gradingSetupFields: {},
+      gradingSetupError: null, gradingSetupLoading: false,
     });
   }
 
-  removeGradingSetupCategory(index) {
-    this.setState({ gradingSetupCategories: this.state.gradingSetupCategories.filter((_, i) => i !== index) });
+  toggleGradingSetupCategory(category) {
+    this.setState({
+      gradingSetupChecked: Object.assign({}, this.state.gradingSetupChecked, {
+        [category]: !this.state.gradingSetupChecked[category],
+      }),
+    });
   }
 
-  updateGradingSetupField(index, field, value) {
-    const categories = this.state.gradingSetupCategories.map((c, i) => i === index ? Object.assign({}, c, { [field]: value }) : c);
-    this.setState({ gradingSetupCategories: categories });
+  updateGradingSetupField(category, field, value) {
+    const fields = Object.assign({}, this.state.gradingSetupFields, {
+      [category]: Object.assign({}, this.state.gradingSetupFields[category], { [field]: value }),
+    });
+    this.setState({ gradingSetupFields: fields });
   }
 
   submitGradingSetup() {
     const s = this.state;
     const courseId = s.course;
     const grading = [];
-    for (const c of s.gradingSetupCategories) {
-      if (!c.component.trim()) { this.setState({ gradingSetupError: 'Every category needs a name.' }); return; }
-      const weight = parseFloat(c.weight_pct);
-      if (isNaN(weight)) { this.setState({ gradingSetupError: `Enter a weight % for ${c.component}.` }); return; }
-      const entry = { component: c.component.trim(), weight_pct: weight };
-      if (c.total_items.trim()) {
-        const totalItems = parseInt(c.total_items, 10);
-        if (isNaN(totalItems) || totalItems < 1) { this.setState({ gradingSetupError: `Total items for ${c.component} must be a positive whole number.` }); return; }
+    for (const category of s.gradingSetupCategoryChoices) {
+      if (!s.gradingSetupChecked[category]) continue;
+      const f = s.gradingSetupFields[category];
+      const weight = parseFloat(f.weight_pct);
+      if (isNaN(weight)) { this.setState({ gradingSetupError: `Enter a weight % for ${category}.` }); return; }
+      const entry = { component: category, weight_pct: weight };
+      if (f.total_items.trim()) {
+        const totalItems = parseInt(f.total_items, 10);
+        if (isNaN(totalItems) || totalItems < 1) { this.setState({ gradingSetupError: `Total items for ${category} must be a positive whole number.` }); return; }
         entry.total_items = totalItems;
       }
-      if (c.drop_lowest.trim()) {
-        const dropLowest = parseInt(c.drop_lowest, 10);
-        if (isNaN(dropLowest) || dropLowest < 0) { this.setState({ gradingSetupError: `Drop-lowest for ${c.component} must be a non-negative whole number.` }); return; }
+      if (f.drop_lowest.trim()) {
+        const dropLowest = parseInt(f.drop_lowest, 10);
+        if (isNaN(dropLowest) || dropLowest < 0) { this.setState({ gradingSetupError: `Drop-lowest for ${category} must be a non-negative whole number.` }); return; }
         entry.drop_lowest = dropLowest;
       }
       grading.push(entry);
@@ -1468,13 +1524,16 @@ class Component extends DCLogic {
       countLabel: c.total_items ? `${c.entered_count} of ${c.total_items} entered` : `${c.entered_count} entered`,
       dropLabel: c.drop_lowest > 0 ? `Lowest ${c.drop_lowest} dropped` : null,
     }));
-    const gradingSetupRows = s.gradingSetupCategories.map((c, i) => ({
-      component: c.component, weight_pct: c.weight_pct, total_items: c.total_items, drop_lowest: c.drop_lowest,
-      onComponentChange: (e) => this.updateGradingSetupField(i, 'component', e.target.value),
-      onWeightChange: (e) => this.updateGradingSetupField(i, 'weight_pct', e.target.value),
-      onTotalItemsChange: (e) => this.updateGradingSetupField(i, 'total_items', e.target.value),
-      onDropLowestChange: (e) => this.updateGradingSetupField(i, 'drop_lowest', e.target.value),
-      onRemove: () => this.removeGradingSetupCategory(i),
+    const gradingSetupRows = s.gradingSetupCategoryChoices.map(category => ({
+      category: category,
+      checked: !!s.gradingSetupChecked[category],
+      onToggle: () => this.toggleGradingSetupCategory(category),
+      weight_pct: (s.gradingSetupFields[category] || {}).weight_pct || '',
+      total_items: (s.gradingSetupFields[category] || {}).total_items || '',
+      drop_lowest: (s.gradingSetupFields[category] || {}).drop_lowest || '',
+      onWeightChange: (e) => this.updateGradingSetupField(category, 'weight_pct', e.target.value),
+      onTotalItemsChange: (e) => this.updateGradingSetupField(category, 'total_items', e.target.value),
+      onDropLowestChange: (e) => this.updateGradingSetupField(category, 'drop_lowest', e.target.value),
     }));
     const gradesHasGradingSetup = gradesCategoriesTotal > 0;
     const gradesShowContent = !s.gradesLoading && !s.gradesError;
@@ -1924,7 +1983,6 @@ class Component extends DCLogic {
       gradingSetupLoading: s.gradingSetupLoading, gradingSetupError: s.gradingSetupError,
       openGradingSetup: () => this.openGradingSetup(),
       closeGradingSetup: () => this.closeGradingSetup(),
-      addGradingSetupCategory: () => this.addGradingSetupCategory(),
       submitGradingSetup: () => this.submitGradingSetup(),
       retryGrades: () => this.loadGrades(s.course),
       practiceWeak: practiceWeak,
