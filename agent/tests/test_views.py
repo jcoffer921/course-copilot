@@ -141,6 +141,55 @@ def test_create_course_draft_conflicts_with_existing_real_course(isolated_course
     assert response.status_code == 409
 
 
+def test_rename_draft_course(isolated_courses_dir, api_client):
+    api_client.post("/api/courses/newclass/", {"course_name": "New Class"}, format="json")
+
+    response = api_client.patch("/api/courses/newclass/", {"course_name": "Renamed Class"}, format="json")
+
+    assert response.status_code == 200
+    assert response.data == {"course_id": "newclass", "course_name": "Renamed Class"}
+    assert storage.read_syllabus("newclass") is None  # still a draft, not promoted
+
+
+def test_rename_real_course(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.patch("/api/courses/cs101/", {"course_name": "Renamed"}, format="json")
+
+    assert response.status_code == 200
+    assert storage.read_syllabus("cs101")["course_name"] == "Renamed"
+
+
+def test_rename_nonexistent_course_404s(isolated_courses_dir, api_client):
+    response = api_client.patch("/api/courses/nocourse/", {"course_name": "X"}, format="json")
+
+    assert response.status_code == 404
+
+
+def test_delete_draft_course(isolated_courses_dir, api_client):
+    api_client.post("/api/courses/newclass/", {"course_name": "New Class"}, format="json")
+
+    response = api_client.delete("/api/courses/newclass/")
+
+    assert response.status_code == 204
+    assert not (isolated_courses_dir / "newclass").exists()
+
+
+def test_delete_real_course(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.delete("/api/courses/cs101/")
+
+    assert response.status_code == 204
+    assert not (isolated_courses_dir / "cs101").exists()
+
+
+def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
+    response = api_client.delete("/api/courses/nocourse/")
+
+    assert response.status_code == 404
+
+
 class _NeverCalledMessages:
     async def create(self, **kwargs):
         raise AssertionError(

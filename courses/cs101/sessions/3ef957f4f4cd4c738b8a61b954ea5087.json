@@ -1,0 +1,20 @@
+{
+  "session_id": "3ef957f4f4cd4c738b8a61b954ea5087",
+  "course_id": "cs101",
+  "created_at": "2026-08-17T19:16:54.806157+00:00",
+  "updated_at": "2026-08-17T19:16:58.193073+00:00",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "timestamp": "2026-08-17T19:16:58.190078+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi! I'm Cora, your AI academic assistant for Intro to Computer Science. I can help you with things like deadlines, grading breakdowns, and questions about course material \u2014 recursion, sorting algorithms, and more. What do you need?",
+      "timestamp": "2026-08-17T19:16:58.193073+00:00",
+      "sources": [],
+      "grounded": false
+    }
+  ]
+}

@@ -9,6 +9,7 @@ auth/session/admin tables, never for course content.
 
 import json
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -684,3 +685,38 @@ def write_course_draft(course_id: str, course_name: str) -> Path:
         encoding="utf-8",
     )
     return course_path
+
+
+def delete_course(course_id: str) -> None:
+    """Deletes courses/<course_id>/ entirely — syllabus, notes, references,
+    sessions, quiz_history, mastery_scores, everything. Raises
+    CourseNotFoundError if course_id exists as neither a draft nor a real
+    course. Irreversible; callers are responsible for confirming with the
+    user before calling this (plan-then-pause per CLAUDE.md)."""
+    course_dir = _course_dir(course_id)
+    if not (course_dir / "course.json").exists() and not (course_dir / "syllabus.json").exists():
+        raise CourseNotFoundError(f"no course '{course_id}' found")
+    shutil.rmtree(course_dir)
+
+
+def rename_course(course_id: str, course_name: str) -> None:
+    """Updates course_name in place — course.json for a draft, syllabus.json
+    for a real course, whichever exists. Raises CourseNotFoundError if
+    neither exists."""
+    course_dir = _course_dir(course_id)
+    course_path = course_dir / "course.json"
+    syllabus_path = course_dir / "syllabus.json"
+
+    if course_path.exists():
+        data = json.loads(course_path.read_text(encoding="utf-8"))
+        data["course_name"] = course_name
+        course_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return
+
+    if syllabus_path.exists():
+        data = json.loads(syllabus_path.read_text(encoding="utf-8"))
+        data["course_name"] = course_name
+        syllabus_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        return
+
+    raise CourseNotFoundError(f"no course '{course_id}' found")

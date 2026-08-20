@@ -1,0 +1,50 @@
+{
+  "lecture_id": "lecture01",
+  "source": "notes",
+  "date": null,
+  "topics": [
+    "Overview: Database Management Systems"
+  ],
+  "chunks": [
+    {
+      "id": "dbms-definition",
+      "topic": "Overview: Database Management Systems",
+      "text": "A Database is a shared collection of logically related data (and a description of this data), designed to meet the information needs of an organization. It is a single, large repository of data used simultaneously by many departments. A Database Management System (DBMS) is a software system that enables users to define, create, and maintain the database and that provides controlled access to this database."
+    },
+    {
+      "id": "database-approach-ddl-dml",
+      "topic": "Overview: Database Management Systems",
+      "text": "The Database Approach involves two key languages: (1) Data Definition Language (DDL) \u2014 permits specification of data types, structures, and any data constraints; all specifications are stored in the database. (2) Data Manipulation Language (DML) \u2014 provides a general inquiry facility (query language) for the data."
+    },
+    {
+      "id": "controlled-access-dbms",
+      "topic": "Overview: Database Management Systems",
+      "text": "Controlled access to a database in the DBMS approach may include: a security system, an integrity system, a concurrency control system, a recovery control system, a user-accessible catalogue, and a view mechanism that provides users with only the data they want or need to use."
+    },
+    {
+      "id": "views-definition-benefits",
+      "topic": "Overview: Database Management Systems",
+      "text": "A view allows each user to have his or her own view of the database; it is essentially some subset of the database. Benefits of views include: reducing complexity, providing a level of security, providing a mechanism to customize the appearance of the database, and presenting a consistent, unchanging picture of the database structure even if the underlying database is changed."
+    },
+    {
+      "id": "dbms-environment-components",
+      "topic": "Overview: Database Management Systems",
+      "text": "The components of the DBMS environment are: (1) Hardware \u2014 can range from a PC to a network of computers. (2) Software \u2014 includes the DBMS, operating system, network software if necessary, and application programs. (3) Data \u2014 used by the organization and a description of this data; the structure of the database is called the schema. (4) Procedures \u2014 instructions and rules for the design and use of the database, such as how to log on, make backups, handle failures, and change table structures. (5) People \u2014 the various roles involved in using and managing the database."
+    },
+    {
+      "id": "roles-database-environment",
+      "topic": "Overview: Database Management Systems",
+      "text": "Roles in the Database Environment include: Database Administrator (DBA) \u2014 manages the DBMS's use and ensures its proper function; Database Designers (Logical and Physical) \u2014 design the database structure, how and in what format data will be stored, and the relationships between data items; System Administrator \u2014 oversees the database system's general operations; Systems Analysts and Programmers \u2014 design and implement application programs, data entry screens, and reports; End Users (naive and sophisticated, e.g., clerks, supervisors, managers) \u2014 use the application programs to run the organization's daily operations."
+    },
+    {
+      "id": "database-location-types",
+      "topic": "Overview: Database Management Systems",
+      "text": "Databases can be located in two ways: (1) Centralized \u2014 supports data located at a single site. (2) Distributed \u2014 supports data distributed across several sites."
+    },
+    {
+      "id": "dbms-advantages-disadvantages",
+      "topic": "Overview: Database Management Systems",
+      "text": "Advantages of DBMSs include: control of data redundancy, improved data integrity, improved security, improved data accessibility, improved maintenance, increased concurrency, and improved backup and recovery services. Disadvantages include: complexity, size, cost of the DBMS, and cost of conversion."
+    }
+  ]
+}

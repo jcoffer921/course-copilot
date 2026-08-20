@@ -1,0 +1,34 @@
+{
+  "session_id": "dc67b3e15ac14956a17a6e35ec75f357",
+  "course_id": "cs101",
+  "created_at": "2026-08-16T17:26:23.831592+00:00",
+  "updated_at": "2026-08-16T17:27:05.644369+00:00",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi",
+      "timestamp": "2026-08-16T17:26:26.864254+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Hi! I can answer questions about the Intro to Computer Science (CS101) course, including topics covered in the syllabus and lecture notes. What would you like to know?",
+      "timestamp": "2026-08-16T17:26:26.869199+00:00",
+      "sources": [],
+      "grounded": false
+    },
+    {
+      "role": "user",
+      "content": "what should i learn first",
+      "timestamp": "2026-08-16T17:27:05.639369+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Based on the syllabus, the course topics are ordered as follows:\n1. Variables, control flow, and functions\n2. Lists, dictionaries, and strings\n3. Recursion\n4. Sorting and searching algorithms\n5. Basic object-oriented programming\n6. Big-O notation and algorithmic complexity\n7. File I/O and error handling\n\nSo you should start with Variables, control flow, and functions first. However, I only have detailed lecture notes for Recursion and Sorting and searching algorithms, so I can only answer in-depth questions about those two topics.",
+      "timestamp": "2026-08-16T17:27:05.644369+00:00",
+      "sources": [
+        "syllabus"
+      ],
+      "grounded": true
+    }
+  ]
+}

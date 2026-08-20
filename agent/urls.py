@@ -28,7 +28,7 @@ urlpatterns = [
         views.SessionDetailView.as_view(),
         name="session-detail",
     ),
-    path("courses/<slug:course_id>/", views.CourseDraftCreateView.as_view(), name="course-create-draft"),
+    path("courses/<slug:course_id>/", views.CourseView.as_view(), name="course-detail"),
     path("reminders/", views.RemindersView.as_view(), name="reminders"),
     path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
     path("grades/summary/", views.GradesSummaryView.as_view(), name="grades-summary"),
