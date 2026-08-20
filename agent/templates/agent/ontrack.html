@@ -1286,12 +1286,39 @@ class Component extends DCLogic {
           const target = choices.includes(entry.component)
             ? entry.component
             : this._guessCategoryForLegacyName(entry.component, choices);
+          const wasChecked = checked[target];
+          const prior = fields[target] || { weight_pct: '', total_items: '', drop_lowest: '' };
           checked[target] = true;
-          fields[target] = {
-            weight_pct: String(entry.weight_pct),
-            total_items: entry.total_items != null ? String(entry.total_items) : '',
-            drop_lowest: entry.drop_lowest ? String(entry.drop_lowest) : '',
-          };
+          if (!wasChecked) {
+            fields[target] = {
+              weight_pct: String(entry.weight_pct),
+              total_items: entry.total_items != null ? String(entry.total_items) : '',
+              drop_lowest: entry.drop_lowest ? String(entry.drop_lowest) : '',
+            };
+          } else {
+            const priorWeight = parseFloat(prior.weight_pct);
+            const newWeight = parseFloat(entry.weight_pct);
+            const summedWeight = (isNaN(priorWeight) ? 0 : priorWeight) + (isNaN(newWeight) ? 0 : newWeight);
+
+            const priorTotalItems = prior.total_items !== '' ? parseInt(prior.total_items, 10) : null;
+            const newTotalItems = entry.total_items != null ? entry.total_items : null;
+            let summedTotalItems;
+            if (priorTotalItems != null && newTotalItems != null) {
+              summedTotalItems = priorTotalItems + newTotalItems;
+            } else if (priorTotalItems != null) {
+              summedTotalItems = priorTotalItems;
+            } else if (newTotalItems != null) {
+              summedTotalItems = newTotalItems;
+            } else {
+              summedTotalItems = null;
+            }
+
+            fields[target] = {
+              weight_pct: String(summedWeight),
+              total_items: summedTotalItems != null ? String(summedTotalItems) : '',
+              drop_lowest: prior.drop_lowest,
+            };
+          }
         });
 
         this.setState({
