@@ -72,6 +72,10 @@ class GradesStorageError(Exception):
     """Raised when grades.json on disk is corrupt/unreadable."""
 
 
+class CalendarSyncStorageError(Exception):
+    """Raised when calendar_sync.json exists but is corrupt."""
+
+
 class CourseNotFoundError(Exception):
     """Raised when no syllabus.json exists yet for the given course_id.
 
@@ -573,6 +577,36 @@ def append_quiz_attempt(course_id: str, attempt: dict) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "quiz_history.json"
     out_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
+    return out_path
+
+
+def read_calendar_sync(course_id: str) -> list:
+    """Returns the list of deadlines already pushed to Google Calendar for
+    this course, or [] if calendar_sync.json doesn't exist yet — no
+    deadlines synced yet is the normal starting state, same "doesn't exist
+    yet = normal state" convention as trusted_domains.json."""
+    path = _course_dir(course_id) / "calendar_sync.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise CalendarSyncStorageError(f"calendar_sync.json for '{course_id}' is corrupt: {e}")
+    return data.get("synced", [])
+
+
+def append_calendar_sync_record(course_id: str, record: dict) -> Path:
+    """Appends one synced-deadline record to calendar_sync.json — an
+    append-only log, mirroring append_quiz_attempt. OnTrack never un-syncs
+    a Google Calendar event from its own side, so nothing ever rewrites or
+    removes an existing entry."""
+    synced = read_calendar_sync(course_id)
+    synced.append(record)
+
+    out_dir = _course_dir(course_id)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "calendar_sync.json"
+    out_path.write_text(json.dumps({"course_id": course_id, "synced": synced}, indent=2), encoding="utf-8")
     return out_path
 
 
