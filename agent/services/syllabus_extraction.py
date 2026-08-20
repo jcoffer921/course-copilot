@@ -31,7 +31,7 @@ Schema:
   "course_id": "string",
   "course_name": "string",
   "dates": [{"date": "YYYY-MM-DD", "title": "string", "type": "exam|assignment|reading|other"}],
-  "grading": [{"component": "string", "weight_pct": 0}],
+  "grading": [{"component": "Homework|Tests|Quizzes|Midterm|Final|Projects|Other", "weight_pct": 0}],
   "topics": ["string"]
 }
 
@@ -50,6 +50,21 @@ from an explicit year stated elsewhere in the same document.
 - "type" must be exactly one of: exam, assignment, reading, other.
 - "weight_pct" is a number (e.g. 20 for 20%). If weights aren't given, drop that \
 whole grading[] entry — never emit {"component": ...} with no "weight_pct".
+- "component" MUST be exactly one of: Homework, Tests, Quizzes, Midterm, Final, \
+Projects, Other. Map the syllabus's own wording onto these:
+    - Homework: homework, assignments, problem sets, exercises
+    - Tests: recurring or unlabeled tests/exams not specifically called out as \
+"the midterm" or "the final"
+    - Quizzes: quizzes
+    - Midterm: an exam explicitly labeled as the midterm
+    - Final: an exam explicitly labeled as the final
+    - Projects: projects, presentations, capstone work
+    - Other: anything real that doesn't fit the six above (participation, \
+attendance, lab reports, etc.) — use Other rather than dropping the entry or \
+forcing it into the wrong bucket.
+  If two or more syllabus lines map to the same bucket (e.g. "Problem Sets" 15% \
+and "Lab Assignments" 10%, both Homework), merge them into ONE grading[] entry \
+with the summed weight_pct — never emit two entries with the same component.
 - "topics" is a flat list of topic/unit names as they appear in the syllabus.
 """
 
@@ -117,4 +132,17 @@ async def extract_syllabus_async(source_text: str, course_id: str, course_name_h
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
+        # The model sometimes prefixes the JSON with reasoning prose (or trails it
+        # with commentary) despite being told not to. As a fallback, slice out
+        # everything from the first "{" to the last "}" and retry once before
+        # giving up — this tolerates a preamble/epilogue without trying to parse
+        # or understand its shape.
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            sliced = raw[start:end + 1]
+            try:
+                return json.loads(sliced)
+            except json.JSONDecodeError:
+                pass
         raise ValueError(f"model did not return valid JSON: {e}\n\nRaw output:\n{raw}")
