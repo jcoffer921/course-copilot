@@ -9,7 +9,7 @@ OnTrack is an AI agent scoped to the current semester's coursework, built on the
 - Structured JSON per course as the knowledge store (no vector DB in v1, no relational DB either — flat files, single user)
 - Django + DRF, served over **ASGI** (uvicorn), not WSGI — the agent makes per-request calls to the Anthropic API, which are I/O-bound; async views (`adrf`) + `AsyncAnthropic` keep the event loop free instead of blocking a worker thread per call
 - Django's own `db.sqlite3` is used ONLY for its built-in auth/session/admin tables — never for course content
-- Optional: Google Calendar API for deadline sync (later phase, not v1)
+- Google Calendar API for deadline sync — built (`calendar_sync.py` + `custom_events.py`); requires a user-provided Google Cloud OAuth client
 
 ## Non-negotiable constraints
 - Never fabricate course content. Ground every answer in real material only: this course's syllabus/notes, a user-uploaded reference document, or — only when that material genuinely doesn't cover the question, and only from a domain the user has explicitly approved for this course — real, cited web content. Never invent facts, never blend web content into an answer as if it were the course's own material, and never search the web outside an approved domain list.
@@ -27,6 +27,13 @@ course-copilot/
     asgi.py                # run THIS (uvicorn config.asgi:application), not wsgi.py
     wsgi.py                 # kept for tooling compat only — not how this project runs
   agent/                  # Django app: services + async DRF views + CLI commands
+    models.py               # Django ORM — account/auth only (GoogleAccount), in db.sqlite3
+                            # alongside the built-in auth tables; never course content
+    auth_views.py           # Google Sign-In: login redirect, OAuth callback, logout — plain
+                            # Django views (browser-redirect flow), not DRF
+    authentication.py       # DRF authentication class controlling 401-vs-403 on an
+                            # unauthenticated request
+    serializers.py          # DRF request serializers for views.py's APIViews
     services/
       client.py              # shared AsyncAnthropic init + MODEL constants — every
                               # API-calling service imports from here, not anthropic directly
@@ -43,6 +50,17 @@ course-copilot/
       grades.py                  # grade calculation engine: current_grade, add/update/delete item
                                  # CRUD, grade_needed (what-if solver), missable_by_category,
                                  # all_courses_summary, find_orphaned_components
+      calendar_sync.py           # pushes syllabus deadlines to the signed-in user's real
+                                 # Google Calendar, one event at a time
+      custom_events.py           # manually-added deadlines/events (course-specific or
+                                 # general, course_id: null) — full CRUD + Calendar sync,
+                                 # reusing calendar_sync.py's credentials
+      dashboard.py                # cross-course Dashboard-tab summary — composition only,
+                                 # no new storage format
+      streak.py                   # cross-course study streak (consecutive UTC days with a
+                                 # quiz attempt) — read-only
+      google_oauth.py              # Google Sign-In: email allow-list + OAuth 2.0
+                                 # Authorization Code flow helpers
     views.py               # async DRF views (adrf.views.APIView)
     urls.py
     management/commands/
@@ -58,7 +76,17 @@ course-copilot/
       grades.py                   # CLI wrapper (--add / --list / --whatif / --set-grading)
     tests/                  # pytest (pytest-django + pytest-asyncio); live-API tests skip
                             # cleanly without ANTHROPIC_API_KEY set
+    templates/agent/
+      login.html              # branded Google Sign-In page
+      ontrack.html            # the entire app UI — single-page DC-component template
+    static/agent/
+      support.js               # shared JS runtime for ontrack.html
+      _ds/                     # generated "Organic" design system (CSS + component bundle)
+      images/                  # logo assets (full logo + cropped icon-only mark for
+                               # favicon/sidebar use at small sizes)
   courses/
+    custom_events.json    # top-level (not per-course) — manually-added deadlines/events;
+                          # absent until the first custom event is created
     <course_id>/
       syllabus.json       # extracted dates, topics, grading breakdown
       notes/
@@ -73,6 +101,8 @@ course-copilot/
                           # categories — user-editable CRUD, not an append-only log; absent
                           # until the first grade is added
       trusted_domains.json # human-approved web-search domains — absent until at least one is approved
+      calendar_sync.json   # which of this course's syllabus deadlines have been pushed to
+                          # Google Calendar — absent until the first sync
   test-syllabi/           # sample syllabi for testing extraction
   test-notes/             # sample lecture notes + slide decks for testing chunk_notes
   CLAUDE.md               # this file
@@ -241,6 +271,39 @@ log.
 `component` must match a `component` string in that course's `syllabus.json` `grading`
 array. `date` is optional. `score` may exceed `max_points` (extra credit).
 
+**custom_events.json** — top-level, not per-course (a general event has no single course
+to belong to). Manually-added deadlines, full CRUD.
+```json
+{
+  "events": [
+    {
+      "id": "string", "course_id": "string|null", "date": "YYYY-MM-DD", "time": "HH:MM|null",
+      "title": "string", "type": "exam|assignment|reading|other",
+      "synced": false, "google_event_id": "string|null", "synced_at": "ISO8601|null",
+      "created_at": "ISO8601"
+    }
+  ]
+}
+```
+
+`course_id: null` means general — shows regardless of which course is selected, same as a
+syllabus-derived date bypassing the course filter. Same type taxonomy as syllabus dates, no
+new types. Absent entirely until the first custom event is created.
+
+**calendar_sync.json** — per-course, tracks which syllabus-derived deadlines have been
+pushed to Google Calendar (custom events track their own sync state inline instead, on
+custom_events.json's own `synced`/`google_event_id`/`synced_at` fields).
+```json
+{
+  "course_id": "string",
+  "synced": [
+    {"date": "YYYY-MM-DD", "title": "string", "type": "string", "google_event_id": "string", "synced_at": "ISO8601"}
+  ]
+}
+```
+
+Keyed by `(date, title)` per entry. Absent until the first deadline in that course is synced.
+
 ## Build order (done, in this order)
 
 1. `extract_syllabus.py` — test extraction reliability first; this was the highest-risk step
@@ -249,14 +312,19 @@ array. `date` is optional. `score` may exceed `max_points` (extra credit).
 4. `ask.py` — grounded Q&A, stateless or multi-turn via session_id
 5. `quiz.py` + `mastery.py` — question generation/tracking, wired to an EWMA rebuild on every attempt
 6. `reminders.py` — read-only deadline digest across all courses
+7. Google Sign-In (`auth_views.py`, `google_oauth.py`, `models.py`'s `GoogleAccount`) —
+   the web UI's auth layer
+8. `calendar_sync.py` — Calendar sync for syllabus deadlines, one event at a time
+9. `custom_events.py` + the Deadlines tab — manually-added deadlines/events, full CRUD,
+   merged with syllabus deadlines into one unbounded, cross-course list
 
 **Deferred, not yet built:**
 
 - Rubric critique mode
-- Calendar sync (`calendar_sync.py`) — needs a user-provided Google Cloud OAuth
-  client (credentials.json); blocked on that, not on anything else being unready.
-  When built: dry-run by default, per-event explicit confirmation, never bulk-add
-  a semester's dates in one call (that's what reminders.py is for browsing).
+- Recurring class schedules ("CS101 meets Mon/Wed/Fri 10am") — a genuinely different
+  data shape (a recurrence pattern, not a dated entry) than anything above, and needs
+  its own Calendar sync approach (RRULE, not the one-off inserts calendar_sync.py and
+  custom_events.py both use).
 
 ## Definition of "working" for each script
 - Runs standalone from CLI with no manual context-pasting
