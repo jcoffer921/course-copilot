@@ -1166,8 +1166,12 @@ class Component extends DCLogic {
         const syncing = Object.assign({}, this.state.dashboardSyncingKeys);
         delete syncing[key];
         if (!ok) { this.setState({ dashboardSyncingKeys: syncing, dashboardSyncError: data.detail || 'Could not add to Google Calendar.' }); return; }
+        // Scoped by course_id too, not just date+title — on the "all
+        // courses" view, two different courses can share an identical
+        // date+title (e.g. two "Final" entries the same day), and only
+        // the row for the course actually synced should flip to Added.
         const deadlines = this.state.dashboardDeadlines.map(d =>
-          (d.date === date && d.title === title) ? Object.assign({}, d, { synced: true }) : d
+          (d.course_id === courseId && d.date === date && d.title === title) ? Object.assign({}, d, { synced: true }) : d
         );
         this.setState({ dashboardSyncingKeys: syncing, dashboardDeadlines: deadlines });
       })
@@ -2105,7 +2109,7 @@ class Component extends DCLogic {
 
     const deadlines = s.dashboardDeadlines.filter(d => s.course === 'all' || d.course_id === s.course).map(d => {
       const dp = dateParts(d.date);
-      const key = d.date + '|' + d.title;
+      const key = d.course_id + '|' + d.date + '|' + d.title;
       return {
         month: dp.monthAbbrUpper, day: dp.day, title: d.title,
         typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Other',

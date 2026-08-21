@@ -2,7 +2,10 @@ from rest_framework import serializers
 
 
 class CalendarSyncRequestSerializer(serializers.Serializer):
-    date = serializers.CharField(allow_blank=False)
+    # DateField (not CharField) so a malformed date ("not-a-date") is
+    # rejected here with a 400 at the serializer layer, rather than passing
+    # validation and later blowing up datetime.strptime() in calendar_sync.py.
+    date = serializers.DateField()
     title = serializers.CharField(allow_blank=False)
     type = serializers.CharField(allow_blank=False)
 

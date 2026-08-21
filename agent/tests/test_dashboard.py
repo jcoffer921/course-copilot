@@ -213,3 +213,25 @@ def test_build_dashboard_deadlines_unsynced_when_no_calendar_sync_file(isolated_
     data = dashboard.build_dashboard()
 
     assert data["deadlines"][0]["synced"] is False
+
+
+def test_build_dashboard_never_raises_on_corrupt_calendar_sync_file(isolated_courses_dir):
+    # _annotate_synced() is called outside build_dashboard()'s per-course
+    # try/except, at the return statement — a corrupt calendar_sync.json
+    # must not be allowed to 500 the whole dashboard for every course.
+    from datetime import date, timedelta
+
+    midterm_date = (date.today() + timedelta(days=5)).isoformat()
+
+    _seed_course(
+        "cs101", topics=["A"],
+        grading=[{"component": "HW", "weight_pct": 100}],
+        dates=[{"date": midterm_date, "title": "Midterm", "type": "exam"}],
+    )
+    course_dir = isolated_courses_dir / "cs101"
+    (course_dir / "calendar_sync.json").write_text("{not valid json", encoding="utf-8")
+
+    data = dashboard.build_dashboard()
+
+    assert data["courses"]["cs101"]["topics_count"] == 1
+    assert data["deadlines"][0]["synced"] is False

@@ -587,3 +587,52 @@ def test_calendar_sync_returns_502_when_google_auth_fails(isolated_courses_dir):
         )
 
     assert response.status_code == 502
+
+
+@pytest.mark.django_db
+def test_calendar_sync_rejects_malformed_date(isolated_courses_dir):
+    from datetime import timedelta
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="valid-token", refresh_token="refresh-token",
+        token_expiry=timezone.now() + timedelta(hours=1),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        "/api/courses/cs101/calendar-sync/",
+        {"date": "not-a-date", "title": "X", "type": "exam"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_calendar_sync_returns_502_not_raw_500_on_unexpected_service_error(isolated_courses_dir, api_client, monkeypatch):
+    # Backstop for any *future* unexpected exception from the service layer
+    # — the endpoint's binding constraint is that it must never surface a
+    # raw 500, even for a failure mode the specific except clauses don't
+    # already name.
+    def _boom(user, course_id, date, title, event_type):
+        raise RuntimeError("something nobody anticipated")
+
+    monkeypatch.setattr(views.calendar_sync, "add_deadline_to_calendar", _boom)
+
+    response = api_client.post(
+        "/api/courses/cs101/calendar-sync/",
+        {"date": "2026-09-01", "title": "Midterm", "type": "exam"},
+        format="json",
+    )
+
+    assert response.status_code == 502
+    assert response.data == {"detail": "Could not add to Google Calendar."}

@@ -118,3 +118,75 @@ def test_add_deadline_to_calendar_raises_calendar_auth_error_when_refresh_fails(
 
     build.assert_not_called()
     assert storage.read_calendar_sync("cs101") == []
+
+
+@pytest.mark.django_db
+def test_add_deadline_to_calendar_raises_calendar_auth_error_on_lazy_refresh_failure_during_execute(
+    isolated_courses_dir, user_with_valid_token,
+):
+    # The stored token looks unexpired (so _get_credentials's pre-emptive
+    # `credentials.expired` check doesn't fire), but the user revoked
+    # OnTrack's Google access out-of-band — the client library discovers
+    # this and raises RefreshError lazily, inside .execute() itself.
+    from google.auth.exceptions import RefreshError
+
+    mock_service = MagicMock()
+    mock_service.events.return_value.insert.return_value.execute.side_effect = RefreshError("invalid_grant")
+
+    with patch("agent.services.calendar_sync.build", return_value=mock_service):
+        with pytest.raises(calendar_sync.CalendarAuthError):
+            calendar_sync.add_deadline_to_calendar(user_with_valid_token, "cs101", "2026-09-01", "Midterm", "exam")
+
+    assert storage.read_calendar_sync("cs101") == []
+
+
+@pytest.mark.django_db
+def test_add_deadline_to_calendar_raises_calendar_auth_error_on_http_error(
+    isolated_courses_dir, user_with_valid_token,
+):
+    import httplib2
+    from googleapiclient.errors import HttpError
+
+    resp = httplib2.Response({"status": 429})
+    mock_service = MagicMock()
+    mock_service.events.return_value.insert.return_value.execute.side_effect = HttpError(
+        resp, b"Rate Limit Exceeded",
+    )
+
+    with patch("agent.services.calendar_sync.build", return_value=mock_service):
+        with pytest.raises(calendar_sync.CalendarAuthError):
+            calendar_sync.add_deadline_to_calendar(user_with_valid_token, "cs101", "2026-09-01", "Midterm", "exam")
+
+    assert storage.read_calendar_sync("cs101") == []
+
+
+@pytest.mark.django_db
+def test_add_deadline_to_calendar_raises_calendar_auth_error_on_network_error(
+    isolated_courses_dir, user_with_valid_token,
+):
+    mock_service = MagicMock()
+    mock_service.events.return_value.insert.return_value.execute.side_effect = OSError("network unreachable")
+
+    with patch("agent.services.calendar_sync.build", return_value=mock_service):
+        with pytest.raises(calendar_sync.CalendarAuthError):
+            calendar_sync.add_deadline_to_calendar(user_with_valid_token, "cs101", "2026-09-01", "Midterm", "exam")
+
+    assert storage.read_calendar_sync("cs101") == []
+
+
+@pytest.mark.django_db
+def test_add_deadline_to_calendar_raises_calendar_auth_error_when_user_has_no_google_account(
+    isolated_courses_dir, db,
+):
+    # Every DRF view in this app requires only IsAuthenticated, which admits
+    # any authenticated Django user — not just ones with a linked
+    # GoogleAccount (e.g. a createsuperuser account, or this fixture's own
+    # plain user).
+    user = User.objects.create_user(username="no-google-account")
+
+    with patch("agent.services.calendar_sync.build") as build:
+        with pytest.raises(calendar_sync.CalendarAuthError):
+            calendar_sync.add_deadline_to_calendar(user, "cs101", "2026-09-01", "Midterm", "exam")
+
+    build.assert_not_called()
+    assert storage.read_calendar_sync("cs101") == []

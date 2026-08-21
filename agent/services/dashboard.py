@@ -42,16 +42,25 @@ def _annotate_synced(deadlines: list) -> list:
     """Marks each deadline with whether it's already been pushed to Google
     Calendar, by cross-referencing that course's calendar_sync.json (read
     once per distinct course_id present in the list, not once per
-    deadline)."""
+    deadline).
+
+    A course with a corrupt calendar_sync.json degrades that course's
+    deadlines to synced=False rather than raising — same "isolate the
+    corrupt course, don't fail everything" spirit as build_dashboard()'s
+    per-course try/except, extended to this call outside that loop."""
     synced_by_course = {}
     annotated = []
     for d in deadlines:
         course_id = d["course_id"]
         if course_id not in synced_by_course:
-            synced_by_course[course_id] = storage.read_calendar_sync(course_id)
-        is_synced = any(
+            try:
+                synced_by_course[course_id] = storage.read_calendar_sync(course_id)
+            except storage.CalendarSyncStorageError:
+                synced_by_course[course_id] = None
+        course_synced = synced_by_course[course_id]
+        is_synced = course_synced is not None and any(
             r["date"] == d["date"] and r["title"] == d["title"]
-            for r in synced_by_course[course_id]
+            for r in course_synced
         )
         annotated.append(dict(d, synced=is_synced))
     return annotated

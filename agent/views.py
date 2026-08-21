@@ -1,3 +1,5 @@
+import logging
+
 from adrf.views import APIView
 from asgiref.sync import sync_to_async
 from django.contrib.auth.decorators import login_required
@@ -22,6 +24,8 @@ from .serializers import (
 from .services import calendar_sync, chunk_notes, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
+
+logger = logging.getLogger(__name__)
 
 
 class ExtractSyllabusView(APIView):
@@ -650,7 +654,7 @@ class CalendarSyncView(APIView):
         try:
             result = await sync_to_async(calendar_sync.add_deadline_to_calendar)(
                 request.user, course_id,
-                serializer.validated_data["date"],
+                serializer.validated_data["date"].isoformat(),
                 serializer.validated_data["title"],
                 serializer.validated_data["type"],
             )
@@ -658,6 +662,14 @@ class CalendarSyncView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
         except calendar_sync.CalendarAuthError as e:
             return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception:
+            # Last-resort safety net: no future unexpected exception from the
+            # service layer should ever surface as a raw 500 on this
+            # endpoint. Must stay last — Python checks except clauses in
+            # order, and this is intentionally broad, not a substitute for
+            # the specific handlers above.
+            logger.exception("Unexpected error in calendar sync")
+            return Response({"detail": "Could not add to Google Calendar."}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(result, status=status.HTTP_201_CREATED)
 

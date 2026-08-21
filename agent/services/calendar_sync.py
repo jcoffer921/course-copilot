@@ -4,6 +4,7 @@ Calendar, one event at a time. Distinct from reminders.py, which only
 reads/browses deadlines and never writes anywhere.
 """
 
+import logging
 import os
 from datetime import datetime, timedelta
 from datetime import timezone as dt_timezone
@@ -13,8 +14,11 @@ from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from . import storage
+
+logger = logging.getLogger(__name__)
 
 
 class AlreadySyncedError(Exception):
@@ -75,25 +79,46 @@ def add_deadline_to_calendar(user, course_id: str, date: str, title: str, event_
     AlreadySyncedError if (date, title) is already recorded for this
     course, or CalendarAuthError if the stored Google credentials can't be
     refreshed. Returns {"google_event_id": "..."}."""
+    from agent.models import GoogleAccount
+
     already_synced = storage.read_calendar_sync(course_id)
     if any(r["date"] == date and r["title"] == title for r in already_synced):
         raise AlreadySyncedError(f"'{title}' on {date} is already on your Google Calendar")
 
-    credentials = _get_credentials(user.google_account)
+    try:
+        google_account = user.google_account
+    except GoogleAccount.DoesNotExist as e:
+        raise CalendarAuthError("Sign in with Google to add deadlines to your calendar.") from e
+
+    credentials = _get_credentials(google_account)
 
     start_date = datetime.strptime(date, "%Y-%m-%d").date()
     end_date = (start_date + timedelta(days=1)).isoformat()
 
-    service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
-    event = service.events().insert(
-        calendarId="primary",
-        body={
-            "summary": f"{title} — {course_id.upper()}",
-            "description": f"{event_type.capitalize()} for {course_id.upper()}, tracked in OnTrack.",
-            "start": {"date": date},
-            "end": {"date": end_date},
-        },
-    ).execute()
+    try:
+        service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
+        event = service.events().insert(
+            calendarId="primary",
+            body={
+                "summary": f"{title} — {course_id.upper()}",
+                "description": f"{event_type.capitalize()} for {course_id.upper()}, tracked in OnTrack.",
+                "start": {"date": date},
+                "end": {"date": end_date},
+            },
+        ).execute()
+    except (HttpError, RefreshError, OSError) as e:
+        # Covers both a pre-emptive refresh failure (handled above in
+        # _get_credentials) and a *lazy* one — the client library also
+        # refreshes on a 401 response inside .execute() itself, e.g. if the
+        # user revoked OnTrack's access after the stored token was minted
+        # but before it looked expired. Also covers rate limits/Google 5xx
+        # (HttpError) and network-layer failures (OSError). The raw
+        # exception text isn't surfaced to the client — same discipline as
+        # auth_views.py's OAuth error handling.
+        logger.exception("Google Calendar API call failed")
+        raise CalendarAuthError(
+            "Could not connect to Google Calendar — try signing out and back in."
+        ) from e
 
     storage.append_calendar_sync_record(course_id, {
         "date": date, "title": title, "type": event_type,
