@@ -9,7 +9,7 @@ calendar_sync.py which actually commits specific events to Google Calendar.
 from datetime import date, datetime, timedelta
 import json
 
-from . import storage
+from . import custom_events, storage
 
 
 def list_courses() -> list:
@@ -81,3 +81,41 @@ def upcoming_deadlines(within_days: int = None, course_ids: list = None) -> list
 
     deadlines.sort(key=lambda d: d["date"])
     return deadlines
+
+
+def list_all_deadlines() -> list:
+    """Every upcoming deadline from both sources — syllabus-extracted
+    (read-only, tagged source="syllabus") and manually-added (full CRUD,
+    tagged source="custom") — combined and sorted by date, unbounded (no
+    14-day cap, unlike the Dashboard's own upcoming_deadlines() call).
+    Powers the Deadlines tab's full list.
+
+    The sync-status annotation for syllabus deadlines duplicates
+    dashboard.py's _annotate_synced (same 4-line cross-reference against
+    read_calendar_sync) rather than importing it — dashboard.py already
+    imports this module, so importing back would be circular."""
+    today = date.today()
+
+    syllabus_deadlines = upcoming_deadlines(within_days=None)
+    synced_by_course = {}
+    for d in syllabus_deadlines:
+        course_id = d["course_id"]
+        if course_id not in synced_by_course:
+            synced_by_course[course_id] = storage.read_calendar_sync(course_id)
+        d["synced"] = any(
+            r["date"] == d["date"] and r["title"] == d["title"]
+            for r in synced_by_course[course_id]
+        )
+        d["source"] = "syllabus"
+        d["id"] = None
+        d["time"] = None
+
+    custom = [
+        dict(e, source="custom")
+        for e in custom_events.list_events()
+        if e["date"] >= today.isoformat()
+    ]
+
+    combined = syllabus_deadlines + custom
+    combined.sort(key=lambda d: (d["date"], d["time"] or ""))
+    return combined

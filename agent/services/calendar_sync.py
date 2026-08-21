@@ -34,7 +34,7 @@ class CalendarAuthError(Exception):
     surface this as a clear, actionable message, not a raw 500."""
 
 
-def _get_credentials(google_account) -> Credentials:
+def get_credentials(google_account) -> Credentials:
     """Builds a Credentials object from the stored tokens, refreshing (and
     persisting the refresh back onto google_account) if expired.
 
@@ -90,7 +90,7 @@ def add_deadline_to_calendar(user, course_id: str, date: str, title: str, event_
     except GoogleAccount.DoesNotExist as e:
         raise CalendarAuthError("Sign in with Google to add deadlines to your calendar.") from e
 
-    credentials = _get_credentials(google_account)
+    credentials = get_credentials(google_account)
 
     start_date = datetime.strptime(date, "%Y-%m-%d").date()
     end_date = (start_date + timedelta(days=1)).isoformat()

@@ -11,8 +11,13 @@ the event itself, not in calendar_sync.py's per-course calendar_sync.json.
 """
 
 import uuid
+from datetime import datetime, timedelta
 
-from . import storage
+from django.conf import settings
+from google.auth.exceptions import RefreshError
+from googleapiclient.errors import HttpError
+
+from . import calendar_sync, storage
 
 
 class EventNotFoundError(Exception):
@@ -62,3 +67,66 @@ def delete_event(event_id: str) -> None:
     if len(remaining) == len(events):
         raise EventNotFoundError(f"no custom event '{event_id}'")
     storage.write_custom_events(remaining)
+
+
+def sync_event_to_calendar(user, event_id: str) -> dict:
+    """Pushes one custom event into the signed-in user's Google Calendar —
+    all-day if it has no time, a real timed event (1-hour duration,
+    settings.TIME_ZONE) if it does. Records the result directly on the
+    event itself (not in calendar_sync.py's per-course calendar_sync.json
+    — a general event has no course to key that file by). Raises
+    AlreadySyncedError if already synced, EventNotFoundError if event_id
+    doesn't exist, or CalendarAuthError if the stored Google credentials
+    can't be used."""
+    from agent.models import GoogleAccount
+
+    events = storage.read_custom_events()
+    event = next((e for e in events if e["id"] == event_id), None)
+    if event is None:
+        raise EventNotFoundError(f"no custom event '{event_id}'")
+    if event["synced"]:
+        raise calendar_sync.AlreadySyncedError(f"'{event['title']}' is already on your Google Calendar")
+
+    try:
+        google_account = user.google_account
+    except GoogleAccount.DoesNotExist as e:
+        raise calendar_sync.CalendarAuthError("Sign in with Google to add deadlines to your calendar.") from e
+
+    credentials = calendar_sync.get_credentials(google_account)
+
+    if event["time"]:
+        start_dt = datetime.strptime(f"{event['date']} {event['time']}", "%Y-%m-%d %H:%M")
+        end_dt = start_dt + timedelta(hours=1)
+        body_dates = {
+            "start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:00"), "timeZone": settings.TIME_ZONE},
+            "end": {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:00"), "timeZone": settings.TIME_ZONE},
+        }
+    else:
+        start_date = datetime.strptime(event["date"], "%Y-%m-%d").date()
+        end_date = (start_date + timedelta(days=1)).isoformat()
+        body_dates = {"start": {"date": event["date"]}, "end": {"date": end_date}}
+
+    course_label = event["course_id"].upper() if event["course_id"] else "General"
+
+    try:
+        service = calendar_sync.build("calendar", "v3", credentials=credentials, cache_discovery=False)
+        created = service.events().insert(
+            calendarId="primary",
+            body={
+                "summary": f"{event['title']} — {course_label}",
+                "description": f"{event['type'].capitalize()} — added manually in OnTrack.",
+                **body_dates,
+            },
+        ).execute()
+    except (HttpError, RefreshError, OSError) as e:
+        raise calendar_sync.CalendarAuthError(
+            "Could not connect to Google Calendar — try signing out and back in."
+        ) from e
+
+    from django.utils import timezone as django_timezone
+    event["synced"] = True
+    event["google_event_id"] = created["id"]
+    event["synced_at"] = django_timezone.now().isoformat()
+    storage.write_custom_events(events)
+
+    return {"google_event_id": created["id"]}
