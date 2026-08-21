@@ -686,7 +686,10 @@ class DeadlinesView(APIView):
     """
 
     async def get(self, request):
-        data = await sync_to_async(reminders.list_all_deadlines)()
+        try:
+            data = await sync_to_async(reminders.list_all_deadlines)()
+        except storage.CustomEventsStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(data, status=status.HTTP_200_OK)
 
     async def post(self, request):
@@ -702,6 +705,8 @@ class DeadlinesView(APIView):
                 d["time"].strftime("%H:%M") if d["time"] else None,
                 d["title"], d["type"],
             )
+        except storage.CustomEventsStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except ValueError as e:
             return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
@@ -718,16 +723,23 @@ class CustomEventDetailView(APIView):
         serializer = UpdateCustomEventRequestSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-        fields = {k: v for k, v in serializer.validated_data.items() if v is not None}
+        # Keyed off request.data (what the client actually sent), not
+        # validated_data (where every omitted field also defaults to None) —
+        # otherwise an explicit {"time": null} to clear a field is
+        # indistinguishable from the field simply being absent, and gets
+        # silently dropped instead of applied.
+        fields = {k: v for k, v in serializer.validated_data.items() if k in request.data}
         if "date" in fields:
             fields["date"] = fields["date"].isoformat()
         if "time" in fields:
-            fields["time"] = fields["time"].strftime("%H:%M")
+            fields["time"] = fields["time"].strftime("%H:%M") if fields["time"] else None
 
         try:
             event = await sync_to_async(custom_events.update_event)(event_id, **fields)
         except custom_events.EventNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except storage.CustomEventsStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except ValueError as e:
             return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
@@ -738,6 +750,8 @@ class CustomEventDetailView(APIView):
             await sync_to_async(custom_events.delete_event)(event_id)
         except custom_events.EventNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except storage.CustomEventsStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

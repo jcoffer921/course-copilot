@@ -57,8 +57,7 @@ def update_event(event_id: str, **fields) -> dict:
     for event in events:
         if event["id"] == event_id:
             for key, value in fields.items():
-                if value is not None:
-                    event[key] = value
+                event[key] = value
             storage.write_custom_events(events)
             return event
     raise EventNotFoundError(f"no custom event '{event_id}'")

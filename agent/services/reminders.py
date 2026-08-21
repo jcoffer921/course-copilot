@@ -114,11 +114,14 @@ def list_all_deadlines() -> list:
         d["id"] = None
         d["time"] = None
 
-    custom = [
-        dict(e, source="custom")
-        for e in custom_events.list_events()
-        if e["date"] >= today.isoformat()
-    ]
+    try:
+        custom = [
+            dict(e, source="custom")
+            for e in custom_events.list_events()
+            if e["date"] >= today.isoformat()
+        ]
+    except storage.CustomEventsStorageError:
+        custom = []
 
     combined = syllabus_deadlines + custom
     combined.sort(key=lambda d: (d["date"], d["time"] or ""))

@@ -91,3 +91,18 @@ def test_list_all_deadlines_never_raises_on_corrupt_calendar_sync_file(isolated_
 
     by_title = {d["title"]: d for d in deadlines}
     assert by_title["Final Exam"]["synced"] is False
+
+
+def test_list_all_deadlines_never_raises_on_corrupt_custom_events_file(isolated_courses_dir):
+    # Mirrors the corrupt-calendar_sync-json case above: custom_events.json
+    # corruption is isolated to an empty custom-events list rather than
+    # failing the whole combined list.
+    from datetime import date, timedelta
+
+    far_date = (date.today() + timedelta(days=60)).isoformat()
+    _seed_syllabus("cs101", [{"date": far_date, "title": "Final Exam", "type": "exam"}])
+    (isolated_courses_dir / "custom_events.json").write_text("{not valid json", encoding="utf-8")
+
+    deadlines = reminders.list_all_deadlines()
+
+    assert [d["title"] for d in deadlines] == ["Final Exam"]

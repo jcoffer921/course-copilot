@@ -740,6 +740,9 @@
         <sc-if value="{{ deadlinesEmpty }}" hint-placeholder-val="{{ false }}">
           <div class="card elev-sm" style="padding:var(--space-6);text-align:center;opacity:.7">No upcoming deadlines yet.</div>
         </sc-if>
+        <sc-if value="{{ showDeadlineSyncError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:12.5px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deadlineSyncError }}</p>
+        </sc-if>
 
         <div class="card elev-sm" style="padding:0">
           <sc-for list="{{ allDeadlinesRows }}" as="d" hint-placeholder-count="4">
@@ -1202,7 +1205,7 @@ class Component extends DCLogic {
     editingCourseId: null, editingCourseName: '', editCourseError: null,
     deleteCourseId: null, deleteCourseName: '', deleteCourseOpen: false,
     deleteCourseLoading: false, deleteCourseError: null,
-    deadlinesLoading: false, deadlinesError: null, allDeadlines: [], deadlineSyncingIds: {},
+    deadlinesLoading: false, deadlinesError: null, allDeadlines: [], deadlineSyncingIds: {}, deadlineSyncError: null,
     deadlineModalOpen: false, deadlineEditingId: null, deadlineCourseId: '', deadlineDate: '',
     deadlineTime: '', deadlineTitle: '', deadlineType: 'other',
     deadlineModalLoading: false, deadlineModalError: null,
@@ -1326,7 +1329,7 @@ class Component extends DCLogic {
   }
 
   closeDeadlineModal() {
-    this.setState({ deadlineModalOpen: false, deadlineEditingId: null, deadlineModalError: null });
+    this.setState({ deadlineModalOpen: false, deadlineEditingId: null, deadlineModalError: null, deadlineSyncError: null });
   }
 
   submitDeadlineModal() {
@@ -1384,29 +1387,40 @@ class Component extends DCLogic {
 
   syncDeadlineToCalendar(event) {
     if (this.state.deadlineSyncingIds[event.id]) return;
-    this.setState({ deadlineSyncingIds: Object.assign({}, this.state.deadlineSyncingIds, { [event.id]: true }) });
+    this.setState({
+      deadlineSyncingIds: Object.assign({}, this.state.deadlineSyncingIds, { [event.id]: true }),
+      deadlineSyncError: null
+    });
     fetch(`/api/deadlines/${event.id}/calendar-sync/`, { method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
-      .then(({ ok }) => {
+      .then(({ ok, data }) => {
         const syncing = Object.assign({}, this.state.deadlineSyncingIds);
         delete syncing[event.id];
+        if (!ok) { this.setState({ deadlineSyncingIds: syncing, deadlineSyncError: data.detail || 'Could not add to Google Calendar.' }); return; }
         this.setState({ deadlineSyncingIds: syncing });
-        if (ok) this.loadAllDeadlines();
+        this.loadAllDeadlines();
       })
-      .catch(() => {
+      .catch(e => {
         const syncing = Object.assign({}, this.state.deadlineSyncingIds);
         delete syncing[event.id];
-        this.setState({ deadlineSyncingIds: syncing });
+        this.setState({ deadlineSyncingIds: syncing, deadlineSyncError: 'Network error: ' + e.message });
       });
   }
 
-  addToCalendar(courseId, date, title, type, key) {
-    if (this.state.dashboardSyncingKeys[key]) return;
+  // errorStateKey defaults to 'dashboardSyncError' (the Dashboard tab's own
+  // error slot) but the Deadlines tab passes 'deadlineSyncError' instead when
+  // syncing a syllabus row from there, so a failure surfaces in whichever tab
+  // triggered it rather than only ever landing on the Dashboard's markup.
+  // Returns the fetch promise so callers (e.g. the Deadlines tab) can chain
+  // a refresh once the request has settled, success or failure.
+  addToCalendar(courseId, date, title, type, key, errorStateKey) {
+    errorStateKey = errorStateKey || 'dashboardSyncError';
+    if (this.state.dashboardSyncingKeys[key]) return Promise.resolve();
     this.setState({
       dashboardSyncingKeys: Object.assign({}, this.state.dashboardSyncingKeys, { [key]: true }),
-      dashboardSyncError: null
+      [errorStateKey]: null
     });
-    fetch(`/api/courses/${courseId}/calendar-sync/`, {
+    return fetch(`/api/courses/${courseId}/calendar-sync/`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
       body: JSON.stringify({ date: date, title: title, type: type })
     })
@@ -1414,7 +1428,7 @@ class Component extends DCLogic {
       .then(({ ok, data }) => {
         const syncing = Object.assign({}, this.state.dashboardSyncingKeys);
         delete syncing[key];
-        if (!ok) { this.setState({ dashboardSyncingKeys: syncing, dashboardSyncError: data.detail || 'Could not add to Google Calendar.' }); return; }
+        if (!ok) { this.setState({ dashboardSyncingKeys: syncing, [errorStateKey]: data.detail || 'Could not add to Google Calendar.' }); return; }
         // Scoped by course_id too, not just date+title — on the "all
         // courses" view, two different courses can share an identical
         // date+title (e.g. two "Final" entries the same day), and only
@@ -1427,7 +1441,7 @@ class Component extends DCLogic {
       .catch(e => {
         const syncing = Object.assign({}, this.state.dashboardSyncingKeys);
         delete syncing[key];
-        this.setState({ dashboardSyncingKeys: syncing, dashboardSyncError: 'Network error: ' + e.message });
+        this.setState({ dashboardSyncingKeys: syncing, [errorStateKey]: 'Network error: ' + e.message });
       });
   }
 
@@ -2289,7 +2303,7 @@ class Component extends DCLogic {
         return;
       }
       if (t === 'deadlines') {
-        this.setState({ tab: t });
+        this.setState({ tab: t, deadlineSyncError: null });
         this.loadAllDeadlines();
         return;
       }
@@ -2386,7 +2400,17 @@ class Component extends DCLogic {
         synced: !!d.synced,
         isCustom: isCustom,
         syncButtonLabel: s.deadlineSyncingIds[d.id] ? 'Adding…' : 'Add to Calendar',
-        onSync: isCustom ? (() => this.syncDeadlineToCalendar(d)) : (() => this.addToCalendar(d.course_id, d.date, d.title, d.type, d.course_id + '|' + d.date + '|' + d.title)),
+        // Syllabus rows have no id (d.id is null), so they go through the
+        // Dashboard tab's addToCalendar rather than syncDeadlineToCalendar.
+        // addToCalendar only updates dashboardDeadlines itself, so without
+        // this explicit reload the row here would never flip to "Added ✓" —
+        // reloading from the server (which recomputes `synced`) is what
+        // actually reflects the new state. Errors are routed into
+        // deadlineSyncError (not dashboardSyncError) so they're visible in
+        // this tab instead of only the Dashboard's markup.
+        onSync: isCustom
+          ? (() => this.syncDeadlineToCalendar(d))
+          : (() => this.addToCalendar(d.course_id, d.date, d.title, d.type, d.course_id + '|' + d.date + '|' + d.title, 'deadlineSyncError').then(() => this.loadAllDeadlines())),
         onEdit: () => this.openEditDeadline(d),
         onDelete: () => this.openDeleteDeadline(d)
       };
@@ -2681,6 +2705,7 @@ class Component extends DCLogic {
       yourCoursesCards: yourCoursesCards,
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
       allDeadlinesRows: allDeadlinesRows, deadlinesEmpty: deadlinesEmpty, deadlinesLoading: s.deadlinesLoading, deadlinesError: s.deadlinesError,
+      showDeadlineSyncError: !!s.deadlineSyncError, deadlineSyncError: s.deadlineSyncError,
       openAddDeadline: () => this.openAddDeadline(),
       deadlineModalOpen: s.deadlineModalOpen, deadlineModalTitle: deadlineModalTitle, deadlineSubmitLabel: deadlineSubmitLabel,
       deadlineCourseId: s.deadlineCourseId, deadlineCourseOptions: deadlineCourseOptions, onDeadlineCourseChange: onDeadlineCourseChange,

@@ -706,6 +706,38 @@ def test_custom_event_detail_patch_updates_event(isolated_courses_dir, api_clien
 
 
 @pytest.mark.django_db
+def test_custom_event_detail_patch_null_time_clears_it(isolated_courses_dir, api_client):
+    create_response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "time": "14:00", "title": "Study group", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+    assert create_response.data["time"] == "14:00"
+
+    response = api_client.patch(f"/api/deadlines/{event_id}/", {"time": None}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["time"] is None
+
+
+@pytest.mark.django_db
+def test_custom_event_detail_patch_null_course_id_becomes_general(isolated_courses_dir, api_client):
+    create_response = api_client.post(
+        "/api/deadlines/",
+        {"course_id": "cs101", "date": "2026-09-01", "title": "Study group", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+    assert create_response.data["course_id"] == "cs101"
+
+    response = api_client.patch(f"/api/deadlines/{event_id}/", {"course_id": None}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["course_id"] is None
+
+
+@pytest.mark.django_db
 def test_custom_event_detail_patch_404_when_not_found(isolated_courses_dir, api_client):
     response = api_client.patch("/api/deadlines/nonexistent-id/", {"title": "X"}, format="json")
 
@@ -812,3 +844,83 @@ def test_custom_event_calendar_sync_404_when_event_not_found(isolated_courses_di
     response = api_client.post("/api/deadlines/nonexistent-id/calendar-sync/")
 
     assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_custom_event_calendar_sync_returns_502_when_google_auth_fails(isolated_courses_dir):
+    # Mirrors test_calendar_sync_returns_502_when_google_auth_fails for the
+    # old per-course calendar-sync endpoint: an expired token whose refresh
+    # is rejected by Google should surface as a clean 502, not a raw 500.
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="stale-token", refresh_token="revoked-refresh-token",
+        token_expiry=timezone.now() - timedelta(hours=1),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    create_response = client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "Study group", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+
+    def _fake_refresh_failure(self, request):
+        from google.auth.exceptions import RefreshError
+        raise RefreshError("invalid_grant")
+
+    with patch("google.oauth2.credentials.Credentials.refresh", _fake_refresh_failure):
+        response = client.post(f"/api/deadlines/{event_id}/calendar-sync/")
+
+    assert response.status_code == 502
+
+
+@pytest.mark.django_db
+def test_deadlines_get_degrades_on_corrupt_custom_events_json(isolated_courses_dir, api_client):
+    # custom_events.json corruption shouldn't take down the whole endpoint —
+    # reminders.list_all_deadlines() isolates it to an empty custom-events
+    # list, same "isolate the corruption" philosophy already used for a
+    # corrupt calendar_sync.json.
+    from datetime import date, timedelta
+
+    far_date = (date.today() + timedelta(days=60)).isoformat()
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test",
+        "dates": [{"date": far_date, "title": "Final Exam", "type": "exam"}],
+        "grading": [], "topics": [],
+    })
+    (isolated_courses_dir / "custom_events.json").write_text("{not valid json", encoding="utf-8")
+
+    response = api_client.get("/api/deadlines/")
+
+    assert response.status_code == 200
+    assert any(d["title"] == "Final Exam" for d in response.data)
+
+
+@pytest.mark.django_db
+def test_deadlines_post_returns_clean_500_on_corrupt_custom_events_json(isolated_courses_dir, api_client):
+    # Unlike GET (which degrades silently via reminders.py), POST calls
+    # custom_events.create_event() directly with no such guard — corruption
+    # here must still come back as a clean 500 {"detail": ...}, not an
+    # unhandled exception producing Django's raw error page.
+    (isolated_courses_dir / "custom_events.json").write_text("{not valid json", encoding="utf-8")
+
+    response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "X", "type": "other"},
+        format="json",
+    )
+
+    assert response.status_code == 500
+    assert "detail" in response.data
