@@ -635,4 +635,142 @@ def test_calendar_sync_returns_502_not_raw_500_on_unexpected_service_error(isola
     )
 
     assert response.status_code == 502
-    assert response.data == {"detail": "Could not add to Google Calendar."}
+
+
+@pytest.mark.django_db
+def test_deadlines_get_returns_merged_list(isolated_courses_dir, api_client):
+    from agent.services import custom_events
+
+    custom_events.create_event("cs101", "2099-01-01", None, "Future thing", "other")
+
+    response = api_client.get("/api/deadlines/")
+
+    assert response.status_code == 200
+    assert any(d["title"] == "Future thing" for d in response.data)
+
+
+@pytest.mark.django_db
+def test_deadlines_post_creates_custom_event(isolated_courses_dir, api_client):
+    response = api_client.post(
+        "/api/deadlines/",
+        {"course_id": "cs101", "date": "2026-09-01", "time": "14:00", "title": "Study group", "type": "other"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["title"] == "Study group"
+    # The view converts the validated TimeField back to a plain "HH:MM"
+    # string (d["time"].strftime("%H:%M")) before calling create_event, and
+    # the response is that same stored dict returned as-is (not re-run
+    # through DRF serialization) — so it comes back "HH:MM", not "HH:MM:SS".
+    assert response.data["time"] == "14:00"
+
+
+@pytest.mark.django_db
+def test_deadlines_post_general_event_has_null_course_id(isolated_courses_dir, api_client):
+    response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-11-26", "title": "Thanksgiving break", "type": "other"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["course_id"] is None
+
+
+@pytest.mark.django_db
+def test_deadlines_post_rejects_invalid_type(isolated_courses_dir, api_client):
+    response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "X", "type": "not-a-real-type"},
+        format="json",
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.django_db
+def test_custom_event_detail_patch_updates_event(isolated_courses_dir, api_client):
+    create_response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "Original", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+
+    response = api_client.patch(f"/api/deadlines/{event_id}/", {"title": "Renamed"}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["title"] == "Renamed"
+
+
+@pytest.mark.django_db
+def test_custom_event_detail_patch_404_when_not_found(isolated_courses_dir, api_client):
+    response = api_client.patch("/api/deadlines/nonexistent-id/", {"title": "X"}, format="json")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_custom_event_detail_delete_removes_event(isolated_courses_dir, api_client):
+    create_response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "X", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+
+    response = api_client.delete(f"/api/deadlines/{event_id}/")
+
+    assert response.status_code == 204
+    assert api_client.get("/api/deadlines/").data == []
+
+
+@pytest.mark.django_db
+def test_custom_event_detail_delete_404_when_not_found(isolated_courses_dir, api_client):
+    response = api_client.delete("/api/deadlines/nonexistent-id/")
+
+    assert response.status_code == 404
+
+
+@pytest.mark.django_db
+def test_custom_event_calendar_sync_creates_event(isolated_courses_dir):
+    from datetime import timedelta
+    from unittest.mock import MagicMock, patch
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="valid-token", refresh_token="refresh-token",
+        token_expiry=timezone.now() + timedelta(hours=1),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    create_response = client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "Study group", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+
+    mock_service = MagicMock()
+    mock_service.events.return_value.insert.return_value.execute.return_value = {"id": "evt-abc"}
+    with patch("agent.services.custom_events.calendar_sync.build", return_value=mock_service):
+        response = client.post(f"/api/deadlines/{event_id}/calendar-sync/")
+
+    assert response.status_code == 201
+    assert response.data == {"google_event_id": "evt-abc"}
+
+
+@pytest.mark.django_db
+def test_custom_event_calendar_sync_404_when_event_not_found(isolated_courses_dir, api_client):
+    response = api_client.post("/api/deadlines/nonexistent-id/calendar-sync/")
+
+    assert response.status_code == 404

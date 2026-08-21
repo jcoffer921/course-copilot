@@ -33,4 +33,7 @@ urlpatterns = [
     path("reminders/", views.RemindersView.as_view(), name="reminders"),
     path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
     path("grades/summary/", views.GradesSummaryView.as_view(), name="grades-summary"),
+    path("deadlines/", views.DeadlinesView.as_view(), name="deadlines"),
+    path("deadlines/<str:event_id>/", views.CustomEventDetailView.as_view(), name="custom-event-detail"),
+    path("deadlines/<str:event_id>/calendar-sync/", views.CustomEventCalendarSyncView.as_view(), name="custom-event-calendar-sync"),
 ]

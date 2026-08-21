@@ -10,6 +10,22 @@ class CalendarSyncRequestSerializer(serializers.Serializer):
     type = serializers.CharField(allow_blank=False)
 
 
+class CreateCustomEventRequestSerializer(serializers.Serializer):
+    course_id = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
+    date = serializers.DateField()
+    time = serializers.TimeField(required=False, allow_null=True, default=None)
+    title = serializers.CharField(allow_blank=False)
+    type = serializers.CharField(allow_blank=False)
+
+
+class UpdateCustomEventRequestSerializer(serializers.Serializer):
+    course_id = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
+    date = serializers.DateField(required=False, default=None)
+    time = serializers.TimeField(required=False, allow_null=True, default=None)
+    title = serializers.CharField(required=False, allow_blank=False, default=None)
+    type = serializers.CharField(required=False, allow_blank=False, default=None)
+
+
 class ExtractSyllabusRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
     course_name = serializers.CharField(required=False, allow_blank=True, default=None)

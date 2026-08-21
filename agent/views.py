@@ -14,14 +14,16 @@ from .serializers import (
     CalendarSyncRequestSerializer,
     ChunkNotesRequestSerializer,
     CreateCourseDraftRequestSerializer,
+    CreateCustomEventRequestSerializer,
     ExtractSyllabusRequestSerializer,
     GenerateQuestionRequestSerializer,
     GradingConfigRequestSerializer,
     IngestReferenceRequestSerializer,
     RecordAttemptRequestSerializer,
+    UpdateCustomEventRequestSerializer,
     UpdateGradeItemRequestSerializer,
 )
-from .services import calendar_sync, chunk_notes, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
+from .services import calendar_sync, chunk_notes, custom_events, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
@@ -669,6 +671,94 @@ class CalendarSyncView(APIView):
             # order, and this is intentionally broad, not a substitute for
             # the specific handlers above.
             logger.exception("Unexpected error in calendar sync")
+            return Response({"detail": "Could not add to Google Calendar."}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(result, status=status.HTTP_201_CREATED)
+
+
+class DeadlinesView(APIView):
+    """
+    GET /api/deadlines/ — every upcoming deadline, syllabus-extracted and
+    manually-added combined, unbounded (no 14-day cap).
+    POST /api/deadlines/ — create a manually-added deadline.
+    body: {"course_id"?, "date", "time"?, "title", "type"}
+    course_id omitted/null means a general (not course-specific) event.
+    """
+
+    async def get(self, request):
+        data = await sync_to_async(reminders.list_all_deadlines)()
+        return Response(data, status=status.HTTP_200_OK)
+
+    async def post(self, request):
+        serializer = CreateCustomEventRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        d = serializer.validated_data
+
+        try:
+            event = await sync_to_async(custom_events.create_event)(
+                d["course_id"],
+                d["date"].isoformat(),
+                d["time"].strftime("%H:%M") if d["time"] else None,
+                d["title"], d["type"],
+            )
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(event, status=status.HTTP_201_CREATED)
+
+
+class CustomEventDetailView(APIView):
+    """
+    PATCH /api/deadlines/<event_id>/ — partial update.
+    DELETE /api/deadlines/<event_id>/
+    """
+
+    async def patch(self, request, event_id):
+        serializer = UpdateCustomEventRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        fields = {k: v for k, v in serializer.validated_data.items() if v is not None}
+        if "date" in fields:
+            fields["date"] = fields["date"].isoformat()
+        if "time" in fields:
+            fields["time"] = fields["time"].strftime("%H:%M")
+
+        try:
+            event = await sync_to_async(custom_events.update_event)(event_id, **fields)
+        except custom_events.EventNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(event, status=status.HTTP_200_OK)
+
+    async def delete(self, request, event_id):
+        try:
+            await sync_to_async(custom_events.delete_event)(event_id)
+        except custom_events.EventNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class CustomEventCalendarSyncView(APIView):
+    """POST /api/deadlines/<event_id>/calendar-sync/ — push a custom event
+    to the signed-in user's real Google Calendar. 404 if the event doesn't
+    exist, 409 if already synced, 502 if Google credentials can't be used
+    (including any unexpected failure — never an unhandled 500)."""
+
+    async def post(self, request, event_id):
+        try:
+            result = await sync_to_async(custom_events.sync_event_to_calendar)(request.user, event_id)
+        except custom_events.EventNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except calendar_sync.AlreadySyncedError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+        except calendar_sync.CalendarAuthError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+        except Exception:
+            logger.exception("Unexpected error in custom event calendar sync")
             return Response({"detail": "Could not add to Google Calendar."}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(result, status=status.HTTP_201_CREATED)
