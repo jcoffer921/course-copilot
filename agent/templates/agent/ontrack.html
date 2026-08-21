@@ -149,12 +149,21 @@
                 </div>
               </div>
               <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-4)">For {{ scopeLabel }} in the next two weeks.</p>
+              <sc-if value="{{ showDashboardSyncError }}" hint-placeholder-val="{{ false }}">
+                <p style="font-size:12.5px;color:var(--color-accent-700);margin:0 0 var(--space-3)">{{ dashboardSyncError }}</p>
+              </sc-if>
               <div style="display:flex;flex-direction:column;gap:0">
                 <sc-for list="{{ deadlines }}" as="d" hint-placeholder-count="4">
                   <div style="display:flex;align-items:center;gap:var(--space-3);padding:11px 4px;border-bottom:1px solid var(--color-neutral-200)">
                     <div style="width:44px;flex:none;text-align:center;font-family:var(--font-heading);font-size:12px;color:var(--color-accent-700);line-height:1.15">{{ d.month }}<br/><span style="font-size:16px">{{ d.day }}</span></div>
                     <div style="flex:1;min-width:0;font-size:14px;font-weight:600">{{ d.title }}</div>
                     <span style="{{ d.tagStyle }}">{{ d.typeLabel }}</span>
+                    <sc-if value="{{ d.synced }}" hint-placeholder-val="{{ false }}">
+                      <span class="tag tag-accent-2" style="flex:none">Added ✓</span>
+                    </sc-if>
+                    <sc-if value="{{ !d.synced }}" hint-placeholder-val="{{ true }}">
+                      <button type="button" class="btn btn-secondary" style="flex:none;padding:4px 10px;font-size:12px" onClick="{{ d.onAddToCalendar }}">{{ d.addButtonLabel }}</button>
+                    </sc-if>
                   </div>
                 </sc-for>
               </div>
@@ -1037,6 +1046,7 @@ class Component extends DCLogic {
     currentUserEmail: window.CURRENT_USER_EMAIL,
     tab: 'dashboard', course: 'all',
     courseMeta: null, courseDrafts: [], dashboardDeadlines: [], dashboardStreak: 0, dashboardLoading: false, dashboardError: null,
+    dashboardSyncingKeys: {}, dashboardSyncError: null,
     dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
     quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
@@ -1138,6 +1148,33 @@ class Component extends DCLogic {
       .catch(e => {
         if (seq !== this._recentSeq) return;
         this.setState({ dashboardRecentLoading: false, dashboardRecentError: 'Network error: ' + e.message });
+      });
+  }
+
+  addToCalendar(courseId, date, title, type, key) {
+    if (this.state.dashboardSyncingKeys[key]) return;
+    this.setState({
+      dashboardSyncingKeys: Object.assign({}, this.state.dashboardSyncingKeys, { [key]: true }),
+      dashboardSyncError: null
+    });
+    fetch(`/api/courses/${courseId}/calendar-sync/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ date: date, title: title, type: type })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        const syncing = Object.assign({}, this.state.dashboardSyncingKeys);
+        delete syncing[key];
+        if (!ok) { this.setState({ dashboardSyncingKeys: syncing, dashboardSyncError: data.detail || 'Could not add to Google Calendar.' }); return; }
+        const deadlines = this.state.dashboardDeadlines.map(d =>
+          (d.date === date && d.title === title) ? Object.assign({}, d, { synced: true }) : d
+        );
+        this.setState({ dashboardSyncingKeys: syncing, dashboardDeadlines: deadlines });
+      })
+      .catch(e => {
+        const syncing = Object.assign({}, this.state.dashboardSyncingKeys);
+        delete syncing[key];
+        this.setState({ dashboardSyncingKeys: syncing, dashboardSyncError: 'Network error: ' + e.message });
       });
   }
 
@@ -2068,10 +2105,14 @@ class Component extends DCLogic {
 
     const deadlines = s.dashboardDeadlines.filter(d => s.course === 'all' || d.course_id === s.course).map(d => {
       const dp = dateParts(d.date);
+      const key = d.date + '|' + d.title;
       return {
         month: dp.monthAbbrUpper, day: dp.day, title: d.title,
         typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Other',
-        tagStyle: typeStyle(d.type)
+        tagStyle: typeStyle(d.type),
+        synced: !!d.synced,
+        addButtonLabel: s.dashboardSyncingKeys[key] ? 'Adding…' : 'Add to Calendar',
+        onAddToCalendar: () => this.addToCalendar(d.course_id, d.date, d.title, d.type, key)
       };
     });
     const weakTopicsForCourse = (id) => ((courseMetaFor(id) && courseMetaFor(id).weak_topics) || []).map(t => Object.assign({}, t, { course_id: id }));
@@ -2357,6 +2398,8 @@ class Component extends DCLogic {
       showDashboardError: !!s.dashboardError && !s.courseMeta,
       dashboardError: s.dashboardError,
       retryDashboard: retryDashboard,
+      showDashboardSyncError: !!s.dashboardSyncError,
+      dashboardSyncError: s.dashboardSyncError,
       showDashboardLoading: s.dashboardLoading && !s.courseMeta,
       dashboardRecentActivity: dashboardRecentActivity,
       dashboardRecentLoading: s.dashboardRecentLoading,
