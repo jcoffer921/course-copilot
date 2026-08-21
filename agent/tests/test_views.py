@@ -635,6 +635,7 @@ def test_calendar_sync_returns_502_not_raw_500_on_unexpected_service_error(isola
     )
 
     assert response.status_code == 502
+    assert response.data == {"detail": "Could not add to Google Calendar."}
 
 
 @pytest.mark.django_db
@@ -767,6 +768,43 @@ def test_custom_event_calendar_sync_creates_event(isolated_courses_dir):
 
     assert response.status_code == 201
     assert response.data == {"google_event_id": "evt-abc"}
+
+
+@pytest.mark.django_db
+def test_custom_event_calendar_sync_409_when_already_synced(isolated_courses_dir):
+    from datetime import timedelta
+    from unittest.mock import patch
+
+    from django.contrib.auth.models import User
+    from django.utils import timezone
+    from rest_framework.test import APIClient
+
+    from agent.models import GoogleAccount
+    from agent.services import calendar_sync
+
+    user = User.objects.create_user(username="sub-123")
+    GoogleAccount.objects.create(
+        user=user, google_sub="sub-123", email="jordan@example.com",
+        access_token="valid-token", refresh_token="refresh-token",
+        token_expiry=timezone.now() + timedelta(hours=1),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    create_response = client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "Study group", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+
+    with patch(
+        "agent.services.custom_events.sync_event_to_calendar",
+        side_effect=calendar_sync.AlreadySyncedError("already synced"),
+    ):
+        response = client.post(f"/api/deadlines/{event_id}/calendar-sync/")
+
+    assert response.status_code == 409
 
 
 @pytest.mark.django_db
