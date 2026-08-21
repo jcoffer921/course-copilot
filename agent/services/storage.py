@@ -76,6 +76,10 @@ class CalendarSyncStorageError(Exception):
     """Raised when calendar_sync.json exists but is corrupt."""
 
 
+class CustomEventsStorageError(Exception):
+    """Raised when custom_events.json exists but is corrupt."""
+
+
 class CourseNotFoundError(Exception):
     """Raised when no syllabus.json exists yet for the given course_id.
 
@@ -658,6 +662,33 @@ def write_grades(course_id: str, data: dict) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "grades.json"
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return out_path
+
+
+def read_custom_events() -> list:
+    """Returns the list of manually-added deadlines/events, or [] if
+    custom_events.json doesn't exist yet — no custom events yet is the
+    normal starting state, same convention as trusted_domains.json. Unlike
+    every other course JSON file, this one lives at the top level
+    (COURSES_DIR itself), not under a specific course_id — a general event
+    (course_id=None) has no single course to belong to."""
+    path = COURSES_DIR / "custom_events.json"
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise CustomEventsStorageError(f"custom_events.json is corrupt: {e}")
+    return data.get("events", [])
+
+
+def write_custom_events(events: list) -> Path:
+    """Writes custom_events.json. Always overwrites — directly
+    user-editable (add/edit/delete), not append-only, same pattern as
+    write_grades."""
+    COURSES_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = COURSES_DIR / "custom_events.json"
+    out_path.write_text(json.dumps({"events": events}, indent=2), encoding="utf-8")
     return out_path
 
 
