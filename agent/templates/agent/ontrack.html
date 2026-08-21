@@ -66,6 +66,10 @@
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Grade Calculator
       </button>
+      <button type="button" onClick="{{ goDeadlines }}" style="{{ navBtnStyleDeadlines }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+        Deadlines
+      </button>
     </div>
 
     <div style="margin-top:var(--space-6)">
@@ -142,11 +146,12 @@
         </sc-if>
         <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:var(--space-6);margin-bottom:var(--space-6)">
             <div class="card elev-sm" style="padding:var(--space-6)">
-              <div style="display:flex;align-items:center;justify-content:between;gap:8px;margin-bottom:var(--space-4)">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:var(--space-4)">
                 <div style="display:flex;align-items:center;gap:8px">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent-700)" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
                   <div class="card-title" style="margin:0">Upcoming deadlines</div>
                 </div>
+                <button type="button" class="btn btn-ghost" style="font-size:12.5px" onClick="{{ goToDeadlinesTab }}">See all →</button>
               </div>
               <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-4)">For {{ scopeLabel }} in the next two weeks.</p>
               <sc-if value="{{ showDashboardSyncError }}" hint-placeholder-val="{{ false }}">
@@ -714,6 +719,57 @@
       </div>
     </sc-if>
 
+    <sc-if value="{{ isDeadlines }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:var(--space-8) var(--space-8);max-width:1100px">
+        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-6)">
+          <div>
+            <h1 style="font-family:var(--font-heading);font-size:28px;margin:0 0 4px">Deadlines</h1>
+            <p style="margin:0;opacity:.65;font-size:14.5px">Everything upcoming, across every course.</p>
+          </div>
+          <button type="button" class="btn btn-primary" onClick="{{ openAddDeadline }}">+ Add deadline</button>
+        </div>
+
+        <sc-if value="{{ deadlinesLoading }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6);text-align:center;opacity:.7">Loading deadlines…</div>
+        </sc-if>
+        <sc-if value="{{ deadlinesError }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <p class="card-body" style="margin:0">{{ deadlinesError }}</p>
+          </div>
+        </sc-if>
+        <sc-if value="{{ deadlinesEmpty }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6);text-align:center;opacity:.7">No upcoming deadlines yet.</div>
+        </sc-if>
+
+        <div class="card elev-sm" style="padding:0">
+          <sc-for list="{{ allDeadlinesRows }}" as="d" hint-placeholder-count="4">
+            <div style="display:flex;align-items:center;gap:var(--space-3);padding:14px var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
+              <div style="width:44px;flex:none;text-align:center;font-family:var(--font-heading);font-size:12px;color:var(--color-accent-700);line-height:1.15">{{ d.month }}<br/><span style="font-size:16px">{{ d.day }}</span></div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:14px;font-weight:600">{{ d.title }}</div>
+                <div style="font-size:12px;opacity:.6">{{ d.courseLabel }}<sc-if value="{{ d.timeLabel }}" hint-placeholder-val="{{ false }}"> · {{ d.timeLabel }}</sc-if></div>
+              </div>
+              <span style="{{ d.tagStyle }}">{{ d.typeLabel }}</span>
+              <sc-if value="{{ d.synced }}" hint-placeholder-val="{{ false }}">
+                <span class="tag tag-accent-2" style="flex:none">Added ✓</span>
+              </sc-if>
+              <sc-if value="{{ !d.synced }}" hint-placeholder-val="{{ true }}">
+                <button type="button" class="btn btn-secondary" style="flex:none;padding:4px 10px;font-size:12px" onClick="{{ d.onSync }}">{{ d.syncButtonLabel }}</button>
+              </sc-if>
+              <sc-if value="{{ d.isCustom }}" hint-placeholder-val="{{ false }}">
+                <button type="button" class="btn-icon btn-ghost" style="flex:none" onClick="{{ d.onEdit }}" title="Edit">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                </button>
+                <button type="button" class="btn-icon btn-ghost" style="flex:none" onClick="{{ d.onDelete }}" title="Delete">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </sc-if>
+
     <sc-if value="{{ isChat }}" hint-placeholder-val="{{ false }}">
       <sc-if value="{{ courseIsDraft }}" hint-placeholder-val="{{ false }}">
         <div style="padding:var(--space-8) var(--space-8);max-width:720px;margin:0 auto">
@@ -934,6 +990,85 @@
     </div>
   </sc-if>
 
+  <sc-if value="{{ deadlineModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-4)">{{ deadlineModalTitle }}</div>
+
+        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">Course</div>
+            <select class="input" value="{{ deadlineCourseId }}" onChange="{{ onDeadlineCourseChange }}" style="width:100%">
+              <option value="">General (all courses)</option>
+              <sc-for list="{{ deadlineCourseOptions }}" as="c" hint-placeholder-count="2">
+                <option value="{{ c.id }}">{{ c.name }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div style="display:flex;gap:12px">
+            <div style="flex:1">
+              <div style="font-size:13px;margin-bottom:4px">Date</div>
+              <input class="input" type="date" value="{{ deadlineDate }}" onChange="{{ onDeadlineDateChange }}" style="width:100%"/>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:13px;margin-bottom:4px">Time (optional)</div>
+              <input class="input" type="time" value="{{ deadlineTime }}" onChange="{{ onDeadlineTimeChange }}" style="width:100%"/>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">Title</div>
+            <input class="input" value="{{ deadlineTitle }}" onChange="{{ onDeadlineTitleChange }}" style="width:100%"/>
+          </div>
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">Type</div>
+            <select class="input" value="{{ deadlineType }}" onChange="{{ onDeadlineTypeChange }}" style="width:100%">
+              <option value="exam">Exam</option>
+              <option value="assignment">Assignment</option>
+              <option value="reading">Reading</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+        </div>
+
+        <sc-if value="{{ deadlineModalError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deadlineModalError }}</p>
+        </sc-if>
+
+        <sc-if value="{{ deadlineModalLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Saving…</div>
+        </sc-if>
+
+        <sc-if value="{{ !deadlineModalLoading }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeDeadlineModal }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ submitDeadlineModal }}">{{ deadlineSubmitLabel }}</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ deleteDeadlineOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:360px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-3)">Delete {{ deleteDeadlineTitle }}?</div>
+        <p class="card-body" style="margin:0 0 var(--space-4)">This can't be undone. If this deadline was already added to Google Calendar, that event stays — this only removes it from OnTrack.</p>
+        <sc-if value="{{ deleteDeadlineError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deleteDeadlineError }}</p>
+        </sc-if>
+        <sc-if value="{{ deleteDeadlineLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Deleting…</div>
+        </sc-if>
+        <sc-if value="{{ !deleteDeadlineLoading }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeDeleteDeadline }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ confirmDeleteDeadline }}">Delete</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
   </div>
 </div>
 {% endverbatim %}
@@ -1066,7 +1201,13 @@ class Component extends DCLogic {
     uploadPickerOpen: false,
     editingCourseId: null, editingCourseName: '', editCourseError: null,
     deleteCourseId: null, deleteCourseName: '', deleteCourseOpen: false,
-    deleteCourseLoading: false, deleteCourseError: null
+    deleteCourseLoading: false, deleteCourseError: null,
+    deadlinesLoading: false, deadlinesError: null, allDeadlines: [], deadlineSyncingIds: {},
+    deadlineModalOpen: false, deadlineEditingId: null, deadlineCourseId: '', deadlineDate: '',
+    deadlineTime: '', deadlineTitle: '', deadlineType: 'other',
+    deadlineModalLoading: false, deadlineModalError: null,
+    deleteDeadlineId: null, deleteDeadlineTitle: '', deleteDeadlineOpen: false,
+    deleteDeadlineLoading: false, deleteDeadlineError: null
   };
 
   _quizSeq = 0;
@@ -1083,6 +1224,7 @@ class Component extends DCLogic {
   _gradingSetupSeq = 0;
   _renameSeq = 0;
   _deleteCourseSeq = 0;
+  _deadlinesSeq = 0;
 
   navBtn(active) {
     return {
@@ -1148,6 +1290,113 @@ class Component extends DCLogic {
       .catch(e => {
         if (seq !== this._recentSeq) return;
         this.setState({ dashboardRecentLoading: false, dashboardRecentError: 'Network error: ' + e.message });
+      });
+  }
+
+  loadAllDeadlines() {
+    const seq = ++this._deadlinesSeq;
+    this.setState({ deadlinesLoading: true, deadlinesError: null });
+    fetch('/api/deadlines/')
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._deadlinesSeq) return;
+        if (!ok) { this.setState({ deadlinesLoading: false, deadlinesError: data.detail || 'Could not load deadlines.' }); return; }
+        this.setState({ deadlinesLoading: false, allDeadlines: data });
+      })
+      .catch(e => {
+        if (seq !== this._deadlinesSeq) return;
+        this.setState({ deadlinesLoading: false, deadlinesError: 'Network error: ' + e.message });
+      });
+  }
+
+  openAddDeadline() {
+    this.setState({
+      deadlineModalOpen: true, deadlineEditingId: null, deadlineCourseId: '',
+      deadlineDate: '', deadlineTime: '', deadlineTitle: '', deadlineType: 'other',
+      deadlineModalLoading: false, deadlineModalError: null
+    });
+  }
+
+  openEditDeadline(event) {
+    this.setState({
+      deadlineModalOpen: true, deadlineEditingId: event.id, deadlineCourseId: event.course_id || '',
+      deadlineDate: event.date, deadlineTime: event.time || '', deadlineTitle: event.title, deadlineType: event.type,
+      deadlineModalLoading: false, deadlineModalError: null
+    });
+  }
+
+  closeDeadlineModal() {
+    this.setState({ deadlineModalOpen: false, deadlineEditingId: null, deadlineModalError: null });
+  }
+
+  submitDeadlineModal() {
+    const s = this.state;
+    if (!s.deadlineDate || !s.deadlineTitle.trim()) {
+      this.setState({ deadlineModalError: 'Date and title are required.' });
+      return;
+    }
+    this.setState({ deadlineModalLoading: true, deadlineModalError: null });
+    const body = {
+      course_id: s.deadlineCourseId || null,
+      date: s.deadlineDate,
+      time: s.deadlineTime || null,
+      title: s.deadlineTitle,
+      type: s.deadlineType
+    };
+    const url = s.deadlineEditingId ? `/api/deadlines/${s.deadlineEditingId}/` : '/api/deadlines/';
+    const method = s.deadlineEditingId ? 'PATCH' : 'POST';
+    fetch(url, {
+      method: method, headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify(body)
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) { this.setState({ deadlineModalLoading: false, deadlineModalError: data.detail || 'Could not save this deadline.' }); return; }
+        this.closeDeadlineModal();
+        this.loadAllDeadlines();
+      })
+      .catch(e => {
+        this.setState({ deadlineModalLoading: false, deadlineModalError: 'Network error: ' + e.message });
+      });
+  }
+
+  openDeleteDeadline(event) {
+    this.setState({ deleteDeadlineOpen: true, deleteDeadlineId: event.id, deleteDeadlineTitle: event.title, deleteDeadlineError: null, deleteDeadlineLoading: false });
+  }
+
+  closeDeleteDeadline() {
+    this.setState({ deleteDeadlineOpen: false, deleteDeadlineId: null, deleteDeadlineTitle: '', deleteDeadlineError: null, deleteDeadlineLoading: false });
+  }
+
+  confirmDeleteDeadline() {
+    const id = this.state.deleteDeadlineId;
+    this.setState({ deleteDeadlineLoading: true, deleteDeadlineError: null });
+    fetch(`/api/deadlines/${id}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
+      .then(r => {
+        if (!r.ok) return r.json().then(data => { throw new Error(data.detail || 'Could not delete this deadline.'); });
+        this.closeDeleteDeadline();
+        this.loadAllDeadlines();
+      })
+      .catch(e => {
+        this.setState({ deleteDeadlineLoading: false, deleteDeadlineError: e.message });
+      });
+  }
+
+  syncDeadlineToCalendar(event) {
+    if (this.state.deadlineSyncingIds[event.id]) return;
+    this.setState({ deadlineSyncingIds: Object.assign({}, this.state.deadlineSyncingIds, { [event.id]: true }) });
+    fetch(`/api/deadlines/${event.id}/calendar-sync/`, { method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok }) => {
+        const syncing = Object.assign({}, this.state.deadlineSyncingIds);
+        delete syncing[event.id];
+        this.setState({ deadlineSyncingIds: syncing });
+        if (ok) this.loadAllDeadlines();
+      })
+      .catch(() => {
+        const syncing = Object.assign({}, this.state.deadlineSyncingIds);
+        delete syncing[event.id];
+        this.setState({ deadlineSyncingIds: syncing });
       });
   }
 
@@ -2039,6 +2288,11 @@ class Component extends DCLogic {
         this.loadDashboardRecent(s.course);
         return;
       }
+      if (t === 'deadlines') {
+        this.setState({ tab: t });
+        this.loadAllDeadlines();
+        return;
+      }
       if (t === 'grades' && s.course === 'all') {
         this.setState({ tab: t });
         this.loadGradesSummary();
@@ -2119,6 +2373,34 @@ class Component extends DCLogic {
         onAddToCalendar: () => this.addToCalendar(d.course_id, d.date, d.title, d.type, key)
       };
     });
+    const courseLabel = (id) => id ? id.toUpperCase() : 'General';
+    const allDeadlinesRows = s.allDeadlines.map(d => {
+      const dp = dateParts(d.date);
+      const isCustom = d.source === 'custom';
+      return {
+        month: dp.monthAbbrUpper, day: dp.day, title: d.title,
+        courseLabel: courseLabel(d.course_id),
+        timeLabel: d.time ? d.time.slice(0, 5) : '',
+        typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : d.type === 'reading' ? 'Reading' : 'Other',
+        tagStyle: typeStyle(d.type),
+        synced: !!d.synced,
+        isCustom: isCustom,
+        syncButtonLabel: s.deadlineSyncingIds[d.id] ? 'Adding…' : 'Add to Calendar',
+        onSync: isCustom ? (() => this.syncDeadlineToCalendar(d)) : (() => this.addToCalendar(d.course_id, d.date, d.title, d.type, d.course_id + '|' + d.date + '|' + d.title)),
+        onEdit: () => this.openEditDeadline(d),
+        onDelete: () => this.openDeleteDeadline(d)
+      };
+    });
+    const deadlinesEmpty = !s.deadlinesLoading && !s.deadlinesError && allDeadlinesRows.length === 0;
+
+    const deadlineCourseOptions = realCourseIds.map(id => ({ id: id, name: (courseMetaFor(id) && courseMetaFor(id).course_name) || id.toUpperCase() }));
+    const onDeadlineCourseChange = (e) => this.setState({ deadlineCourseId: e.target.value });
+    const onDeadlineDateChange = (e) => this.setState({ deadlineDate: e.target.value });
+    const onDeadlineTimeChange = (e) => this.setState({ deadlineTime: e.target.value });
+    const onDeadlineTitleChange = (e) => this.setState({ deadlineTitle: e.target.value });
+    const onDeadlineTypeChange = (e) => this.setState({ deadlineType: e.target.value });
+    const deadlineModalTitle = s.deadlineEditingId ? 'Edit deadline' : 'Add deadline';
+    const deadlineSubmitLabel = s.deadlineEditingId ? 'Save' : 'Add deadline';
     const weakTopicsForCourse = (id) => ((courseMetaFor(id) && courseMetaFor(id).weak_topics) || []).map(t => Object.assign({}, t, { course_id: id }));
     const rawWeakTopics = s.course === 'all'
       ? realCourseIds.map(weakTopicsForCourse).reduce((a, b) => a.concat(b), []).sort((a, b) => a.score - b.score)
@@ -2312,11 +2594,13 @@ class Component extends DCLogic {
       isQuiz: s.tab === 'quiz',
       isGrades: s.tab === 'grades',
       isGradesAllCourses: s.tab === 'grades' && s.course === 'all',
+      isDeadlines: s.tab === 'deadlines',
       navBtnStyleDashboard: this.navBtn(s.tab === 'dashboard'),
       navBtnStyleChat: this.navBtn(s.tab === 'chat'),
       navBtnStyleProgress: this.navBtn(s.tab === 'progress'),
       navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
       navBtnStyleGrades: this.navBtn(s.tab === 'grades'),
+      navBtnStyleDeadlines: this.navBtn(s.tab === 'deadlines'),
       courseChipStyleAll: this.courseChip(s.course === 'all'),
       courseChips: courseChips,
       signOut: () => this.signOut(),
@@ -2351,6 +2635,7 @@ class Component extends DCLogic {
       goProgress: () => setTab('progress'),
       goQuiz: () => setTab('quiz'),
       goGrades: () => setTab('grades'),
+      goDeadlines: () => setTab('deadlines'),
       gradesLoading: s.gradesLoading, gradesError: s.gradesError,
       gradesNotice: s.gradesNotice, dismissGradesNotice: () => this.dismissGradesNotice(),
       gradesSummaryLoading: s.gradesSummaryLoading, gradesSummaryError: s.gradesSummaryError,
@@ -2395,6 +2680,20 @@ class Component extends DCLogic {
       yourCoursesGridStyle: 'display:grid;grid-template-columns:' + (s.course === 'all' ? '1fr 1fr' : '1fr') + ';gap:var(--space-4);margin-bottom:var(--space-6)',
       yourCoursesCards: yourCoursesCards,
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
+      allDeadlinesRows: allDeadlinesRows, deadlinesEmpty: deadlinesEmpty, deadlinesLoading: s.deadlinesLoading, deadlinesError: s.deadlinesError,
+      openAddDeadline: () => this.openAddDeadline(),
+      deadlineModalOpen: s.deadlineModalOpen, deadlineModalTitle: deadlineModalTitle, deadlineSubmitLabel: deadlineSubmitLabel,
+      deadlineCourseId: s.deadlineCourseId, deadlineCourseOptions: deadlineCourseOptions, onDeadlineCourseChange: onDeadlineCourseChange,
+      deadlineDate: s.deadlineDate, onDeadlineDateChange: onDeadlineDateChange,
+      deadlineTime: s.deadlineTime, onDeadlineTimeChange: onDeadlineTimeChange,
+      deadlineTitle: s.deadlineTitle, onDeadlineTitleChange: onDeadlineTitleChange,
+      deadlineType: s.deadlineType, onDeadlineTypeChange: onDeadlineTypeChange,
+      deadlineModalLoading: s.deadlineModalLoading, deadlineModalError: s.deadlineModalError,
+      closeDeadlineModal: () => this.closeDeadlineModal(), submitDeadlineModal: () => this.submitDeadlineModal(),
+      deleteDeadlineOpen: s.deleteDeadlineOpen, deleteDeadlineTitle: s.deleteDeadlineTitle,
+      deleteDeadlineLoading: s.deleteDeadlineLoading, deleteDeadlineError: s.deleteDeadlineError,
+      closeDeleteDeadline: () => this.closeDeleteDeadline(), confirmDeleteDeadline: () => this.confirmDeleteDeadline(),
+      goToDeadlinesTab: () => setTab('deadlines'),
       syllabusCoveredPct: syllabusCoveredPct, syllabusCoveredLabel: syllabusCoveredLabel,
       streakLabel: streakLabel, streakSubLabel: streakSubLabel,
       quizAccuracyPct: quizAccuracyPct, quizAccuracyLabel: quizAccuracyLabel,
