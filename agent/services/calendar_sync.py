@@ -108,7 +108,7 @@ def add_deadline_to_calendar(user, course_id: str, date: str, title: str, event_
         ).execute()
     except (HttpError, RefreshError, OSError) as e:
         # Covers both a pre-emptive refresh failure (handled above in
-        # _get_credentials) and a *lazy* one — the client library also
+        # get_credentials) and a *lazy* one — the client library also
         # refreshes on a 401 response inside .execute() itself, e.g. if the
         # user revoked OnTrack's access after the stored token was minted
         # but before it looked expired. Also covers rate limits/Google 5xx

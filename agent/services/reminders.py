@@ -101,10 +101,14 @@ def list_all_deadlines() -> list:
     for d in syllabus_deadlines:
         course_id = d["course_id"]
         if course_id not in synced_by_course:
-            synced_by_course[course_id] = storage.read_calendar_sync(course_id)
-        d["synced"] = any(
+            try:
+                synced_by_course[course_id] = storage.read_calendar_sync(course_id)
+            except storage.CalendarSyncStorageError:
+                synced_by_course[course_id] = None
+        course_synced = synced_by_course[course_id]
+        d["synced"] = course_synced is not None and any(
             r["date"] == d["date"] and r["title"] == d["title"]
-            for r in synced_by_course[course_id]
+            for r in course_synced
         )
         d["source"] = "syllabus"
         d["id"] = None

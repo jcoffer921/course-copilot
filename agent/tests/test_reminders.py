@@ -77,3 +77,17 @@ def test_list_all_deadlines_sorted_by_date(isolated_courses_dir):
     deadlines = reminders.list_all_deadlines()
 
     assert [d["title"] for d in deadlines] == ["Earlier", "Later"]
+
+
+def test_list_all_deadlines_never_raises_on_corrupt_calendar_sync_file(isolated_courses_dir):
+    from datetime import date, timedelta
+
+    far_date = (date.today() + timedelta(days=60)).isoformat()
+    _seed_syllabus("cs101", [{"date": far_date, "title": "Final Exam", "type": "exam"}])
+    course_dir = isolated_courses_dir / "cs101"
+    (course_dir / "calendar_sync.json").write_text("{not valid json", encoding="utf-8")
+
+    deadlines = reminders.list_all_deadlines()
+
+    by_title = {d["title"]: d for d in deadlines}
+    assert by_title["Final Exam"]["synced"] is False

@@ -10,6 +10,7 @@ duplicating it, since a custom event's sync status is tracked inline on
 the event itself, not in calendar_sync.py's per-course calendar_sync.json.
 """
 
+import logging
 import uuid
 from datetime import datetime, timedelta
 
@@ -18,6 +19,8 @@ from google.auth.exceptions import RefreshError
 from googleapiclient.errors import HttpError
 
 from . import calendar_sync, storage
+
+logger = logging.getLogger(__name__)
 
 
 class EventNotFoundError(Exception):
@@ -119,6 +122,7 @@ def sync_event_to_calendar(user, event_id: str) -> dict:
             },
         ).execute()
     except (HttpError, RefreshError, OSError) as e:
+        logger.exception("Google Calendar API call failed")
         raise calendar_sync.CalendarAuthError(
             "Could not connect to Google Calendar — try signing out and back in."
         ) from e
