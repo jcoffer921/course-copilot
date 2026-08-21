@@ -85,6 +85,34 @@ def test_delete_event_raises_when_not_found(isolated_courses_dir):
         custom_events.delete_event("nonexistent-id")
 
 
+def test_delete_events_for_course_removes_matching_events(isolated_courses_dir):
+    custom_events.create_event("cs101", "2026-09-01", None, "A", "other")
+    custom_events.create_event("cs101", "2026-09-02", None, "B", "other")
+
+    custom_events.delete_events_for_course("cs101")
+
+    assert custom_events.list_events() == []
+
+
+def test_delete_events_for_course_leaves_other_courses_and_general_events(isolated_courses_dir):
+    custom_events.create_event("cs101", "2026-09-01", None, "Delete me", "other")
+    custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other")
+    custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other")
+
+    custom_events.delete_events_for_course("cs101")
+
+    remaining_titles = {e["title"] for e in custom_events.list_events()}
+    assert remaining_titles == {"Keep me (other course)", "Keep me (general)"}
+
+
+def test_delete_events_for_course_is_a_no_op_when_none_match(isolated_courses_dir):
+    custom_events.create_event(None, "2026-09-01", None, "General event", "other")
+
+    custom_events.delete_events_for_course("cs101")
+
+    assert len(custom_events.list_events()) == 1
+
+
 @pytest.fixture
 def user_with_valid_token(db):
     user = User.objects.create_user(username="sub-123", email="jordan@example.com")

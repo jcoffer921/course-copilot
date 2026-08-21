@@ -158,6 +158,12 @@ class CourseView(APIView):
         except storage.CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
+        # Custom events aren't stored under courses/<course_id>/ (they live
+        # in the top-level custom_events.json), so deleting the course
+        # directory above doesn't touch them — without this they'd linger
+        # as orphaned rows labeled with a course_id that no longer exists.
+        await sync_to_async(custom_events.delete_events_for_course)(course_id)
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -698,6 +704,9 @@ class DeadlinesView(APIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         d = serializer.validated_data
 
+        if d["course_id"] is not None and not await sync_to_async(storage.course_exists)(d["course_id"]):
+            return Response({"detail": f"no course '{d['course_id']}' found"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
         try:
             event = await sync_to_async(custom_events.create_event)(
                 d["course_id"],
@@ -733,6 +742,9 @@ class CustomEventDetailView(APIView):
             fields["date"] = fields["date"].isoformat()
         if "time" in fields:
             fields["time"] = fields["time"].strftime("%H:%M") if fields["time"] else None
+
+        if fields.get("course_id") is not None and not await sync_to_async(storage.course_exists)(fields["course_id"]):
+            return Response({"detail": f"no course '{fields['course_id']}' found"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         try:
             event = await sync_to_async(custom_events.update_event)(event_id, **fields)

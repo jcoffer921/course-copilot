@@ -2400,7 +2400,7 @@ class Component extends DCLogic {
         tagStyle: typeStyle(d.type),
         synced: !!d.synced,
         isCustom: isCustom,
-        syncButtonLabel: s.deadlineSyncingIds[d.id] ? 'Adding…' : 'Add to Calendar',
+        syncButtonLabel: (isCustom ? s.deadlineSyncingIds[d.id] : s.dashboardSyncingKeys[d.course_id + '|' + d.date + '|' + d.title]) ? 'Adding…' : 'Add to Calendar',
         // Syllabus rows have no id (d.id is null), so they go through the
         // Dashboard tab's addToCalendar rather than syncDeadlineToCalendar.
         // addToCalendar only updates dashboardDeadlines itself, so without

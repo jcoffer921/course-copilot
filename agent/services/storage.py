@@ -752,6 +752,20 @@ def write_course_draft(course_id: str, course_name: str) -> Path:
     return course_path
 
 
+def course_exists(course_id: str) -> bool:
+    """True if course_id is a real (syllabus'd) course — the same
+    definition reminders.list_courses() uses, so this matches exactly what
+    the UI already offers as a selectable course. False (never raises) for
+    a draft-only course, a missing course, or an unsafe/invalid course_id —
+    callers doing input validation want a plain reject, not an exception
+    for the common case of a client-supplied string."""
+    try:
+        course_dir = _course_dir(course_id)
+    except InvalidCourseIdError:
+        return False
+    return (course_dir / "syllabus.json").exists()
+
+
 def delete_course(course_id: str) -> None:
     """Deletes courses/<course_id>/ entirely — syllabus, notes, references,
     sessions, quiz_history, mastery_scores, everything. Raises

@@ -193,6 +193,22 @@ def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
     assert response.status_code == 404
 
 
+def test_delete_course_also_removes_its_custom_events(isolated_courses_dir, api_client):
+    from agent.services import custom_events
+
+    _seed_syllabus("cs101")
+    _seed_syllabus("cs102")
+    custom_events.create_event("cs101", "2026-09-01", None, "Delete me", "other")
+    custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other")
+    custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other")
+
+    response = api_client.delete("/api/courses/cs101/")
+
+    assert response.status_code == 204
+    remaining_titles = {e["title"] for e in custom_events.list_events()}
+    assert remaining_titles == {"Keep me (other course)", "Keep me (general)"}
+
+
 class _NeverCalledMessages:
     async def create(self, **kwargs):
         raise AssertionError(
@@ -652,6 +668,8 @@ def test_deadlines_get_returns_merged_list(isolated_courses_dir, api_client):
 
 @pytest.mark.django_db
 def test_deadlines_post_creates_custom_event(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
     response = api_client.post(
         "/api/deadlines/",
         {"course_id": "cs101", "date": "2026-09-01", "time": "14:00", "title": "Study group", "type": "other"},
@@ -691,6 +709,32 @@ def test_deadlines_post_rejects_invalid_type(isolated_courses_dir, api_client):
 
 
 @pytest.mark.django_db
+def test_deadlines_post_rejects_nonexistent_course_id(isolated_courses_dir, api_client):
+    response = api_client.post(
+        "/api/deadlines/",
+        {"course_id": "nope", "date": "2026-09-01", "title": "X", "type": "other"},
+        format="json",
+    )
+
+    assert response.status_code == 422
+    assert api_client.get("/api/deadlines/").data == []
+
+
+@pytest.mark.django_db
+def test_deadlines_post_accepts_real_course_id(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.post(
+        "/api/deadlines/",
+        {"course_id": "cs101", "date": "2026-09-01", "title": "X", "type": "other"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["course_id"] == "cs101"
+
+
+@pytest.mark.django_db
 def test_custom_event_detail_patch_updates_event(isolated_courses_dir, api_client):
     create_response = api_client.post(
         "/api/deadlines/",
@@ -723,6 +767,8 @@ def test_custom_event_detail_patch_null_time_clears_it(isolated_courses_dir, api
 
 @pytest.mark.django_db
 def test_custom_event_detail_patch_null_course_id_becomes_general(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
     create_response = api_client.post(
         "/api/deadlines/",
         {"course_id": "cs101", "date": "2026-09-01", "title": "Study group", "type": "other"},
@@ -735,6 +781,21 @@ def test_custom_event_detail_patch_null_course_id_becomes_general(isolated_cours
 
     assert response.status_code == 200
     assert response.data["course_id"] is None
+
+
+@pytest.mark.django_db
+def test_custom_event_detail_patch_rejects_nonexistent_course_id(isolated_courses_dir, api_client):
+    create_response = api_client.post(
+        "/api/deadlines/",
+        {"date": "2026-09-01", "title": "Study group", "type": "other"},
+        format="json",
+    )
+    event_id = create_response.data["id"]
+
+    response = api_client.patch(f"/api/deadlines/{event_id}/", {"course_id": "nope"}, format="json")
+
+    assert response.status_code == 422
+    assert api_client.get("/api/deadlines/").data[0]["course_id"] is None
 
 
 @pytest.mark.django_db

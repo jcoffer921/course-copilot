@@ -71,6 +71,20 @@ def delete_event(event_id: str) -> None:
     storage.write_custom_events(remaining)
 
 
+def delete_events_for_course(course_id: str) -> None:
+    """Removes every custom event tied to course_id — called when a course
+    itself is deleted, so its custom events don't linger as orphaned rows
+    labeled with a course_id that no longer exists. General events
+    (course_id=None) and other courses' events are untouched. A no-op if
+    none match, unlike delete_event, since this is cleanup triggered by an
+    unrelated action (course deletion), not a direct user request to delete
+    a specific event that must exist."""
+    events = storage.read_custom_events()
+    remaining = [e for e in events if e["course_id"] != course_id]
+    if len(remaining) != len(events):
+        storage.write_custom_events(remaining)
+
+
 def sync_event_to_calendar(user, event_id: str) -> dict:
     """Pushes one custom event into the signed-in user's Google Calendar —
     all-day if it has no time, a real timed event (1-hour duration,

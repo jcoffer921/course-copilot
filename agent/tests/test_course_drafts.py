@@ -81,3 +81,25 @@ def test_list_draft_courses_skips_corrupt_course_json(isolated_courses_dir):
     drafts = reminders.list_draft_courses()
 
     assert [d["course_id"] for d in drafts] == ["goodclass"]
+
+
+def test_course_exists_true_for_real_course(isolated_courses_dir):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "CS101", "dates": [], "grading": [], "topics": [],
+    })
+
+    assert storage.course_exists("cs101") is True
+
+
+def test_course_exists_false_for_missing_course(isolated_courses_dir):
+    assert storage.course_exists("nope") is False
+
+
+def test_course_exists_false_for_invalid_course_id(isolated_courses_dir):
+    assert storage.course_exists("../escape") is False
+
+
+def test_course_exists_false_for_draft_only_course(isolated_courses_dir):
+    storage.write_course_draft("newclass", "New Class")
+
+    assert storage.course_exists("newclass") is False
