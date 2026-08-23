@@ -9,7 +9,11 @@ calendar_sync.py which actually commits specific events to Google Calendar.
 from datetime import date, datetime, timedelta
 import json
 
+from django.db.utils import DatabaseError
+
 from . import custom_events, storage
+
+OVERDUE_CATEGORIES = {"hw", "project", "test_quiz"}
 
 
 def list_courses() -> list:
@@ -49,6 +53,15 @@ def list_draft_courses() -> list:
     return drafts
 
 
+def _syllabus_deadline_key(deadline: dict) -> str:
+    return "|".join([
+        deadline.get("course_id") or "",
+        deadline.get("date") or "",
+        deadline.get("title") or "",
+        deadline.get("type") or "other",
+    ])
+
+
 def upcoming_deadlines(within_days: int = None, course_ids: list = None) -> list:
     """Returns [{"course_id", "date", "title", "type"}, ...] across all (or
     the given) courses, sorted by date. Only today-or-later dates are
@@ -72,18 +85,20 @@ def upcoming_deadlines(within_days: int = None, course_ids: list = None) -> list
                 continue
             if cutoff is not None and event_date > cutoff:
                 continue
-            deadlines.append({
+            deadline = {
                 "course_id": course_id,
                 "date": d["date"],
                 "title": d.get("title", ""),
-                "type": d.get("type", "other"),
-            })
+                "type": storage.normalize_date_type(d.get("type", "other")),
+            }
+            deadline["key"] = _syllabus_deadline_key(deadline)
+            deadlines.append(deadline)
 
     deadlines.sort(key=lambda d: d["date"])
     return deadlines
 
 
-def list_all_deadlines() -> list:
+def list_all_deadlines(user=None, course_id: str = None) -> list:
     """Every upcoming deadline from both sources — syllabus-extracted
     (read-only, tagged source="syllabus") and manually-added (full CRUD,
     tagged source="custom") — combined and sorted by date, unbounded (no
@@ -96,13 +111,42 @@ def list_all_deadlines() -> list:
     imports this module, so importing back would be circular."""
     today = date.today()
 
-    syllabus_deadlines = upcoming_deadlines(within_days=None)
+    course_ids = [course_id] if course_id else None
+    syllabus_deadlines = upcoming_deadlines(within_days=None, course_ids=course_ids)
+    try:
+        all_custom = [
+            dict(e, source="custom")
+            for e in custom_events.list_events(user=user)
+            if e["date"] >= today.isoformat()
+            or (
+                not e.get("completed")
+                and storage.normalize_date_type(e.get("type")) in OVERDUE_CATEGORIES
+            )
+        ]
+    except (storage.CustomEventsStorageError, DatabaseError):
+        all_custom = []
+
+    custom = [
+        e for e in all_custom
+        if course_id is None or e["course_id"] == course_id
+    ]
+
+    replaced_syllabus_keys = {
+        e.get("replaces_syllabus_key")
+        for e in all_custom
+        if e.get("replaces_syllabus_key")
+    }
+    syllabus_deadlines = [
+        d for d in syllabus_deadlines
+        if d.get("key") not in replaced_syllabus_keys
+    ]
+
     synced_by_course = {}
     for d in syllabus_deadlines:
         course_id = d["course_id"]
         if course_id not in synced_by_course:
             try:
-                synced_by_course[course_id] = storage.read_calendar_sync(course_id)
+                synced_by_course[course_id] = storage.read_calendar_sync(course_id, user=user)
             except storage.CalendarSyncStorageError:
                 synced_by_course[course_id] = None
         course_synced = synced_by_course[course_id]
@@ -113,15 +157,8 @@ def list_all_deadlines() -> list:
         d["source"] = "syllabus"
         d["id"] = None
         d["time"] = None
-
-    try:
-        custom = [
-            dict(e, source="custom")
-            for e in custom_events.list_events()
-            if e["date"] >= today.isoformat()
-        ]
-    except storage.CustomEventsStorageError:
-        custom = []
+        d["end_time"] = None
+        d["completed"] = False
 
     combined = syllabus_deadlines + custom
     combined.sort(key=lambda d: (d["date"], d["time"] or ""))

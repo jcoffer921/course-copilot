@@ -3,6 +3,8 @@ import logging
 from adrf.views import APIView
 from asgiref.sync import sync_to_async
 from django.contrib.auth.decorators import login_required
+from django.contrib.auth.models import User
+from django.db.utils import DatabaseError
 from django.shortcuts import render
 from rest_framework import status
 from rest_framework.response import Response
@@ -16,24 +18,106 @@ from .serializers import (
     CreateCourseDraftRequestSerializer,
     CreateCustomEventRequestSerializer,
     ExtractSyllabusRequestSerializer,
+    FlashcardProgressResetSerializer,
+    FlashcardProgressUpdateSerializer,
+    GenerateFlashcardsRequestSerializer,
     GenerateQuestionRequestSerializer,
     GradingConfigRequestSerializer,
     IngestReferenceRequestSerializer,
+    NotificationReadSerializer,
     RecordAttemptRequestSerializer,
     UpdateCustomEventRequestSerializer,
     UpdateGradeItemRequestSerializer,
+    UserProfileUpdateSerializer,
 )
-from .services import calendar_sync, chunk_notes, custom_events, dashboard, domain_suggestions, grades, mastery, quiz, references, reminders, sessions, storage
+from .services import calendar_sync, chunk_notes, custom_events, dashboard, domain_suggestions, grades, mastery, notifications, quiz, references, reminders, sessions, storage
 from .services.ask import CourseNotFoundError, ask_async
 from .services.syllabus_extraction import extract_syllabus_async, read_source_text_from_upload
 
 logger = logging.getLogger(__name__)
 
 
+def _positive_int_query_param(request, name: str, default: int):
+    raw_value = request.query_params.get(name)
+    if raw_value in (None, ""):
+        return default, None
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        return None, f"{name} must be an integer"
+    if value < 1:
+        return None, f"{name} must be greater than 0"
+    return value, None
+
+
+def _display_name_for(user):
+    if user.get_full_name().strip():
+        return user.get_full_name().strip()
+    if user.first_name.strip():
+        return user.first_name.strip()
+    if user.email:
+        return user.email.split("@", 1)[0]
+    return user.username
+
+
+def _profile_payload(user):
+    from agent.models import UserSettings
+
+    settings, _ = UserSettings.objects.get_or_create(user=user)
+    return {
+        "email": user.email,
+        "username": user.username,
+        "display_name": _display_name_for(user),
+        "notifications_enabled": settings.notifications_enabled,
+    }
+
+
+class UserProfileView(APIView):
+    """GET/PATCH /api/profile/ — current user's display settings."""
+
+    async def get(self, request):
+        data = await sync_to_async(_profile_payload)(request.user)
+        return Response(data, status=status.HTTP_200_OK)
+
+    async def patch(self, request):
+        serializer = UserProfileUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        data = serializer.validated_data
+
+        def update_profile():
+            from agent.models import UserSettings
+
+            user = request.user
+            if "username" in data:
+                username = data["username"].strip()
+                if User.objects.exclude(pk=user.pk).filter(username__iexact=username).exists():
+                    raise ValueError("That username is already taken.")
+                user.username = username
+            if "display_name" in data:
+                user.first_name = data["display_name"].strip()
+                user.last_name = ""
+            user.save()
+
+            settings_obj, _ = UserSettings.objects.get_or_create(user=user)
+            if "notifications_enabled" in data:
+                settings_obj.notifications_enabled = data["notifications_enabled"]
+                settings_obj.save(update_fields=["notifications_enabled", "updated_at"])
+            return _profile_payload(user)
+
+        try:
+            profile = await sync_to_async(update_profile)()
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
+
+        return Response(profile, status=status.HTTP_200_OK)
+
+
 class ExtractSyllabusView(APIView):
     """
     POST /api/courses/<course_id>/syllabus/extract/
-    multipart/form-data: file=<syllabus pdf/txt/md>, course_name=<optional>, overwrite=<bool>
+    multipart/form-data: file=<syllabus PDF/PPTX/DOCX/TXT/MD>, course_name=<optional>, overwrite=<bool>
 
     Plan-then-pause: if syllabus.json already exists for this course_id and
     overwrite=false (default), returns 409 with a preview instead of writing.
@@ -162,7 +246,7 @@ class CourseView(APIView):
         # in the top-level custom_events.json), so deleting the course
         # directory above doesn't touch them — without this they'd linger
         # as orphaned rows labeled with a course_id that no longer exists.
-        await sync_to_async(custom_events.delete_events_for_course)(course_id)
+        await sync_to_async(custom_events.delete_events_for_course)(course_id, all_users=True)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -170,7 +254,7 @@ class CourseView(APIView):
 class ChunkNotesView(APIView):
     """
     POST /api/courses/<course_id>/notes/chunk/
-    multipart/form-data: file=<notes PDF/TXT/MD or .pptx slide deck>,
+    multipart/form-data: file=<notes PDF/PPTX/DOCX/TXT/MD>,
     lecture_id=<str>, date=<optional YYYY-MM-DD>, overwrite=<bool>
 
     Plan-then-pause: if notes/<lecture_id>.json already exists and
@@ -239,7 +323,7 @@ class ChunkNotesView(APIView):
 class ReferencesView(APIView):
     """
     POST /api/courses/<course_id>/references/
-    multipart/form-data: file=<reference pdf/txt/md>, title=<optional>
+    multipart/form-data: file=<reference PDF/PPTX/DOCX/TXT/MD>, title=<optional>
 
     No plan-then-pause here — reference_id is generated fresh from the title
     (or filename), with a numeric suffix on collision, so there's no
@@ -385,7 +469,7 @@ class GradingConfigView(APIView):
         if blocking:
             return Response({"detail": "invalid grading config", "errors": blocking}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
-        orphaned = await sync_to_async(grades.find_orphaned_components)(course_id, grading)
+        orphaned = await sync_to_async(grades.find_orphaned_components)(course_id, grading, user=request.user)
         warnings += [
             f"WARNING: '{c}' has entered grades that won't count toward your grade anymore — "
             f"no matching category in the new setup"
@@ -410,8 +494,8 @@ class GradesView(APIView):
 
     async def get(self, request, course_id):
         try:
-            grade = await sync_to_async(grades.current_grade)(course_id)
-            items = (await sync_to_async(storage.read_grades)(course_id))["items"]
+            grade = await sync_to_async(grades.current_grade)(course_id, user=request.user)
+            items = (await sync_to_async(storage.read_grades)(course_id, user=request.user))["items"]
         except storage.CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.GradesStorageError as e:
@@ -433,6 +517,7 @@ class GradeItemsView(APIView):
         try:
             item = await sync_to_async(grades.add_item)(
                 course_id, d["component"], d["title"], d["score"], d["max_points"], d.get("date"),
+                user=request.user,
             )
         except storage.CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
@@ -453,7 +538,7 @@ class GradeItemDetailView(APIView):
         fields = {k: v for k, v in serializer.validated_data.items() if v is not None}
 
         try:
-            item = await sync_to_async(grades.update_item)(course_id, item_id, **fields)
+            item = await sync_to_async(grades.update_item)(course_id, item_id, user=request.user, **fields)
         except grades.ItemNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except ValueError as e:
@@ -463,7 +548,7 @@ class GradeItemDetailView(APIView):
 
     async def delete(self, request, course_id, item_id):
         try:
-            await sync_to_async(grades.delete_item)(course_id, item_id)
+            await sync_to_async(grades.delete_item)(course_id, item_id, user=request.user)
         except grades.ItemNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -481,8 +566,8 @@ class GradesWhatIfView(APIView):
             return Response({"detail": "query param 'target' must be a number"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            needed = await sync_to_async(grades.grade_needed)(course_id, target_pct)
-            missable = await sync_to_async(grades.missable_by_category)(course_id, target_pct)
+            needed = await sync_to_async(grades.grade_needed)(course_id, target_pct, user=request.user)
+            missable = await sync_to_async(grades.missable_by_category)(course_id, target_pct, user=request.user)
         except storage.CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
 
@@ -493,7 +578,7 @@ class GradesSummaryView(APIView):
     """GET /api/grades/summary/ — all-courses rollup."""
 
     async def get(self, request):
-        data = await sync_to_async(grades.all_courses_summary)()
+        data = await sync_to_async(grades.all_courses_summary)(user=request.user)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -503,7 +588,7 @@ class MasteryView(APIView):
 
     async def get(self, request, course_id):
         try:
-            scores = await sync_to_async(mastery.weak_topics)(course_id)
+            scores = await sync_to_async(mastery.weak_topics)(course_id, user=request.user)
         except storage.InvalidCourseIdError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except storage.QuizStorageError as e:
@@ -519,7 +604,7 @@ class MasteryRebuildView(APIView):
 
     async def post(self, request, course_id):
         try:
-            data = await sync_to_async(mastery.rebuild_scores)(course_id)
+            data = await sync_to_async(mastery.rebuild_scores)(course_id, user=request.user)
         except storage.InvalidCourseIdError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except storage.QuizStorageError as e:
@@ -550,9 +635,15 @@ class QuizGenerateView(APIView):
 
         topic = serializer.validated_data.get("topic")
         chunk_id = serializer.validated_data.get("chunk_id")
+        question_type = serializer.validated_data.get("question_type")
+        previous_questions = serializer.validated_data.get("previous_questions")
 
         try:
-            q = await quiz.generate_question_async(course_id, topic=topic, chunk_id=chunk_id)
+            q = await quiz.generate_assessment_question_async(
+                course_id, topic=topic, chunk_id=chunk_id,
+                question_type=question_type, previous_questions=previous_questions,
+                user=request.user,
+            )
         except CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.InvalidCourseIdError as e:
@@ -563,6 +654,104 @@ class QuizGenerateView(APIView):
             return Response({"detail": f"question generation failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
 
         return Response(q, status=status.HTTP_200_OK)
+
+
+class FlashcardsGenerateView(APIView):
+    """
+    POST /api/courses/<course_id>/flashcards/generate/
+    body: {"topic": "<optional>", "chunk_id": "<optional>", "count": 1..12}
+
+    Uses Haiku as the cheap gatherer/flashcard maker. If the course has approved
+    trusted domains, Haiku can use scoped web search for compact definitions.
+    """
+
+    async def post(self, request, course_id):
+        serializer = GenerateFlashcardsRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        topic = serializer.validated_data.get("topic")
+        chunk_id = serializer.validated_data.get("chunk_id")
+        count = serializer.validated_data.get("count", 8)
+
+        try:
+            deck = await quiz.generate_flashcards_async(
+                course_id, topic=topic, chunk_id=chunk_id, count=count, user=request.user
+            )
+            deck["flashcards"] = await sync_to_async(storage.annotate_flashcards_with_progress)(
+                course_id, deck.get("flashcards", []), user=request.user
+            )
+            await sync_to_async(storage.remember_generated_flashcards)(
+                course_id, deck.get("flashcards", []), user=request.user
+            )
+        except CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.FlashcardProgressStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except quiz.NoChunksAvailableError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        except ValueError as e:
+            return Response({"detail": f"flashcard generation failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(deck, status=status.HTTP_200_OK)
+
+
+class FlashcardProgressView(APIView):
+    """
+    PATCH /api/courses/<course_id>/flashcards/progress/
+    body: {"key", "term", "definition", "status", "starred"}
+    """
+
+    async def patch(self, request, course_id):
+        serializer = FlashcardProgressUpdateSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if await sync_to_async(storage.read_syllabus)(course_id) is None:
+                return Response({"detail": f"no syllabus found for '{course_id}'"}, status=status.HTTP_404_NOT_FOUND)
+            result = await sync_to_async(storage.update_flashcard_progress)(
+                course_id, serializer.validated_data, user=request.user
+            )
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.SyllabusStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except storage.FlashcardProgressStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class FlashcardProgressResetView(APIView):
+    """
+    POST /api/courses/<course_id>/flashcards/progress/reset/
+    body: {"keys": ["..."]}
+    """
+
+    async def post(self, request, course_id):
+        serializer = FlashcardProgressResetSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if await sync_to_async(storage.read_syllabus)(course_id) is None:
+                return Response({"detail": f"no syllabus found for '{course_id}'"}, status=status.HTTP_404_NOT_FOUND)
+            await sync_to_async(storage.reset_flashcard_progress)(
+                course_id, serializer.validated_data["keys"], user=request.user
+            )
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.SyllabusStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except storage.FlashcardProgressStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({"status": "ok"}, status=status.HTTP_200_OK)
 
 
 class QuizRecordView(APIView):
@@ -584,6 +773,7 @@ class QuizRecordView(APIView):
             result = await sync_to_async(quiz.record_attempt)(
                 course_id, d["lecture_id"], d["chunk_id"], d["topic"],
                 d["question"], d["correct_answer"], d["user_answer"],
+                user=request.user,
             )
         except storage.InvalidCourseIdError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -598,11 +788,12 @@ class QuizHistoryView(APIView):
     """
 
     async def get(self, request, course_id):
-        raw_limit = request.query_params.get("limit")
-        limit = int(raw_limit) if raw_limit else 10
+        limit, error = _positive_int_query_param(request, "limit", 10)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            attempts = await sync_to_async(quiz.recent_attempts)(course_id, limit=limit)
+            attempts = await sync_to_async(quiz.recent_attempts)(course_id, limit=limit, user=request.user)
         except storage.InvalidCourseIdError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -618,8 +809,9 @@ class RemindersView(APIView):
     """
 
     async def get(self, request):
-        raw_within_days = request.query_params.get("within_days")
-        within_days = int(raw_within_days) if raw_within_days else 14
+        within_days, error = _positive_int_query_param(request, "within_days", 14)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
         course_id = request.query_params.get("course_id")
         course_ids = [course_id] if course_id else None
 
@@ -640,7 +832,8 @@ class DashboardView(APIView):
     """
 
     async def get(self, request):
-        data = await sync_to_async(dashboard.build_dashboard)()
+        await sync_to_async(notifications.generate_overdue_deadline_notifications)(user=request.user)
+        data = await sync_to_async(dashboard.build_dashboard)(user=request.user)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -692,8 +885,14 @@ class DeadlinesView(APIView):
     """
 
     async def get(self, request):
+        course_id = request.query_params.get("course_id") or None
+        if course_id == "all":
+            course_id = None
+        if course_id is not None and not await sync_to_async(storage.course_or_draft_exists)(course_id):
+            return Response({"detail": f"no course '{course_id}' found"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
         try:
-            data = await sync_to_async(reminders.list_all_deadlines)()
+            await sync_to_async(notifications.generate_overdue_deadline_notifications)(user=request.user)
+            data = await sync_to_async(reminders.list_all_deadlines)(user=request.user, course_id=course_id)
         except storage.CustomEventsStorageError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(data, status=status.HTTP_200_OK)
@@ -712,10 +911,18 @@ class DeadlinesView(APIView):
                 d["course_id"],
                 d["date"].isoformat(),
                 d["time"].strftime("%H:%M") if d["time"] else None,
-                d["title"], d["type"],
+                d["title"], d["type"], user=request.user,
+                end_time=d["end_time"].strftime("%H:%M") if d.get("end_time") else None,
+                replaces_syllabus_key=d.get("replaces_syllabus_key"),
+                completed=d.get("completed", False),
             )
         except storage.CustomEventsStorageError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError as e:
+            return Response(
+                {"detail": "Deadline storage is not migrated yet. Run manage.py migrate, then try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except ValueError as e:
             return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
@@ -742,16 +949,23 @@ class CustomEventDetailView(APIView):
             fields["date"] = fields["date"].isoformat()
         if "time" in fields:
             fields["time"] = fields["time"].strftime("%H:%M") if fields["time"] else None
+        if "end_time" in fields:
+            fields["end_time"] = fields["end_time"].strftime("%H:%M") if fields["end_time"] else None
 
         if fields.get("course_id") is not None and not await sync_to_async(storage.course_exists)(fields["course_id"]):
             return Response({"detail": f"no course '{fields['course_id']}' found"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         try:
-            event = await sync_to_async(custom_events.update_event)(event_id, **fields)
+            event = await sync_to_async(custom_events.update_event)(event_id, user=request.user, **fields)
         except custom_events.EventNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.CustomEventsStorageError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError as e:
+            return Response(
+                {"detail": "Deadline storage is not migrated yet. Run manage.py migrate, then try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except ValueError as e:
             return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
@@ -759,13 +973,38 @@ class CustomEventDetailView(APIView):
 
     async def delete(self, request, event_id):
         try:
-            await sync_to_async(custom_events.delete_event)(event_id)
+            await sync_to_async(custom_events.delete_event)(event_id, user=request.user)
         except custom_events.EventNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.CustomEventsStorageError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError as e:
+            return Response(
+                {"detail": "Deadline storage is not migrated yet. Run manage.py migrate, then try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class NotificationsView(APIView):
+    """GET /api/notifications/ and PATCH /api/notifications/read/."""
+
+    async def get(self, request):
+        data = await sync_to_async(notifications.list_notifications)(user=request.user)
+        return Response(data, status=status.HTTP_200_OK)
+
+
+class NotificationsReadView(APIView):
+    async def patch(self, request):
+        serializer = NotificationReadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = await sync_to_async(notifications.mark_notifications_read)(
+            user=request.user,
+            ids=serializer.validated_data.get("ids"),
+        )
+        return Response(data, status=status.HTTP_200_OK)
 
 
 class CustomEventCalendarSyncView(APIView):
@@ -831,7 +1070,7 @@ class AskView(APIView):
         session_id = serializer.validated_data.get("session_id")
 
         try:
-            result = await ask_async(course_id, question, session_id=session_id)
+            result = await ask_async(course_id, question, session_id=session_id, user=request.user)
         except CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except sessions.SessionNotFoundError as e:
@@ -858,7 +1097,7 @@ class SessionsView(APIView):
 
     async def post(self, request, course_id):
         try:
-            session = await sync_to_async(sessions.create_session)(course_id)
+            session = await sync_to_async(sessions.create_session)(course_id, user=request.user)
         except storage.InvalidCourseIdError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except storage.CourseNotFoundError as e:
@@ -871,7 +1110,7 @@ class SessionsView(APIView):
 
     async def get(self, request, course_id):
         try:
-            summaries = await sync_to_async(sessions.list_sessions)(course_id)
+            summaries = await sync_to_async(sessions.list_sessions)(course_id, user=request.user)
         except storage.InvalidCourseIdError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except sessions.SessionStorageError as e:
@@ -885,7 +1124,7 @@ class SessionDetailView(APIView):
 
     async def get(self, request, course_id, session_id):
         try:
-            session = await sync_to_async(sessions.get_session)(course_id, session_id)
+            session = await sync_to_async(sessions.get_session)(course_id, session_id, user=request.user)
         except (storage.InvalidCourseIdError, sessions.InvalidSessionIdError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except sessions.SessionStorageError as e:

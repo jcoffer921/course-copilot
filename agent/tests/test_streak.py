@@ -1,8 +1,11 @@
 from datetime import datetime, timedelta, timezone
 
 import pytest
+from django.contrib.auth.models import User
 
 from agent.services import storage, streak
+
+pytestmark = pytest.mark.django_db
 
 
 @pytest.fixture
@@ -72,3 +75,14 @@ def test_streak_ignores_a_course_with_corrupt_quiz_history(isolated_courses_dir,
     (tmp_path / "badcourse" / "quiz_history.json").write_text("{not valid json", encoding="utf-8")
 
     assert streak.current_streak() == 1
+
+
+def test_streak_is_scoped_to_authenticated_user(isolated_courses_dir):
+    today = datetime.now(timezone.utc).date()
+    jordan = User.objects.create_user(username="jordan")
+    alex = User.objects.create_user(username="alex")
+    _seed_syllabus("cs101")
+    storage.append_quiz_attempt("cs101", _attempt_at(today), user=alex)
+
+    assert streak.current_streak(user=jordan) == 0
+    assert streak.current_streak(user=alex) == 1

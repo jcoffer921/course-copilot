@@ -73,6 +73,63 @@ with the summed weight_pct — never emit two entries with the same component.
 # Text extraction from source bytes (sync — file I/O, not worth async)
 # --------------------------------------------------------------------------
 
+SUPPORTED_SOURCE_TYPES = ".pdf, .pptx, .docx, .txt, or .md"
+
+
+def _extract_docx_text(data: bytes) -> str:
+    try:
+        from docx import Document
+    except ImportError as e:
+        raise ValueError("couldn't read .docx file: python-docx is not installed") from e
+
+    try:
+        doc = Document(io.BytesIO(data))
+    except Exception as e:
+        raise ValueError(f"couldn't read .docx file: {e}") from e
+
+    parts = []
+    parts.extend(p.text.strip() for p in doc.paragraphs if p.text.strip())
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if cells:
+                parts.append(" | ".join(cells))
+
+    text = "\n".join(parts).strip()
+    if not text:
+        raise ValueError("no extractable text found in Word document")
+    return text
+
+
+def _extract_pptx_text(data: bytes) -> str:
+    try:
+        from pptx import Presentation
+    except ImportError as e:
+        raise ValueError("couldn't read .pptx file: python-pptx is not installed") from e
+
+    try:
+        prs = Presentation(io.BytesIO(data))
+    except Exception as e:
+        raise ValueError(f"couldn't read .pptx file: {e}") from e
+
+    parts = []
+    for slide_number, slide in enumerate(prs.slides, start=1):
+        slide_parts = []
+        for shape in slide.shapes:
+            if not shape.has_text_frame:
+                continue
+            text = shape.text_frame.text.strip()
+            if text:
+                slide_parts.append(text)
+        if slide_parts:
+            parts.append(f"Slide {slide_number}\n" + "\n".join(slide_parts))
+
+    text = "\n\n".join(parts).strip()
+    if not text:
+        raise ValueError("no extractable text found in PowerPoint deck")
+    return text
+
+
 def extract_text_from_bytes(data: bytes, filename: str) -> str:
     suffix = Path(filename).suffix.lower()
 
@@ -87,14 +144,19 @@ def extract_text_from_bytes(data: bytes, filename: str) -> str:
             )
         return text
 
-    elif suffix in (".txt", ".md"):
+    if suffix == ".pptx":
+        return _extract_pptx_text(data)
+
+    if suffix == ".docx":
+        return _extract_docx_text(data)
+
+    if suffix in (".txt", ".md"):
         text = data.decode("utf-8", errors="ignore").strip()
         if not text:
             raise ValueError("source file is empty")
         return text
 
-    else:
-        raise ValueError(f"unsupported file type '{suffix}'. Use .pdf, .txt, or .md.")
+    raise ValueError(f"unsupported file type '{suffix}'. Use {SUPPORTED_SOURCE_TYPES}.")
 
 
 def read_source_text_from_path(path: Path) -> str:
@@ -127,22 +189,30 @@ async def extract_syllabus_async(source_text: str, course_id: str, course_name_h
     )
 
     raw = "".join(block.text for block in response.content if block.type == "text").strip()
+    return _parse_model_json(raw)
+
+
+def _parse_model_json(raw: str) -> dict:
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
 
     try:
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        # The model sometimes prefixes the JSON with reasoning prose (or trails it
-        # with commentary) despite being told not to. As a fallback, slice out
-        # everything from the first "{" to the last "}" and retry once before
-        # giving up — this tolerates a preamble/epilogue without trying to parse
-        # or understand its shape.
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            sliced = raw[start:end + 1]
+        # The model sometimes prefixes/trails prose, or emits an initial JSON
+        # object followed by a self-corrected second object. Decode complete JSON
+        # objects we can find and use the last one that has the syllabus top-level
+        # shape, which preserves the common self-correction case without
+        # accidentally returning a nested grading/date object.
+        decoder = json.JSONDecoder()
+        candidates = []
+        required_keys = {"course_id", "course_name", "dates", "grading", "topics"}
+        for match in re.finditer(r"{", raw):
             try:
-                return json.loads(sliced)
+                obj, _ = decoder.raw_decode(raw[match.start():])
             except json.JSONDecodeError:
-                pass
+                continue
+            if isinstance(obj, dict) and required_keys.issubset(obj):
+                candidates.append(obj)
+        if candidates:
+            return candidates[-1]
         raise ValueError(f"model did not return valid JSON: {e}\n\nRaw output:\n{raw}")

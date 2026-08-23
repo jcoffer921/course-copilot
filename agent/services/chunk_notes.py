@@ -127,7 +127,7 @@ def _slides_to_source_text(slides: list) -> str:
 
 def extract_text_from_source(data: bytes, filename: str) -> tuple:
     """Returns (source_text, source_type) where source_type is 'notes' or
-    'slides'. Reuses syllabus_extraction's .pdf/.txt/.md handling for the
+    'slides'. Reuses syllabus_extraction's document/text handling for the
     'notes' path rather than reimplementing it."""
     suffix = Path(filename).suffix.lower()
 
@@ -135,12 +135,7 @@ def extract_text_from_source(data: bytes, filename: str) -> tuple:
         slides = _extract_slides_from_bytes(data)
         return _slides_to_source_text(slides), "slides"
 
-    try:
-        text = extract_text_from_bytes(data, filename)
-    except ValueError as e:
-        if "unsupported file type" in str(e):
-            raise ValueError(f"{e} (or .pptx for slide decks)")
-        raise
+    text = extract_text_from_bytes(data, filename)
     return text, "notes"
 
 

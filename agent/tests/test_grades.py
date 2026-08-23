@@ -2,6 +2,8 @@ import pytest
 
 from agent.services import grades, storage
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):
@@ -430,7 +432,7 @@ def test_all_courses_summary_no_courses_at_all(isolated_courses_dir):
     assert result["excluded_count"] == 0
 
 
-def test_all_courses_summary_isolates_corrupt_course(isolated_courses_dir):
+def test_all_courses_summary_ignores_legacy_corrupt_grades_json(isolated_courses_dir):
     _seed_syllabus("cs101", [{"component": "HW", "weight_pct": 100}])
     _seed_items("cs101", [{"id": "1", "component": "HW", "title": "HW1", "score": 80, "max_points": 100}])
 
@@ -442,6 +444,7 @@ def test_all_courses_summary_isolates_corrupt_course(isolated_courses_dir):
     result = grades.all_courses_summary()
 
     bad = next(c for c in result["courses"] if c["course_id"] == "badcourse")
-    assert "error" in bad
+    assert bad["current_pct"] is None
+    assert bad["letter"] is None
     cs101 = next(c for c in result["courses"] if c["course_id"] == "cs101")
     assert cs101["current_pct"] == 80.0

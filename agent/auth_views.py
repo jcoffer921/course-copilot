@@ -89,7 +89,7 @@ def google_callback(request):
         messages.error(request, "That Google account isn't on OnTrack's approved list yet. Try a different account, or contact whoever manages this OnTrack instance.")
         return redirect("google-login")
 
-    user = google_oauth.get_or_create_account(google_sub, email, credentials)
+    user = google_oauth.get_or_create_account(google_sub, email, credentials, name=claims.get("name"))
     login(request, user)
     return redirect("ontrack")
 

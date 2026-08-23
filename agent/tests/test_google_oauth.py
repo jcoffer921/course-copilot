@@ -56,6 +56,15 @@ def test_get_or_create_account_creates_new_user_and_account():
 
 
 @pytest.mark.django_db
+def test_get_or_create_account_stores_google_profile_name():
+    user = google_oauth.get_or_create_account(
+        "sub-123", "jordan@example.com", _fake_credentials(), name="Jordan Lee"
+    )
+
+    assert user.first_name == "Jordan Lee"
+
+
+@pytest.mark.django_db
 def test_get_or_create_account_returns_existing_user_on_second_login():
     from agent.models import GoogleAccount
 

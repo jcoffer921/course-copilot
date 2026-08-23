@@ -2,21 +2,36 @@
 Flat-file JSON storage for course data.
 
 Course data intentionally stays on disk as courses/<course_id>/*.json — this is
-a personal-use project (one user), so a database layer would add complexity
-without adding value. Django's own DB (sqlite) is only used for its own
-auth/session/admin tables, never for course content.
+still the source for extracted syllabus/notes content. Mutable tester/user
+state can live in Django's SQLite database where transactions matter.
 """
 
 import json
 import re
 import shutil
 from datetime import datetime, timezone
+import hashlib
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # project root
 COURSES_DIR = BASE_DIR / "courses"
 
-VALID_DATE_TYPES = {"exam", "assignment", "reading", "other"}
+VALID_DATE_TYPES = {"hw", "project", "test_quiz", "class", "other"}
+LEGACY_DATE_TYPE_MAP = {
+    "assignment": "hw",
+    "homework": "hw",
+    "exam": "test_quiz",
+    "test": "test_quiz",
+    "quiz": "test_quiz",
+    "reading": "class",
+    "lesson": "class",
+}
+
+
+def normalize_date_type(value: str) -> str:
+    normalized = str(value or "other").strip().lower().replace("-", "_").replace(" ", "_")
+    normalized = LEGACY_DATE_TYPE_MAP.get(normalized, normalized)
+    return normalized if normalized in VALID_DATE_TYPES else "other"
 
 VALID_NOTE_SOURCES = {"notes", "slides"}
 
@@ -66,6 +81,10 @@ class TrustedDomainsStorageError(Exception):
 
 class QuizStorageError(Exception):
     """Raised when quiz_history.json or mastery_scores.json on disk is corrupt/unreadable."""
+
+
+class FlashcardProgressStorageError(Exception):
+    """Raised when flashcard progress cannot be read or written."""
 
 
 class GradesStorageError(Exception):
@@ -557,139 +576,438 @@ def write_trusted_domains(course_id: str, domains: list) -> Path:
     return out_path
 
 
-def read_quiz_history(course_id: str) -> dict:
-    """Returns the parsed quiz_history.json dict ({"course_id", "attempts"}).
-    Returns an empty skeleton if it doesn't exist yet — a course with no quiz
-    attempts yet is a normal state, not an error."""
-    path = _course_dir(course_id) / "quiz_history.json"
-    if not path.exists():
-        return {"course_id": course_id, "attempts": []}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise QuizStorageError(f"quiz_history.json for '{course_id}' is corrupt: {e}")
+def read_quiz_history(course_id: str, user=None) -> dict:
+    """Returns quiz attempts from SQLite in the historical JSON shape."""
+    _course_dir(course_id)
+    from agent.models import QuizAttempt
+
+    attempts = []
+    records = _scope_user_queryset(QuizAttempt.objects.filter(course_id=course_id), user).order_by("timestamp", "id")
+    for record in records:
+        attempts.append({
+            "lecture_id": record.lecture_id,
+            "chunk_id": record.chunk_id,
+            "topic": record.topic,
+            "question": record.question,
+            "correct_answer": record.correct_answer,
+            "user_answer": record.user_answer,
+            "correct": record.correct,
+            "timestamp": record.timestamp,
+        })
+    return {"course_id": course_id, "attempts": attempts}
 
 
-def append_quiz_attempt(course_id: str, attempt: dict) -> Path:
-    """Appends one attempt to quiz_history.json — an append-only event log,
-    never rewritten or edited in place. mastery.py replays this from scratch
-    to rebuild mastery_scores.json rather than updating scores incrementally."""
-    history = read_quiz_history(course_id)
-    history["attempts"].append(attempt)
+def append_quiz_attempt(course_id: str, attempt: dict, user=None) -> None:
+    """Appends one quiz attempt to SQLite."""
+    _course_dir(course_id)
+    from agent.models import QuizAttempt
 
-    out_dir = _course_dir(course_id)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "quiz_history.json"
-    out_path.write_text(json.dumps(history, indent=2), encoding="utf-8")
-    return out_path
-
-
-def read_calendar_sync(course_id: str) -> list:
-    """Returns the list of deadlines already pushed to Google Calendar for
-    this course, or [] if calendar_sync.json doesn't exist yet — no
-    deadlines synced yet is the normal starting state, same "doesn't exist
-    yet = normal state" convention as trusted_domains.json."""
-    path = _course_dir(course_id) / "calendar_sync.json"
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise CalendarSyncStorageError(f"calendar_sync.json for '{course_id}' is corrupt: {e}")
-    return data.get("synced", [])
+    QuizAttempt.objects.create(
+        course_id=course_id,
+        user=user if getattr(user, "is_authenticated", False) else None,
+        lecture_id=attempt.get("lecture_id", ""),
+        chunk_id=attempt.get("chunk_id", ""),
+        topic=attempt.get("topic", ""),
+        question=attempt.get("question", ""),
+        correct_answer=attempt.get("correct_answer", ""),
+        user_answer=attempt.get("user_answer", ""),
+        correct=bool(attempt.get("correct")),
+        timestamp=attempt.get("timestamp", datetime.now(timezone.utc).isoformat()),
+    )
 
 
-def append_calendar_sync_record(course_id: str, record: dict) -> Path:
-    """Appends one synced-deadline record to calendar_sync.json — an
-    append-only log, mirroring append_quiz_attempt. OnTrack never un-syncs
-    a Google Calendar event from its own side, so nothing ever rewrites or
-    removes an existing entry."""
-    synced = read_calendar_sync(course_id)
-    synced.append(record)
-
-    out_dir = _course_dir(course_id)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "calendar_sync.json"
-    out_path.write_text(json.dumps({"course_id": course_id, "synced": synced}, indent=2), encoding="utf-8")
-    return out_path
+def flashcard_key(term: str, definition: str) -> str:
+    """Stable key for generated flashcards so progress survives regeneration
+    when the same term/definition pair appears again."""
+    normalized = " ".join(f"{term or ''}\n{definition or ''}".lower().split())
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:24]
 
 
-def read_mastery_scores(course_id: str):
-    """Returns the parsed mastery_scores.json dict, or None if it hasn't
-    been built yet (call mastery.rebuild_scores() first)."""
-    path = _course_dir(course_id) / "mastery_scores.json"
-    if not path.exists():
+def _flashcard_user_filter(user=None) -> dict:
+    if getattr(user, "is_authenticated", False):
+        return {"user": user}
+    return {"user__isnull": True}
+
+
+def _scope_user_queryset(queryset, user=None, include_legacy: bool = True):
+    if not getattr(user, "is_authenticated", False):
+        return queryset
+    from django.db.models import Q
+
+    scoped = Q(user=user)
+    if include_legacy:
+        scoped |= Q(user__isnull=True)
+    return queryset.filter(scoped)
+
+
+def _flashcard_record_to_dict(record) -> dict:
+    data = {
+        "term": record.term,
+        "definition": record.definition,
+        "starred": bool(record.starred),
+        "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+    }
+    if record.status in {"mastered", "in_progress"}:
+        data["status"] = record.status
+    return data
+
+
+def read_flashcard_progress(course_id: str, user=None) -> dict:
+    """Returns saved flashcard progress from SQLite.
+
+    Missing rows mean no saved progress yet, which is a normal state.
+    """
+    _course_dir(course_id)
+    from agent.models import FlashcardProgress
+
+    records = FlashcardProgress.objects.filter(course_id=course_id, **_flashcard_user_filter(user))
+    return {
+        "course_id": course_id,
+        "cards": {record.card_key: _flashcard_record_to_dict(record) for record in records},
+    }
+
+
+def write_flashcard_progress(course_id: str, data: dict, user=None) -> None:
+    """Replaces saved flashcard progress for a course/user.
+
+    Kept for compatibility with tests and callers that need a bulk replace.
+    """
+    _course_dir(course_id)
+    cards = data.get("cards", {})
+    if not isinstance(cards, dict):
+        raise FlashcardProgressStorageError("flashcard progress has invalid cards shape")
+
+    from django.db import transaction
+    from agent.models import FlashcardProgress
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    with transaction.atomic():
+        FlashcardProgress.objects.filter(course_id=course_id, **_flashcard_user_filter(user)).delete()
+        for key, record in cards.items():
+            if not isinstance(record, dict):
+                continue
+            status = record.get("status")
+            if status not in {"mastered", "in_progress"}:
+                status = None
+            starred = bool(record.get("starred", False))
+            if status is None and not starred:
+                continue
+            FlashcardProgress.objects.create(
+                course_id=course_id,
+                user=user_value,
+                card_key=str(key),
+                term=record.get("term", ""),
+                definition=record.get("definition", ""),
+                status=status,
+                starred=starred,
+            )
+
+
+def annotate_flashcards_with_progress(course_id: str, flashcards: list, user=None) -> list:
+    progress = read_flashcard_progress(course_id, user=user)
+    saved = progress.get("cards", {})
+    annotated = []
+    for card in flashcards:
+        key = card.get("key") or flashcard_key(card.get("term", ""), card.get("definition", ""))
+        record = saved.get(key) or {}
+        annotated_card = dict(card)
+        annotated_card["key"] = key
+        annotated_card["status"] = record.get("status") if record.get("status") in {"mastered", "in_progress"} else "not_started"
+        annotated_card["starred"] = bool(record.get("starred", False))
+        annotated.append(annotated_card)
+    return annotated
+
+
+def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -> None:
+    """Stores generated card text so course Q&A can reference the full deck,
+    even before the learner marks progress or stars cards."""
+    _course_dir(course_id)
+    from agent.models import FlashcardProgress
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    for card in flashcards:
+        if not isinstance(card, dict):
+            continue
+        term = card.get("term", "")
+        definition = card.get("definition", "")
+        key = card.get("key") or flashcard_key(term, definition)
+        lookup = {"course_id": course_id, "card_key": key, **_flashcard_user_filter(user)}
+        existing = FlashcardProgress.objects.filter(**lookup).first()
+        defaults = {
+            "user": user_value,
+            "term": term,
+            "definition": definition,
+        }
+        if existing:
+            existing.user = user_value
+            existing.term = term
+            existing.definition = definition
+            existing.save(update_fields=["user", "term", "definition", "updated_at"])
+        else:
+            FlashcardProgress.objects.create(
+                course_id=course_id,
+                user=user_value,
+                card_key=key,
+                term=term,
+                definition=definition,
+                status=None,
+                starred=False,
+            )
+
+
+def update_flashcard_progress(course_id: str, card: dict, user=None) -> dict:
+    """Updates one flashcard progress record. status=not_started removes the
+    record unless the card is starred."""
+    status = card.get("status")
+    if status not in {"mastered", "in_progress", "not_started"}:
+        raise ValueError("status must be mastered, in_progress, or not_started")
+    _course_dir(course_id)
+    key = card.get("key") or flashcard_key(card.get("term", ""), card.get("definition", ""))
+    starred = bool(card.get("starred", False))
+
+    from agent.models import FlashcardProgress
+
+    lookup = {"course_id": course_id, "card_key": key, **_flashcard_user_filter(user)}
+    user_value = user if getattr(user, "is_authenticated", False) else None
+
+    if status == "not_started":
+        if starred:
+            FlashcardProgress.objects.update_or_create(
+                **lookup,
+                defaults={
+                    "user": user_value,
+                    "term": card.get("term", ""),
+                    "definition": card.get("definition", ""),
+                    "status": None,
+                    "starred": True,
+                },
+            )
+        else:
+            FlashcardProgress.objects.filter(**lookup).delete()
+    else:
+        FlashcardProgress.objects.update_or_create(
+            **lookup,
+            defaults={
+                "user": user_value,
+                "term": card.get("term", ""),
+                "definition": card.get("definition", ""),
+                "status": status,
+                "starred": starred,
+            },
+        )
+
+    record = FlashcardProgress.objects.filter(**lookup).first()
+    return {
+        "key": key,
+        "status": record.status if record and record.status in {"mastered", "in_progress"} else "not_started",
+        "starred": bool(record.starred) if record else False,
+    }
+
+
+def reset_flashcard_progress(course_id: str, keys: list, user=None) -> None:
+    _course_dir(course_id)
+    from agent.models import FlashcardProgress
+
+    key_values = [str(key) for key in keys]
+    records = FlashcardProgress.objects.filter(
+        course_id=course_id,
+        card_key__in=key_values,
+        **_flashcard_user_filter(user),
+    )
+    records.filter(starred=True).update(status=None)
+    records.filter(starred=False).delete()
+
+
+def read_calendar_sync(course_id: str, user=None) -> list:
+    _course_dir(course_id)
+    from agent.models import CalendarSyncRecord
+
+    records = _scope_user_queryset(CalendarSyncRecord.objects.filter(course_id=course_id), user).order_by("id")
+    return [
+        {
+            "date": r.date,
+            "title": r.title,
+            "type": r.type,
+            "google_event_id": r.google_event_id,
+            "synced_at": r.synced_at,
+        }
+        for r in records
+    ]
+
+
+def append_calendar_sync_record(course_id: str, record: dict, user=None) -> None:
+    _course_dir(course_id)
+    from agent.models import CalendarSyncRecord
+
+    CalendarSyncRecord.objects.create(
+        course_id=course_id,
+        user=user if getattr(user, "is_authenticated", False) else None,
+        date=record.get("date", ""),
+        title=record.get("title", ""),
+        type=record.get("type", ""),
+        google_event_id=record.get("google_event_id", ""),
+        synced_at=record.get("synced_at", datetime.now(timezone.utc).isoformat()),
+    )
+
+
+def read_mastery_scores(course_id: str, user=None):
+    _course_dir(course_id)
+    from agent.models import MasteryScore
+
+    records = list(_scope_user_queryset(MasteryScore.objects.filter(course_id=course_id), user).order_by("score", "topic"))
+    if not records:
         return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise QuizStorageError(f"mastery_scores.json for '{course_id}' is corrupt: {e}")
+    rebuilt_at = records[0].rebuilt_at
+    return {
+        "course_id": course_id,
+        "rebuilt_at": rebuilt_at,
+        "scores": [
+            {
+                "topic": r.topic,
+                "score": r.score,
+                "attempts": r.attempts,
+                "last_seen": r.last_seen,
+                "status": r.status,
+            }
+            for r in records
+        ],
+    }
 
 
-def write_mastery_scores(course_id: str, data: dict) -> Path:
-    """Writes mastery_scores.json. Always overwrites — this is a derived,
-    rebuildable view (per CLAUDE.md), never hand-edited, so unlike
-    syllabus/notes writes there's no plan-then-pause confirmation here:
-    rebuilding it is non-destructive by construction, since quiz_history.json
-    (the source of truth) is untouched and a rebuild is always reproducible."""
-    out_dir = _course_dir(course_id)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "mastery_scores.json"
-    out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    return out_path
+def write_mastery_scores(course_id: str, data: dict, user=None) -> None:
+    _course_dir(course_id)
+    scores = data.get("scores", [])
+    if not isinstance(scores, list):
+        raise QuizStorageError("mastery scores has invalid scores shape")
+
+    from django.db import transaction
+    from agent.models import MasteryScore
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    with transaction.atomic():
+        MasteryScore.objects.filter(course_id=course_id, **_flashcard_user_filter(user)).delete()
+        for score in scores:
+            MasteryScore.objects.create(
+                course_id=course_id,
+                user=user_value,
+                topic=score.get("topic", ""),
+                score=float(score.get("score", 0)),
+                attempts=int(score.get("attempts", 0)),
+                last_seen=score.get("last_seen"),
+                status=score.get("status", ""),
+                rebuilt_at=data.get("rebuilt_at", datetime.now(timezone.utc).isoformat()),
+            )
 
 
-def read_grades(course_id: str) -> dict:
-    """Returns the parsed grades.json dict ({"course_id", "items"}). Returns
-    an empty skeleton if it doesn't exist yet — a course with no grades
-    entered yet is a normal state, not an error, same convention as
-    read_quiz_history."""
-    path = _course_dir(course_id) / "grades.json"
-    if not path.exists():
-        return {"course_id": course_id, "items": []}
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise GradesStorageError(f"grades.json for '{course_id}' is corrupt: {e}")
+def read_grades(course_id: str, user=None) -> dict:
+    _course_dir(course_id)
+    from agent.models import GradeItem
+
+    records = _scope_user_queryset(GradeItem.objects.filter(course_id=course_id), user).order_by("created_at", "id")
+    return {
+        "course_id": course_id,
+        "items": [
+            {
+                "id": r.item_id,
+                "component": r.component,
+                "title": r.title,
+                "score": r.score,
+                "max_points": r.max_points,
+                "date": r.date,
+            }
+            for r in records
+        ],
+    }
 
 
-def write_grades(course_id: str, data: dict) -> Path:
-    """Writes grades.json. Always overwrites — grade items are directly
-    user-editable (add/edit/delete), not an append-only log like
-    quiz_history.json, so there's no destructive-conflict case to guard
-    against the way write_syllabus/write_notes do."""
-    out_dir = _course_dir(course_id)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "grades.json"
-    out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    return out_path
+def write_grades(course_id: str, data: dict, user=None) -> None:
+    _course_dir(course_id)
+    items = data.get("items", [])
+    if not isinstance(items, list):
+        raise GradesStorageError("grades has invalid items shape")
+
+    from django.db import transaction
+    from agent.models import GradeItem
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    with transaction.atomic():
+        GradeItem.objects.filter(course_id=course_id, **_flashcard_user_filter(user)).delete()
+        for item in items:
+            GradeItem.objects.create(
+                course_id=course_id,
+                user=user_value,
+                item_id=item.get("id", ""),
+                component=item.get("component", ""),
+                title=item.get("title", ""),
+                score=float(item.get("score", 0)),
+                max_points=float(item.get("max_points", 0)),
+                date=item.get("date"),
+            )
 
 
-def read_custom_events() -> list:
-    """Returns the list of manually-added deadlines/events, or [] if
-    custom_events.json doesn't exist yet — no custom events yet is the
-    normal starting state, same convention as trusted_domains.json. Unlike
-    every other course JSON file, this one lives at the top level
-    (COURSES_DIR itself), not under a specific course_id — a general event
-    (course_id=None) has no single course to belong to."""
-    path = COURSES_DIR / "custom_events.json"
-    if not path.exists():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise CustomEventsStorageError(f"custom_events.json is corrupt: {e}")
-    return data.get("events", [])
+def _custom_event_to_dict(event) -> dict:
+    return {
+        "id": event.event_id,
+        "course_id": event.course_id,
+        "date": event.date,
+        "time": event.time,
+        "end_time": event.end_time,
+        "title": event.title,
+        "type": normalize_date_type(event.type),
+        "replaces_syllabus_key": event.replaces_syllabus_key,
+        "completed": event.completed,
+        "synced": event.synced,
+        "google_event_id": event.google_event_id,
+        "synced_at": event.synced_at,
+        "created_at": event.created_at,
+    }
 
 
-def write_custom_events(events: list) -> Path:
-    """Writes custom_events.json. Always overwrites — directly
-    user-editable (add/edit/delete), not append-only, same pattern as
-    write_grades."""
-    COURSES_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = COURSES_DIR / "custom_events.json"
-    out_path.write_text(json.dumps({"events": events}, indent=2), encoding="utf-8")
-    return out_path
+def read_custom_events(user=None) -> list:
+    from agent.models import CustomEvent
+
+    events = _scope_user_queryset(CustomEvent.objects.all(), user).order_by("date", "time", "created_at", "id")
+    return [_custom_event_to_dict(event) for event in events]
+
+
+def write_custom_events(events: list, user=None) -> None:
+    if not isinstance(events, list):
+        raise CustomEventsStorageError("custom events has invalid events shape")
+
+    from django.db import transaction
+    from agent.models import CustomEvent
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    with transaction.atomic():
+        legacy_event_ids = set()
+        delete_queryset = CustomEvent.objects.all()
+        if getattr(user, "is_authenticated", False):
+            legacy_event_ids = set(
+                CustomEvent.objects.filter(user__isnull=True).values_list("event_id", flat=True)
+            )
+            delete_queryset = _scope_user_queryset(delete_queryset, user, include_legacy=False)
+        else:
+            delete_queryset = delete_queryset.filter(user__isnull=True)
+        delete_queryset.delete()
+        for event in events:
+            if event.get("id") in legacy_event_ids:
+                continue
+            CustomEvent.objects.create(
+                event_id=event.get("id", ""),
+                user=user_value,
+                course_id=event.get("course_id"),
+                date=event.get("date", ""),
+                time=event.get("time"),
+                end_time=event.get("end_time"),
+                title=event.get("title", ""),
+                type=normalize_date_type(event.get("type", "")),
+                replaces_syllabus_key=event.get("replaces_syllabus_key") or None,
+                completed=bool(event.get("completed", False)),
+                synced=bool(event.get("synced", False)),
+                google_event_id=event.get("google_event_id"),
+                synced_at=event.get("synced_at"),
+                created_at=event.get("created_at", datetime.now(timezone.utc).isoformat()),
+            )
 
 
 def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
@@ -766,9 +1084,19 @@ def course_exists(course_id: str) -> bool:
     return (course_dir / "syllabus.json").exists()
 
 
+def course_or_draft_exists(course_id: str) -> bool:
+    """True if course_id exists as either a real course or a draft class."""
+    try:
+        course_dir = _course_dir(course_id)
+    except InvalidCourseIdError:
+        return False
+    return (course_dir / "syllabus.json").exists() or (course_dir / "course.json").exists()
+
+
 def delete_course(course_id: str) -> None:
     """Deletes courses/<course_id>/ entirely — syllabus, notes, references,
-    sessions, quiz_history, mastery_scores, everything. Raises
+    sessions, quiz history, mastery scores, grades, calendar sync records,
+    flashcard progress, custom events, and notifications. Raises
     CourseNotFoundError if course_id exists as neither a draft nor a real
     course. Irreversible; callers are responsible for confirming with the
     user before calling this (plan-then-pause per CLAUDE.md)."""
@@ -776,6 +1104,31 @@ def delete_course(course_id: str) -> None:
     if not (course_dir / "course.json").exists() and not (course_dir / "syllabus.json").exists():
         raise CourseNotFoundError(f"no course '{course_id}' found")
     shutil.rmtree(course_dir)
+    delete_course_state(course_id)
+
+
+def delete_course_state(course_id: str) -> None:
+    from django.db import transaction
+    from agent.models import (
+        CalendarSyncRecord,
+        CourseSession,
+        CustomEvent,
+        FlashcardProgress,
+        GradeItem,
+        MasteryScore,
+        Notification,
+        QuizAttempt,
+    )
+
+    with transaction.atomic():
+        FlashcardProgress.objects.filter(course_id=course_id).delete()
+        GradeItem.objects.filter(course_id=course_id).delete()
+        CalendarSyncRecord.objects.filter(course_id=course_id).delete()
+        CustomEvent.objects.filter(course_id=course_id).delete()
+        Notification.objects.filter(course_id=course_id).delete()
+        QuizAttempt.objects.filter(course_id=course_id).delete()
+        MasteryScore.objects.filter(course_id=course_id).delete()
+        CourseSession.objects.filter(course_id=course_id).delete()
 
 
 def rename_course(course_id: str, course_name: str) -> None:

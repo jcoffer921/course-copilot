@@ -30,11 +30,11 @@ def _status_for_score(score: float) -> str:
     return "developing"
 
 
-def rebuild_scores(course_id: str) -> dict:
+def rebuild_scores(course_id: str, user=None) -> dict:
     """Replays quiz_history.json from scratch into mastery_scores.json. Safe
     to call repeatedly — this is a pure function of the event log, never
     incremental state that could drift from it."""
-    history = storage.read_quiz_history(course_id)
+    history = storage.read_quiz_history(course_id, user=user)
     attempts = sorted(history.get("attempts", []), key=lambda a: a.get("timestamp") or "")
 
     running = {}  # topic -> {"score": float, "attempts": int, "last_seen": str}
@@ -61,16 +61,16 @@ def rebuild_scores(course_id: str) -> dict:
     scores.sort(key=lambda s: s["score"])  # weakest first — the useful default order for quiz.py's bias
 
     data = {"course_id": course_id, "rebuilt_at": _now(), "scores": scores}
-    storage.write_mastery_scores(course_id, data)
+    storage.write_mastery_scores(course_id, data, user=user)
     return data
 
 
-def weak_topics(course_id: str, limit: int = None) -> list:
+def weak_topics(course_id: str, limit: int = None, user=None) -> list:
     """Returns this course's scored topics, weakest-first. [] if
     mastery_scores.json hasn't been built yet (call rebuild_scores() first) —
     that's a "no data yet" state distinct from "everything's strong", so
     callers shouldn't treat an empty result as good news without checking."""
-    data = storage.read_mastery_scores(course_id)
+    data = storage.read_mastery_scores(course_id, user=user)
     if data is None:
         return []
     scores = sorted(data.get("scores", []), key=lambda s: s["score"])

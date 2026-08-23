@@ -27,51 +27,86 @@ class EventNotFoundError(Exception):
     """Raised when event_id doesn't match any entry in custom_events.json."""
 
 
-def list_events() -> list:
-    return storage.read_custom_events()
+def _coerce_event_type(event_type: str) -> str:
+    raw = str(event_type or "other").strip().lower().replace("-", "_").replace(" ", "_")
+    if raw in storage.VALID_DATE_TYPES or raw in storage.LEGACY_DATE_TYPE_MAP:
+        return storage.normalize_date_type(raw)
+    raise ValueError(f"'{event_type}' isn't a valid type (valid: {sorted(storage.VALID_DATE_TYPES)})")
 
 
-def create_event(course_id, date: str, time: str, title: str, event_type: str) -> dict:
+def _validate_time_range(start_time, end_time) -> None:
+    if end_time and not start_time:
+        raise ValueError("end_time requires time")
+    if start_time and end_time:
+        try:
+            start = datetime.strptime(start_time, "%H:%M").time()
+            end = datetime.strptime(end_time, "%H:%M").time()
+        except ValueError as e:
+            raise ValueError("time and end_time must be HH:MM") from e
+        if end <= start:
+            raise ValueError("end_time must be later than time")
+
+
+def list_events(user=None) -> list:
+    return storage.read_custom_events(user=user)
+
+
+def create_event(
+    course_id,
+    date: str,
+    time: str,
+    title: str,
+    event_type: str,
+    user=None,
+    replaces_syllabus_key: str = None,
+    end_time: str = None,
+    completed: bool = False,
+) -> dict:
     from django.utils import timezone
 
-    if event_type not in storage.VALID_DATE_TYPES:
-        raise ValueError(f"'{event_type}' isn't a valid type (valid: {sorted(storage.VALID_DATE_TYPES)})")
+    event_type = _coerce_event_type(event_type)
+    _validate_time_range(time, end_time)
 
-    events = storage.read_custom_events()
+    events = storage.read_custom_events(user=user)
     event = {
-        "id": uuid.uuid4().hex, "course_id": course_id, "date": date, "time": time,
+        "id": uuid.uuid4().hex, "course_id": course_id, "date": date, "time": time, "end_time": end_time,
         "title": title, "type": event_type,
+        "replaces_syllabus_key": replaces_syllabus_key,
+        "completed": bool(completed),
         "synced": False, "google_event_id": None, "synced_at": None,
         "created_at": timezone.now().isoformat(),
     }
     events.append(event)
-    storage.write_custom_events(events)
+    storage.write_custom_events(events, user=user)
     return event
 
 
-def update_event(event_id: str, **fields) -> dict:
-    if fields.get("type") is not None and fields["type"] not in storage.VALID_DATE_TYPES:
-        raise ValueError(f"'{fields['type']}' isn't a valid type (valid: {sorted(storage.VALID_DATE_TYPES)})")
+def update_event(event_id: str, user=None, **fields) -> dict:
+    if fields.get("type") is not None:
+        fields["type"] = _coerce_event_type(fields["type"])
 
-    events = storage.read_custom_events()
+    events = storage.read_custom_events(user=user)
     for event in events:
         if event["id"] == event_id:
+            start_time = fields["time"] if "time" in fields else event.get("time")
+            end_time = fields["end_time"] if "end_time" in fields else event.get("end_time")
+            _validate_time_range(start_time, end_time)
             for key, value in fields.items():
                 event[key] = value
-            storage.write_custom_events(events)
+            storage.write_custom_events(events, user=user)
             return event
     raise EventNotFoundError(f"no custom event '{event_id}'")
 
 
-def delete_event(event_id: str) -> None:
-    events = storage.read_custom_events()
+def delete_event(event_id: str, user=None) -> None:
+    events = storage.read_custom_events(user=user)
     remaining = [e for e in events if e["id"] != event_id]
     if len(remaining) == len(events):
         raise EventNotFoundError(f"no custom event '{event_id}'")
-    storage.write_custom_events(remaining)
+    storage.write_custom_events(remaining, user=user)
 
 
-def delete_events_for_course(course_id: str) -> None:
+def delete_events_for_course(course_id: str, user=None, all_users: bool = False) -> None:
     """Removes every custom event tied to course_id — called when a course
     itself is deleted, so its custom events don't linger as orphaned rows
     labeled with a course_id that no longer exists. General events
@@ -79,10 +114,14 @@ def delete_events_for_course(course_id: str) -> None:
     none match, unlike delete_event, since this is cleanup triggered by an
     unrelated action (course deletion), not a direct user request to delete
     a specific event that must exist."""
-    events = storage.read_custom_events()
+    if all_users:
+        from agent.models import CustomEvent
+        CustomEvent.objects.filter(course_id=course_id).delete()
+        return
+    events = storage.read_custom_events(user=user)
     remaining = [e for e in events if e["course_id"] != course_id]
     if len(remaining) != len(events):
-        storage.write_custom_events(remaining)
+        storage.write_custom_events(remaining, user=user)
 
 
 def sync_event_to_calendar(user, event_id: str) -> dict:
@@ -96,7 +135,7 @@ def sync_event_to_calendar(user, event_id: str) -> dict:
     can't be used."""
     from agent.models import GoogleAccount
 
-    events = storage.read_custom_events()
+    events = storage.read_custom_events(user=user)
     event = next((e for e in events if e["id"] == event_id), None)
     if event is None:
         raise EventNotFoundError(f"no custom event '{event_id}'")
@@ -112,7 +151,10 @@ def sync_event_to_calendar(user, event_id: str) -> dict:
 
     if event["time"]:
         start_dt = datetime.strptime(f"{event['date']} {event['time']}", "%Y-%m-%d %H:%M")
-        end_dt = start_dt + timedelta(hours=1)
+        if event.get("end_time"):
+            end_dt = datetime.strptime(f"{event['date']} {event['end_time']}", "%Y-%m-%d %H:%M")
+        else:
+            end_dt = start_dt + timedelta(hours=1)
         body_dates = {
             "start": {"dateTime": start_dt.strftime("%Y-%m-%dT%H:%M:00"), "timeZone": settings.TIME_ZONE},
             "end": {"dateTime": end_dt.strftime("%Y-%m-%dT%H:%M:00"), "timeZone": settings.TIME_ZONE},
@@ -144,6 +186,6 @@ def sync_event_to_calendar(user, event_id: str) -> dict:
     event["synced"] = True
     event["google_event_id"] = created["id"]
     event["synced_at"] = django_timezone.now().isoformat()
-    storage.write_custom_events(events)
+    storage.write_custom_events(events, user=user)
 
     return {"google_event_id": created["id"]}

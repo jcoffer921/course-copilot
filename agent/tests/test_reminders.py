@@ -2,6 +2,8 @@ import pytest
 
 from agent.services import custom_events, reminders, storage
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):
@@ -27,6 +29,58 @@ def test_list_all_deadlines_combines_syllabus_and_custom(isolated_courses_dir):
     sources = {d["title"]: d["source"] for d in deadlines}
     assert sources["Final Exam"] == "syllabus"
     assert sources["Study session"] == "custom"
+
+
+def test_list_all_deadlines_can_filter_to_one_course(isolated_courses_dir):
+    from datetime import date, timedelta
+    far_date = (date.today() + timedelta(days=60)).isoformat()
+    _seed_syllabus("cs101", [{"date": far_date, "title": "CS Final", "type": "exam"}])
+    _seed_syllabus("math201", [{"date": far_date, "title": "Math Final", "type": "exam"}])
+    custom_events.create_event(None, far_date, None, "General break", "other")
+
+    deadlines = reminders.list_all_deadlines(course_id="cs101")
+
+    assert [d["title"] for d in deadlines] == ["CS Final"]
+
+
+def test_custom_replacement_hides_matching_syllabus_deadline(isolated_courses_dir):
+    from datetime import date, timedelta
+    far_date = (date.today() + timedelta(days=60)).isoformat()
+    _seed_syllabus("cs101", [{"date": far_date, "title": "Project Due", "type": "assignment"}])
+    original = reminders.list_all_deadlines()[0]
+
+    custom_events.create_event(
+        "cs101",
+        far_date,
+        "15:00",
+        "Project draft due",
+        "assignment",
+        replaces_syllabus_key=original["key"],
+    )
+
+    deadlines = reminders.list_all_deadlines(course_id="cs101")
+
+    assert [d["title"] for d in deadlines] == ["Project draft due"]
+    assert deadlines[0]["source"] == "custom"
+
+
+def test_general_custom_replacement_hides_original_in_course_filter(isolated_courses_dir):
+    from datetime import date, timedelta
+    far_date = (date.today() + timedelta(days=60)).isoformat()
+    _seed_syllabus("cs101", [{"date": far_date, "title": "No class", "type": "other"}])
+    original = reminders.list_all_deadlines(course_id="cs101")[0]
+
+    custom_events.create_event(
+        None,
+        far_date,
+        None,
+        "Campus holiday",
+        "other",
+        replaces_syllabus_key=original["key"],
+    )
+
+    assert reminders.list_all_deadlines(course_id="cs101") == []
+    assert [d["title"] for d in reminders.list_all_deadlines()] == ["Campus holiday"]
 
 
 def test_list_all_deadlines_marks_synced_syllabus_deadline(isolated_courses_dir):
@@ -68,6 +122,15 @@ def test_list_all_deadlines_excludes_past_custom_events(isolated_courses_dir):
     deadlines = reminders.list_all_deadlines()
 
     assert deadlines == []
+
+
+def test_list_all_deadlines_includes_incomplete_overdue_assignments(isolated_courses_dir):
+    custom_events.create_event("cs101", "2020-01-01", None, "Past homework", "hw")
+    custom_events.create_event("cs101", "2020-01-01", None, "Past project", "project", completed=True)
+
+    deadlines = reminders.list_all_deadlines()
+
+    assert [d["title"] for d in deadlines] == ["Past homework"]
 
 
 def test_list_all_deadlines_sorted_by_date(isolated_courses_dir):

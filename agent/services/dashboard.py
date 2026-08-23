@@ -7,7 +7,7 @@ existing reads — no new storage format, nothing written.
 from . import mastery, reminders, storage, streak
 
 
-def _merge_topics(syllabus_topics: list, weak_topics: list) -> list:
+def _merge_topics(syllabus_topics: list, weak_topics: list, note_topics: list = None) -> list:
     """Every topic from the syllabus, in syllabus order, tagged with its
     mastery status, followed by any scored topic that isn't in the syllabus
     at all. A topic mastery.weak_topics() hasn't scored yet (never quizzed)
@@ -21,7 +21,9 @@ def _merge_topics(syllabus_topics: list, weak_topics: list) -> list:
     quizzed and scored like any other — it must still show up here rather
     than silently vanishing from "Mastery by topic"."""
     scores_by_topic = {t["topic"]: t for t in weak_topics}
+    note_topics = note_topics or []
     syllabus_topic_set = set(syllabus_topics)
+    base_topic_set = set(syllabus_topics)
     merged = [
         {
             "topic": topic,
@@ -30,15 +32,39 @@ def _merge_topics(syllabus_topics: list, weak_topics: list) -> list:
         }
         for topic in syllabus_topics
     ]
+    for topic in note_topics:
+        if topic not in base_topic_set:
+            scored_topic = scores_by_topic.get(topic)
+            merged.append(
+                {
+                    "topic": topic,
+                    "score": scored_topic["score"] if scored_topic else None,
+                    "status": scored_topic["status"] if scored_topic else "unassessed",
+                }
+            )
+            base_topic_set.add(topic)
+
     merged += [
         {"topic": t["topic"], "score": t["score"], "status": t["status"]}
         for t in weak_topics
-        if t["topic"] not in syllabus_topic_set
+        if t["topic"] not in base_topic_set
     ]
     return merged
 
 
-def _annotate_synced(deadlines: list) -> list:
+def _note_topics(course_id: str) -> list:
+    seen = set()
+    topics = []
+    for lecture in storage.read_notes(course_id):
+        for chunk in lecture.get("chunks", []):
+            topic = str(chunk.get("topic") or "").strip()
+            if topic and topic not in seen:
+                seen.add(topic)
+                topics.append(topic)
+    return topics
+
+
+def _annotate_synced(deadlines: list, user=None) -> list:
     """Marks each deadline with whether it's already been pushed to Google
     Calendar, by cross-referencing that course's calendar_sync.json (read
     once per distinct course_id present in the list, not once per
@@ -54,7 +80,7 @@ def _annotate_synced(deadlines: list) -> list:
         course_id = d["course_id"]
         if course_id not in synced_by_course:
             try:
-                synced_by_course[course_id] = storage.read_calendar_sync(course_id)
+                synced_by_course[course_id] = storage.read_calendar_sync(course_id, user=user)
             except storage.CalendarSyncStorageError:
                 synced_by_course[course_id] = None
         course_synced = synced_by_course[course_id]
@@ -66,11 +92,12 @@ def _annotate_synced(deadlines: list) -> list:
     return annotated
 
 
-def _course_summary(course_id: str) -> dict:
+def _course_summary(course_id: str, user=None) -> dict:
     syllabus = storage.read_syllabus(course_id)
-    weak_topics = mastery.weak_topics(course_id)
+    weak_topics = mastery.weak_topics(course_id, user=user)
     upcoming = reminders.upcoming_deadlines(within_days=None, course_ids=[course_id])
     syllabus_topics = syllabus.get("topics", [])
+    note_topics = _note_topics(course_id)
     syllabus_topic_set = set(syllabus_topics)
 
     return {
@@ -86,11 +113,11 @@ def _course_summary(course_id: str) -> dict:
         "next_deadline": upcoming[0] if upcoming else None,
         "grading": syllabus.get("grading", []),
         "weak_topics": weak_topics,
-        "topics": _merge_topics(syllabus_topics, weak_topics),
+        "topics": _merge_topics(syllabus_topics, weak_topics, note_topics),
     }
 
 
-def build_dashboard() -> dict:
+def build_dashboard(user=None) -> dict:
     """Never raises — a corrupt course's data is isolated to
     {"error": "..."} in its own slot rather than failing every other
     course's dashboard data along with it."""
@@ -98,7 +125,7 @@ def build_dashboard() -> dict:
     good_course_ids = []
     for course_id in reminders.list_courses():
         try:
-            courses[course_id] = _course_summary(course_id)
+            courses[course_id] = _course_summary(course_id, user=user)
             good_course_ids.append(course_id)
         except (storage.SyllabusStorageError, storage.QuizStorageError) as e:
             courses[course_id] = {"error": str(e)}
@@ -108,8 +135,11 @@ def build_dashboard() -> dict:
         # course_ids would make upcoming_deadlines() re-scan every course
         # (via its own list_courses() call) including any corrupt one,
         # raising past the per-course isolation this function promises.
-        "deadlines": _annotate_synced(reminders.upcoming_deadlines(within_days=14, course_ids=good_course_ids)),
-        "streak": streak.current_streak(),
+        "deadlines": _annotate_synced(
+            reminders.upcoming_deadlines(within_days=14, course_ids=good_course_ids),
+            user=user,
+        ),
+        "streak": streak.current_streak(user=user),
         "courses": courses,
         "drafts": reminders.list_draft_courses(),
     }

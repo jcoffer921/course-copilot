@@ -42,14 +42,14 @@ def _category_pcts(items: list, component: str) -> list:
     return sorted(i["score"] / i["max_points"] * 100 for i in items if i["component"] == component)
 
 
-def current_grade(course_id: str) -> dict:
+def current_grade(course_id: str, user=None) -> dict:
     """"My grade right now" — categories with zero entered items are
     excluded entirely (not treated as 0%), and the overall percentage is a
     weighted average renormalized across only the categories that have
     data, so an ungraded Final Exam doesn't crater today's number."""
     syllabus = _require_syllabus(course_id)
     grading = syllabus.get("grading", [])
-    items = storage.read_grades(course_id)["items"]
+    items = storage.read_grades(course_id, user=user)["items"]
     grade_scale = syllabus.get("grade_scale") or DEFAULT_GRADE_SCALE
 
     categories = []
@@ -85,13 +85,13 @@ def current_grade(course_id: str) -> dict:
     }
 
 
-def add_item(course_id: str, component: str, title: str, score: float, max_points: float, date: str = None) -> dict:
+def add_item(course_id: str, component: str, title: str, score: float, max_points: float, date: str = None, user=None) -> dict:
     syllabus = _require_syllabus(course_id)
     valid_components = {g["component"] for g in syllabus.get("grading", [])}
     if component not in valid_components:
         raise ValueError(f"'{component}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
 
-    data = storage.read_grades(course_id)
+    data = storage.read_grades(course_id, user=user)
     item = {
         "id": uuid.uuid4().hex, "component": component, "title": title,
         "score": score, "max_points": max_points, "date": date,
@@ -100,18 +100,18 @@ def add_item(course_id: str, component: str, title: str, score: float, max_point
     errors = storage.validate_grades(data)
     if errors:
         raise ValueError(f"invalid grade item: {'; '.join(errors)}")
-    storage.write_grades(course_id, data)
+    storage.write_grades(course_id, data, user=user)
     return item
 
 
-def update_item(course_id: str, item_id: str, **fields) -> dict:
+def update_item(course_id: str, item_id: str, user=None, **fields) -> dict:
     if "component" in fields:
         syllabus = _require_syllabus(course_id)
         valid_components = {g["component"] for g in syllabus.get("grading", [])}
         if fields["component"] not in valid_components:
             raise ValueError(f"'{fields['component']}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
 
-    data = storage.read_grades(course_id)
+    data = storage.read_grades(course_id, user=user)
     for item in data["items"]:
         if item["id"] == item_id:
             for key, value in fields.items():
@@ -120,31 +120,31 @@ def update_item(course_id: str, item_id: str, **fields) -> dict:
             errors = storage.validate_grades(data)
             if errors:
                 raise ValueError(f"invalid grade item: {'; '.join(errors)}")
-            storage.write_grades(course_id, data)
+            storage.write_grades(course_id, data, user=user)
             return item
     raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
 
 
-def delete_item(course_id: str, item_id: str) -> None:
-    data = storage.read_grades(course_id)
+def delete_item(course_id: str, item_id: str, user=None) -> None:
+    data = storage.read_grades(course_id, user=user)
     remaining = [i for i in data["items"] if i["id"] != item_id]
     if len(remaining) == len(data["items"]):
         raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
     data["items"] = remaining
-    storage.write_grades(course_id, data)
+    storage.write_grades(course_id, data, user=user)
 
 
-def find_orphaned_components(course_id: str, new_grading: list) -> list:
+def find_orphaned_components(course_id: str, new_grading: list, user=None) -> list:
     """Components with entered grade items that would no longer match any
     category in new_grading — a rename or removal would silently orphan
     those items (still visible in the Grades list, but no longer counted
     toward the computed grade)."""
-    items = storage.read_grades(course_id)["items"]
+    items = storage.read_grades(course_id, user=user)["items"]
     new_components = {g["component"] for g in new_grading}
     return sorted({i["component"] for i in items if i["component"] not in new_components})
 
 
-def grade_needed(course_id: str, target_pct: float) -> dict:
+def grade_needed(course_id: str, target_pct: float, user=None) -> dict:
     """Solves the flat score 'p' needed on every remaining ungraded item
     (across every category that has total_items set) to hit target_pct
     overall. A category without total_items is treated as closed — its
@@ -153,7 +153,7 @@ def grade_needed(course_id: str, target_pct: float) -> dict:
     grade."""
     syllabus = _require_syllabus(course_id)
     grading = syllabus.get("grading", [])
-    items = storage.read_grades(course_id)["items"]
+    items = storage.read_grades(course_id, user=user)["items"]
 
     total_weight = sum(g.get("weight_pct", 0) for g in grading) or 100.0
     locked_contribution = 0.0  # A: pct points already locked in, on a 0-100 scale
@@ -208,7 +208,7 @@ def grade_needed(course_id: str, target_pct: float) -> dict:
     }
 
 
-def missable_by_category(course_id: str, target_pct: float) -> list:
+def missable_by_category(course_id: str, target_pct: float, user=None) -> list:
     """Per category (never blended across categories — a missed final exam
     and a missed homework aren't comparable): assuming every other
     remaining item in this category scores 100%, the largest number of
@@ -216,7 +216,7 @@ def missable_by_category(course_id: str, target_pct: float) -> list:
     still meets target_pct."""
     syllabus = _require_syllabus(course_id)
     grading = syllabus.get("grading", [])
-    items = storage.read_grades(course_id)["items"]
+    items = storage.read_grades(course_id, user=user)["items"]
 
     results = []
     for g in grading:
@@ -267,7 +267,7 @@ def missable_by_category(course_id: str, target_pct: float) -> list:
     return results
 
 
-def all_courses_summary() -> dict:
+def all_courses_summary(user=None) -> dict:
     """Plain average of current_grade() across courses that have at least
     one graded item, following dashboard.build_dashboard()'s per-course
     try/except isolation — one corrupt course doesn't break the rollup for
@@ -278,7 +278,7 @@ def all_courses_summary() -> dict:
 
     for course_id in reminders.list_courses():
         try:
-            g = current_grade(course_id)
+            g = current_grade(course_id, user=user)
             syllabus = storage.read_syllabus(course_id)
             entry = {
                 "course_id": course_id, "course_name": syllabus.get("course_name", course_id),

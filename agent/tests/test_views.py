@@ -1,8 +1,10 @@
 import io
+from datetime import date, timedelta
 
 import pytest
 from rest_framework.test import APIClient
 
+from agent.models import CalendarSyncRecord, CourseSession, FlashcardProgress, GradeItem, MasteryScore, QuizAttempt
 from agent import views
 from agent.services import ask, storage
 
@@ -18,6 +20,7 @@ def api_client(django_user_model):
     user = django_user_model.objects.create_user(username="test-user")
     client = APIClient()
     client.force_authenticate(user=user)
+    client.user = user
     return client
 
 
@@ -25,6 +28,43 @@ def _seed_syllabus(course_id):
     storage.write_syllabus(course_id, {
         "course_id": course_id, "course_name": "Test", "dates": [], "grading": [], "topics": ["A"],
     })
+
+
+def test_profile_get_uses_display_name_and_settings(api_client):
+    api_client.user.first_name = "Jordan Lee"
+    api_client.user.email = "jordan@example.com"
+    api_client.user.save()
+
+    response = api_client.get("/api/profile/")
+
+    assert response.status_code == 200
+    assert response.data["display_name"] == "Jordan Lee"
+    assert response.data["email"] == "jordan@example.com"
+    assert response.data["notifications_enabled"] is False
+
+
+def test_profile_patch_updates_name_username_and_notifications(api_client):
+    response = api_client.patch(
+        "/api/profile/",
+        {"display_name": "Alex Rivera", "username": "alex", "notifications_enabled": True},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["display_name"] == "Alex Rivera"
+    assert response.data["username"] == "alex"
+    assert response.data["notifications_enabled"] is True
+    api_client.user.refresh_from_db()
+    assert api_client.user.first_name == "Alex Rivera"
+    assert api_client.user.username == "alex"
+
+
+def test_profile_patch_rejects_duplicate_username(api_client, django_user_model):
+    django_user_model.objects.create_user(username="taken")
+
+    response = api_client.patch("/api/profile/", {"username": "taken"}, format="json")
+
+    assert response.status_code == 409
 
 
 def test_references_post_then_get(isolated_courses_dir, api_client):
@@ -110,6 +150,193 @@ def test_domain_suggestions_view_404s_without_syllabus(isolated_courses_dir, api
     response = api_client.post("/api/courses/nocourse/domains/suggest/")
 
     assert response.status_code == 404
+
+
+def test_flashcards_generate_annotates_saved_progress(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101")
+
+    async def fake_generate_flashcards_async(course_id, topic=None, chunk_id=None, count=8, user=None):
+        return {
+            "course_id": course_id,
+            "model": "fake",
+            "flashcards": [{"term": "Closure", "definition": "Captured state.", "source": "course", "url": None}],
+        }
+
+    saved = storage.update_flashcard_progress("cs101", {
+        "term": "Closure",
+        "definition": "Captured state.",
+        "status": "mastered",
+        "starred": True,
+    }, user=api_client.user)
+    monkeypatch.setattr(views.quiz, "generate_flashcards_async", fake_generate_flashcards_async)
+
+    response = api_client.post("/api/courses/cs101/flashcards/generate/", {"count": 1}, format="json")
+
+    assert response.status_code == 200
+    card = response.data["flashcards"][0]
+    assert card["key"] == saved["key"]
+    assert card["status"] == "mastered"
+    assert card["starred"] is True
+
+
+def test_quiz_history_rejects_malformed_limit(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.get("/api/courses/cs101/quiz/history/?limit=abc")
+
+    assert response.status_code == 400
+    assert response.data == {"detail": "limit must be an integer"}
+
+
+def test_reminders_rejects_malformed_within_days(api_client):
+    response = api_client.get("/api/reminders/?within_days=soon")
+
+    assert response.status_code == 400
+    assert response.data == {"detail": "within_days must be an integer"}
+
+
+def test_flashcard_progress_patch_and_reset(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.patch(
+        "/api/courses/cs101/flashcards/progress/",
+        {"term": "Closure", "definition": "Captured state.", "status": "in_progress", "starred": False},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["status"] == "in_progress"
+    assert response.data["starred"] is False
+    key = response.data["key"]
+    assert key in storage.read_flashcard_progress("cs101", user=api_client.user)["cards"]
+
+    reset_response = api_client.post(
+        "/api/courses/cs101/flashcards/progress/reset/",
+        {"keys": [key]},
+        format="json",
+    )
+
+    assert reset_response.status_code == 200
+    assert storage.read_flashcard_progress("cs101", user=api_client.user)["cards"] == {}
+
+
+def test_flashcard_progress_patch_rejects_missing_course(isolated_courses_dir, api_client):
+    response = api_client.patch(
+        "/api/courses/missing/flashcards/progress/",
+        {"term": "Closure", "definition": "Captured state.", "status": "mastered", "starred": False},
+        format="json",
+    )
+
+    assert response.status_code == 404
+
+
+def test_flashcard_progress_patch_rejects_invalid_course_id(isolated_courses_dir, api_client):
+    bad_id = "x" * 65
+
+    response = api_client.patch(
+        f"/api/courses/{bad_id}/flashcards/progress/",
+        {"term": "Closure", "definition": "Captured state.", "status": "mastered", "starred": False},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+def test_flashcard_progress_patch_rejects_bad_status(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.patch(
+        "/api/courses/cs101/flashcards/progress/",
+        {"term": "Closure", "definition": "Captured state.", "status": "done", "starred": False},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+def test_deadline_post_accepts_duration_completion_and_legacy_category(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.post(
+        "/api/deadlines/",
+        {
+            "course_id": "cs101",
+            "date": "2026-09-01",
+            "time": "09:00",
+            "end_time": "10:30",
+            "title": "Midterm",
+            "type": "exam",
+            "completed": True,
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["type"] == "test_quiz"
+    assert response.data["end_time"] == "10:30"
+    assert response.data["completed"] is True
+
+
+def test_deadline_post_rejects_bad_duration_and_category(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    bad_duration = api_client.post(
+        "/api/deadlines/",
+        {
+            "course_id": "cs101",
+            "date": "2026-09-01",
+            "time": "11:00",
+            "end_time": "10:30",
+            "title": "Project",
+            "type": "project",
+        },
+        format="json",
+    )
+    bad_category = api_client.post(
+        "/api/deadlines/",
+        {
+            "course_id": "cs101",
+            "date": "2026-09-01",
+            "title": "Project",
+            "type": "random",
+        },
+        format="json",
+    )
+
+    assert bad_duration.status_code == 400
+    assert bad_category.status_code == 400
+
+
+def test_notifications_endpoint_generates_overdue_deadline_once(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+    overdue = (date.today() - timedelta(days=1)).isoformat()
+    create_response = api_client.post(
+        "/api/deadlines/",
+        {
+            "course_id": "cs101",
+            "date": overdue,
+            "title": "Problem set",
+            "type": "hw",
+            "completed": False,
+        },
+        format="json",
+    )
+    assert create_response.status_code == 201
+
+    first = api_client.get("/api/notifications/")
+    second = api_client.get("/api/notifications/")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.data["unread_count"] == 1
+    assert second.data["unread_count"] == 1
+    assert len(second.data["notifications"]) == 1
+    assert second.data["notifications"][0]["category"] == "hw"
+
+    mark_read = api_client.patch("/api/notifications/read/", {"ids": [second.data["notifications"][0]["id"]]}, format="json")
+
+    assert mark_read.status_code == 200
+    assert mark_read.data["unread_count"] == 0
 
 
 def test_create_course_draft_returns_201(isolated_courses_dir, api_client):
@@ -207,6 +434,50 @@ def test_delete_course_also_removes_its_custom_events(isolated_courses_dir, api_
     assert response.status_code == 204
     remaining_titles = {e["title"] for e in custom_events.list_events()}
     assert remaining_titles == {"Keep me (other course)", "Keep me (general)"}
+
+
+def test_delete_course_removes_db_backed_course_state(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+    _seed_syllabus("cs102")
+    user = api_client.user
+    storage.update_flashcard_progress("cs101", {
+        "term": "Closure", "definition": "Captured state.", "status": "mastered", "starred": False,
+    }, user=user)
+    GradeItem.objects.create(
+        course_id="cs101", user=user, item_id="hw1", component="Homework",
+        title="HW 1", score=9, max_points=10,
+    )
+    CalendarSyncRecord.objects.create(
+        course_id="cs101", user=user, date="2026-09-01", title="Midterm",
+        type="test_quiz", google_event_id="g1", synced_at="now",
+    )
+    QuizAttempt.objects.create(
+        course_id="cs101", user=user, lecture_id="l1", chunk_id="c1", topic="A",
+        question="Q", correct_answer="A", user_answer="A", correct=True, timestamp="2026-09-01T00:00:00+00:00",
+    )
+    MasteryScore.objects.create(
+        course_id="cs101", user=user, topic="A", score=1, attempts=1,
+        last_seen="2026-09-01T00:00:00+00:00", status="mastered", rebuilt_at="now",
+    )
+    CourseSession.objects.create(
+        course_id="cs101", user=user, session_id="s1",
+        created_at="2026-09-01T00:00:00+00:00", updated_at="2026-09-01T00:00:00+00:00",
+    )
+    GradeItem.objects.create(
+        course_id="cs102", user=user, item_id="hw1", component="Homework",
+        title="Keep", score=10, max_points=10,
+    )
+
+    response = api_client.delete("/api/courses/cs101/")
+
+    assert response.status_code == 204
+    assert FlashcardProgress.objects.filter(course_id="cs101").count() == 0
+    assert GradeItem.objects.filter(course_id="cs101").count() == 0
+    assert CalendarSyncRecord.objects.filter(course_id="cs101").count() == 0
+    assert QuizAttempt.objects.filter(course_id="cs101").count() == 0
+    assert MasteryScore.objects.filter(course_id="cs101").count() == 0
+    assert CourseSession.objects.filter(course_id="cs101").count() == 0
+    assert GradeItem.objects.filter(course_id="cs102").count() == 1
 
 
 class _NeverCalledMessages:
@@ -667,6 +938,60 @@ def test_deadlines_get_returns_merged_list(isolated_courses_dir, api_client):
 
 
 @pytest.mark.django_db
+def test_deadlines_get_can_filter_by_course_id(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "CS", "dates": [{"date": "2099-01-01", "title": "CS Final", "type": "exam"}],
+        "grading": [], "topics": [],
+    })
+    storage.write_syllabus("math201", {
+        "course_id": "math201", "course_name": "Math", "dates": [{"date": "2099-01-01", "title": "Math Final", "type": "exam"}],
+        "grading": [], "topics": [],
+    })
+
+    response = api_client.get("/api/deadlines/?course_id=cs101")
+
+    assert response.status_code == 200
+    assert [d["title"] for d in response.data] == ["CS Final"]
+
+
+@pytest.mark.django_db
+def test_deadlines_get_for_draft_course_returns_empty_list(isolated_courses_dir, api_client):
+    storage.write_course_draft("draft101", "Draft Class")
+
+    response = api_client.get("/api/deadlines/?course_id=draft101")
+
+    assert response.status_code == 200
+    assert response.data == []
+
+
+@pytest.mark.django_db
+def test_deadlines_post_replacement_hides_syllabus_deadline(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "CS", "dates": [{"date": "2099-01-01", "title": "Project Due", "type": "assignment"}],
+        "grading": [], "topics": [],
+    })
+    original = api_client.get("/api/deadlines/?course_id=cs101").data[0]
+
+    response = api_client.post(
+        "/api/deadlines/",
+        {
+            "course_id": "cs101",
+            "date": "2099-01-02",
+            "time": "15:00",
+            "title": "Project draft due",
+            "type": "assignment",
+            "replaces_syllabus_key": original["key"],
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201
+    deadlines = api_client.get("/api/deadlines/?course_id=cs101").data
+    assert [d["title"] for d in deadlines] == ["Project draft due"]
+    assert deadlines[0]["source"] == "custom"
+
+
+@pytest.mark.django_db
 def test_deadlines_post_creates_custom_event(isolated_courses_dir, api_client):
     _seed_syllabus("cs101")
 
@@ -705,7 +1030,7 @@ def test_deadlines_post_rejects_invalid_type(isolated_courses_dir, api_client):
         format="json",
     )
 
-    assert response.status_code == 422
+    assert response.status_code == 400
 
 
 @pytest.mark.django_db
@@ -970,11 +1295,9 @@ def test_deadlines_get_degrades_on_corrupt_custom_events_json(isolated_courses_d
 
 
 @pytest.mark.django_db
-def test_deadlines_post_returns_clean_500_on_corrupt_custom_events_json(isolated_courses_dir, api_client):
-    # Unlike GET (which degrades silently via reminders.py), POST calls
-    # custom_events.create_event() directly with no such guard — corruption
-    # here must still come back as a clean 500 {"detail": ...}, not an
-    # unhandled exception producing Django's raw error page.
+def test_deadlines_post_ignores_legacy_corrupt_custom_events_json(isolated_courses_dir, api_client):
+    # Custom events are now stored in SQLite; a stale/corrupt legacy JSON
+    # file should not block creating a new DB-backed event.
     (isolated_courses_dir / "custom_events.json").write_text("{not valid json", encoding="utf-8")
 
     response = api_client.post(
@@ -983,5 +1306,5 @@ def test_deadlines_post_returns_clean_500_on_corrupt_custom_events_json(isolated
         format="json",
     )
 
-    assert response.status_code == 500
-    assert "detail" in response.data
+    assert response.status_code == 201
+    assert response.data["title"] == "X"

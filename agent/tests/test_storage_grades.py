@@ -2,6 +2,8 @@ import pytest
 
 from agent.services import storage
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):
@@ -23,13 +25,12 @@ def test_write_then_read_grades_round_trips(isolated_courses_dir):
     assert storage.read_grades("cs101") == data
 
 
-def test_read_grades_raises_on_corrupt_json(isolated_courses_dir):
+def test_read_grades_ignores_legacy_corrupt_json(isolated_courses_dir):
     course_dir = isolated_courses_dir / "cs101"
     course_dir.mkdir()
     (course_dir / "grades.json").write_text("{not valid json", encoding="utf-8")
 
-    with pytest.raises(storage.GradesStorageError):
-        storage.read_grades("cs101")
+    assert storage.read_grades("cs101") == {"course_id": "cs101", "items": []}
 
 
 def test_validate_grades_valid_data_returns_no_errors():

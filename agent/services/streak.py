@@ -10,13 +10,13 @@ from datetime import datetime, timedelta, timezone
 from . import reminders, storage
 
 
-def _attempt_dates(course_id: str) -> set:
+def _attempt_dates(course_id: str, user=None) -> set:
     """Returns the set of UTC calendar dates this course has at least one
     quiz attempt on. A corrupt quiz_history.json contributes no dates rather
     than failing the whole streak computation — matches build_dashboard()'s
     per-course isolation contract in dashboard.py."""
     try:
-        history = storage.read_quiz_history(course_id)
+        history = storage.read_quiz_history(course_id, user=user)
     except storage.QuizStorageError:
         return set()
 
@@ -32,7 +32,7 @@ def _attempt_dates(course_id: str) -> set:
     return dates
 
 
-def current_streak() -> int:
+def current_streak(user=None) -> int:
     """Consecutive calendar days, across ALL courses combined, with at least
     one quiz attempt. Counts backward from today if today has activity, or
     from yesterday if today doesn't (yet) but yesterday does — the streak
@@ -41,7 +41,7 @@ def current_streak() -> int:
     nor yesterday has any activity, including a brand-new install."""
     all_dates = set()
     for course_id in reminders.list_courses():
-        all_dates |= _attempt_dates(course_id)
+        all_dates |= _attempt_dates(course_id, user=user)
 
     today = datetime.now(timezone.utc).date()
     if today in all_dates:

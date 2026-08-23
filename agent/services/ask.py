@@ -8,11 +8,12 @@ CLI use.
 
 import json
 import re
+from datetime import date
 
 from asgiref.sync import sync_to_async
 
-from . import sessions, storage
-from .client import MODEL_DEFAULT as MODEL, get_client
+from . import grades, mastery, sessions, storage
+from .client import MODEL_DEFAULT as MODEL, MODEL_HAIKU, get_client
 from .storage import CourseNotFoundError
 
 ASK_SYSTEM_PROMPT = """You are Cora, the AI academic assistant inside OnTrack — you help students stay on top of their \
@@ -40,11 +41,18 @@ direct, never robotic or padded.
 - Use **bold** for emphasis, blank lines between distinct ideas, "- " bullet lists for enumerable \
 items, and a markdown pipe table only when the data is genuinely tabular with several rows (e.g. a \
 full grading breakdown) — not for two or three facts that read fine as a sentence.
+- Use markdown section headings sparingly when an answer has multiple sections, with headings like \
+`## From your notes` and `## Outside course material`. Do not use emoji in headings. Avoid \
+horizontal rules unless the answer is long enough to need section breaks.
+- Do not include raw XML/HTML citation tags such as `<cite ...>...</cite>` in the answer text. \
+Paraphrase or quote briefly in normal markdown, then put the actual full URLs in the JSON "sources" \
+array.
 - Keep it scannable: short paragraphs, no walls of text.
 
 Grounding tiers, in order:
-1. Answer from SYLLABUS, NOTES, and REFERENCES first, always. These are this course's own real \
-material and take priority over everything else.
+1. Answer from SYLLABUS, NOTES, REFERENCES, and LEARNING_TOOLS first, always. These are this course's \
+own real material and saved OnTrack data, including quiz attempts, mastery scores, flashcard progress, \
+entered grades, and grade-calculator results.
 2. Only if that material genuinely doesn't cover the question, and only if a web_search tool is \
 available to you, you may search the web — restricted to the domains you've been given access to. \
 If no web_search tool is available, you have no other source: say the material doesn't cover it.
@@ -76,7 +84,7 @@ Schema:
 {
   "answer": "string",
   "grounded": true/false,
-  "sources": ["syllabus" | "<lecture_id>" | "<reference_id>" | "<full URL>", ...]
+  "sources": ["syllabus" | "<lecture_id>" | "<reference_id>" | "quiz_history" | "mastery_scores" | "flashcards" | "grades" | "grade_calculator" | "<full URL>", ...]
 }
 
 Notes on fields:
@@ -85,24 +93,215 @@ permitted web search returned a real, cited, allowed-domain result that answers 
 everything you said is accurate. A truthful, non-fabricated "this isn't covered" is still grounded: \
 false, since the question itself remains unanswered.
 - "sources" lists which part(s) of the material — and/or which cited web result(s) — the answer draws \
-from: "syllabus", specific lecture_ids (from NOTES), specific reference_ids (from REFERENCES), and/or \
-full URLs (from a permitted web search). Empty list when grounded is false.
+from: "syllabus", specific lecture_ids (from NOTES), specific reference_ids (from REFERENCES), \
+"quiz_history", "mastery_scores", "flashcards", "grades", "grade_calculator", and/or full URLs \
+(from a permitted web search). Empty list when grounded is false.
 """
 
 
 MAX_PAUSE_TURN_CONTINUATIONS = 3
+WEB_SEARCH_MAX_USES = 5
+DEADLINE_INTENT_RE = re.compile(r"\b(add|create|schedule|put|make)\b.*\b(deadline|homework|hw|project|quiz|test|exam|class|event)\b", re.I)
 
 
-async def ask_async(course_id: str, question: str, session_id: str = None) -> dict:
+DEADLINE_EXTRACTION_PROMPT = """Extract a calendar deadline/event request for OnTrack.
+
+Return ONLY valid JSON:
+{
+  "is_deadline_request": true,
+  "missing": ["title"|"date"|"course_id"],
+  "deadline": {
+    "title": "string",
+    "course_id": "string|null",
+    "date": "YYYY-MM-DD",
+    "time": "HH:MM|null",
+    "end_time": "HH:MM|null",
+    "type": "hw|project|test_quiz|class|other"
+  },
+  "message": "short confirmation or follow-up question"
+}
+
+Rules:
+- Use the supplied current course when the user does not name another course.
+- Use null course_id only when the user clearly says it is general/all courses.
+- If a required field is missing or ambiguous, put it in missing and ask for it in message.
+- Do not invent dates. If the date is relative, resolve it using today's date.
+- Map homework/assignment/problem set to hw, exam/test/quiz to test_quiz, lectures/classes/meetings to class.
+"""
+
+
+def _build_web_search_tool(approved_domains: list[str]) -> dict | None:
+    if not approved_domains:
+        return None
+    return {
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "allowed_domains": approved_domains,
+        "max_uses": WEB_SEARCH_MAX_USES,
+    }
+
+
+def _looks_like_deadline_request(question: str) -> bool:
+    return bool(DEADLINE_INTENT_RE.search(question or ""))
+
+
+def _recent_quiz_attempts(course_id: str, user=None, limit: int = 20) -> list:
+    history = storage.read_quiz_history(course_id, user=user)
+    attempts = sorted(history.get("attempts", []), key=lambda a: a.get("timestamp") or "", reverse=True)
+    return attempts[:limit]
+
+
+def _flashcard_summary(course_id: str, user=None, limit: int = 80) -> dict:
+    progress = storage.read_flashcard_progress(course_id, user=user)
+    cards = progress.get("cards", {})
+    by_status = {"not_started": 0, "in_progress": 0, "mastered": 0}
+    starred_count = 0
+    visible_cards = []
+
+    for key, card in cards.items():
+        status = card.get("status") if card.get("status") in {"in_progress", "mastered"} else "not_started"
+        by_status[status] += 1
+        if card.get("starred"):
+            starred_count += 1
+        if len(visible_cards) < limit:
+            visible_cards.append({
+                "key": key,
+                "term": card.get("term", ""),
+                "definition": card.get("definition", ""),
+                "status": status,
+                "starred": bool(card.get("starred", False)),
+                "updated_at": card.get("updated_at"),
+            })
+
+    return {
+        "counts": by_status,
+        "starred_count": starred_count,
+        "cards": visible_cards,
+        "truncated": len(cards) > limit,
+    }
+
+
+def _grade_tool_context(course_id: str, user=None) -> dict:
+    current = grades.current_grade(course_id, user=user)
+    items = storage.read_grades(course_id, user=user)["items"]
+    target_pcts = [60, 70, 80, 90]
+    overall = current.get("overall_pct")
+    if overall is not None:
+        target_pcts = sorted({pct for pct in target_pcts if pct > overall} | {round(overall, 2)})
+
+    targets = []
+    for target in target_pcts[:5]:
+        targets.append({
+            "target_pct": target,
+            "grade_needed": grades.grade_needed(course_id, target, user=user),
+            "missable_by_category": grades.missable_by_category(course_id, target, user=user),
+        })
+
+    return {
+        "current_grade": current,
+        "entered_items": items,
+        "precomputed_targets": targets,
+        "calculator_note": (
+            "current_grade excludes categories with no entered items. "
+            "grade_needed estimates the same score needed on every remaining item for a target percent."
+        ),
+    }
+
+
+def _learning_tools_context(course_id: str, user=None) -> dict:
+    context = {
+        "quiz": {},
+        "flashcards": {},
+        "grades": {},
+    }
+
+    try:
+        context["quiz"] = {
+            "recent_attempts": _recent_quiz_attempts(course_id, user=user),
+            "mastery_scores": mastery.weak_topics(course_id, user=user),
+        }
+    except storage.QuizStorageError as e:
+        context["quiz"] = {"error": str(e)}
+
+    try:
+        context["flashcards"] = _flashcard_summary(course_id, user=user)
+    except storage.FlashcardProgressStorageError as e:
+        context["flashcards"] = {"error": str(e)}
+
+    try:
+        context["grades"] = _grade_tool_context(course_id, user=user)
+    except (storage.CourseNotFoundError, storage.GradesStorageError, ValueError) as e:
+        context["grades"] = {"error": str(e)}
+
+    return context
+
+
+async def _extract_deadline_request(client, question: str, course_id: str, syllabus: dict) -> dict:
+    today = date.today().isoformat()
+    course_context = {
+        "current_course_id": course_id,
+        "current_course_name": syllabus.get("course_name") or course_id,
+        "today": today,
+        "allowed_categories": ["hw", "project", "test_quiz", "class", "other"],
+    }
+    response = await client.messages.create(
+        model=MODEL_HAIKU,
+        max_tokens=1000,
+        system=DEADLINE_EXTRACTION_PROMPT,
+        messages=[{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}],
+    )
+    raw = "".join(block.text for block in response.content if block.type == "text").strip()
+    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"deadline extraction did not return valid JSON: {e}\n\nRaw output:\n{raw}")
+    deadline = data.get("deadline") or {}
+    category = storage.normalize_date_type(deadline.get("type"))
+    pending = {
+        "title": str(deadline.get("title") or "").strip(),
+        "course_id": deadline.get("course_id") if deadline.get("course_id") is not None else course_id,
+        "date": str(deadline.get("date") or "").strip(),
+        "time": deadline.get("time") or None,
+        "end_time": deadline.get("end_time") or None,
+        "type": category,
+        "completed": False,
+    }
+    missing = [m for m in data.get("missing", []) if m in {"title", "date", "course_id"}]
+    if not pending["title"] and "title" not in missing:
+        missing.append("title")
+    if not pending["date"] and "date" not in missing:
+        missing.append("date")
+    return {
+        "answer": data.get("message") or ("I can add this deadline after you confirm the details." if not missing else "I need a little more detail before I can add that deadline."),
+        "grounded": True,
+        "sources": ["syllabus"],
+        "pending_deadline": None if missing else pending,
+        "deadline_missing": missing,
+    }
+
+
+async def ask_async(course_id: str, question: str, session_id: str = None, user=None) -> dict:
     client = get_client()
 
     syllabus = await sync_to_async(storage.read_syllabus)(course_id)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 
+    if _looks_like_deadline_request(question):
+        result = await _extract_deadline_request(client, question, course_id, syllabus)
+        if session_id is not None:
+            await sync_to_async(sessions.append_message)(course_id, session_id, "user", question, user=user)
+            await sync_to_async(sessions.append_message)(
+                course_id, session_id, "assistant", result["answer"],
+                sources=result["sources"], grounded=result["grounded"], user=user,
+            )
+        return result
+
     notes = await sync_to_async(storage.read_notes)(course_id)
     references = await sync_to_async(storage.read_references)(course_id)
     approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id)
+    learning_tools = await sync_to_async(_learning_tools_context)(course_id, user=user)
 
     context = f"SYLLABUS:\n{json.dumps(syllabus, indent=2)}\n\n"
     if notes:
@@ -110,13 +309,14 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
     else:
         context += "NOTES: none available yet for this course.\n\n"
     if references:
-        context += f"REFERENCES:\n{json.dumps(references, indent=2)}"
+        context += f"REFERENCES:\n{json.dumps(references, indent=2)}\n\n"
     else:
-        context += "REFERENCES: none available yet for this course."
+        context += "REFERENCES: none available yet for this course.\n\n"
+    context += f"LEARNING_TOOLS:\n{json.dumps(learning_tools, indent=2, default=str)}"
 
     session = None
     if session_id is not None:
-        session = await sync_to_async(sessions.get_session)(course_id, session_id)
+        session = await sync_to_async(sessions.get_session)(course_id, session_id, user=user)
         if session is None:
             raise sessions.SessionNotFoundError(
                 f"no session '{session_id}' found for course '{course_id}'"
@@ -155,13 +355,9 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
     # simply never offered, rather than failing or (worse) searching
     # unrestricted.
     tools = []
-    if approved_domains:
-        tools.append({
-            "type": "web_search_20260209",
-            "name": "web_search",
-            "allowed_domains": approved_domains,
-            "max_uses": 5,
-        })
+    web_search_tool = _build_web_search_tool(approved_domains)
+    if web_search_tool:
+        tools.append(web_search_tool)
 
     create_kwargs = {
         "model": MODEL,
@@ -212,10 +408,10 @@ async def ask_async(course_id: str, question: str, session_id: str = None) -> di
     }
 
     if session_id is not None:
-        await sync_to_async(sessions.append_message)(course_id, session_id, "user", question)
+        await sync_to_async(sessions.append_message)(course_id, session_id, "user", question, user=user)
         await sync_to_async(sessions.append_message)(
             course_id, session_id, "assistant", result["answer"],
-            sources=result["sources"], grounded=result["grounded"],
+            sources=result["sources"], grounded=result["grounded"], user=user,
         )
 
     return result

@@ -1,15 +1,8 @@
-"""
-Flat-file JSON storage for grounded Q&A conversation sessions. Same approach
-as storage.py — sessions live under courses/<course_id>/sessions/<session_id>.json.
-Plain sync I/O; wrap with sync_to_async at call sites (views.py), same pattern
-as storage.py.
-"""
+"""SQLite-backed storage for grounded Q&A conversation sessions."""
 
-import json
 import re
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 
 from . import storage
 
@@ -36,19 +29,37 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _sessions_dir(course_id: str) -> Path:
-    """Resolves courses/<course_id>/sessions/ (course_id validated by storage._course_dir)."""
-    return storage._course_dir(course_id) / "sessions"
-
-
-def _session_path(course_id: str, session_id: str) -> Path:
+def _validate_session_id(course_id: str, session_id: str) -> None:
+    storage._course_dir(course_id)
     if not SESSION_ID_RE.fullmatch(session_id):
         raise InvalidSessionIdError(f"invalid session_id: {session_id!r}")
-    sessions_dir = _sessions_dir(course_id)
-    path = (sessions_dir / f"{session_id}.json").resolve()
-    if path.parent != sessions_dir.resolve():
-        raise InvalidSessionIdError(f"invalid session_id: {session_id!r}")
-    return path
+
+
+def _user_filter(user=None) -> dict:
+    if getattr(user, "is_authenticated", False):
+        return {"user": user}
+    return {"user__isnull": True}
+
+
+def _session_to_dict(session) -> dict:
+    messages = []
+    for message in session.messages.all():
+        data = {
+            "role": message.role,
+            "content": message.content,
+            "timestamp": message.timestamp,
+        }
+        if message.role == "assistant":
+            data["sources"] = message.sources or []
+            data["grounded"] = bool(message.grounded)
+        messages.append(data)
+    return {
+        "session_id": session.session_id,
+        "course_id": session.course_id,
+        "created_at": session.created_at,
+        "updated_at": session.updated_at,
+        "messages": messages,
+    }
 
 
 # --------------------------------------------------------------------------
@@ -102,7 +113,7 @@ def validate_session(data: dict) -> list:
 # Read / write — plain sync I/O, wrapped with sync_to_async at the call site
 # --------------------------------------------------------------------------
 
-def create_session(course_id: str) -> dict:
+def create_session(course_id: str, user=None) -> dict:
     """Creates a new empty session for course_id and writes it to disk.
     Raises storage.CourseNotFoundError if no syllabus.json exists yet — a
     session can't be grounded in a course that doesn't exist."""
@@ -120,27 +131,36 @@ def create_session(course_id: str) -> dict:
         "messages": [],
     }
 
-    sessions_dir = _sessions_dir(course_id)
-    sessions_dir.mkdir(parents=True, exist_ok=True)
-    path = _session_path(course_id, session_id)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    from agent.models import CourseSession
+
+    CourseSession.objects.create(
+        session_id=session_id,
+        course_id=course_id,
+        user=user if getattr(user, "is_authenticated", False) else None,
+        created_at=now,
+        updated_at=now,
+    )
     return data
 
 
-def get_session(course_id: str, session_id: str):
+def get_session(course_id: str, session_id: str, user=None):
     """Returns the parsed session dict, or None if it doesn't exist."""
-    path = _session_path(course_id, session_id)
-    if not path.exists():
+    _validate_session_id(course_id, session_id)
+    from agent.models import CourseSession
+
+    session = CourseSession.objects.prefetch_related("messages").filter(
+        course_id=course_id,
+        session_id=session_id,
+        **_user_filter(user),
+    ).first()
+    if session is None:
         return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise SessionStorageError(f"session '{session_id}' for '{course_id}' is corrupt: {e}")
+    return _session_to_dict(session)
 
 
 def append_message(
     course_id: str, session_id: str, role: str, content: str,
-    sources: list = None, grounded: bool = None,
+    sources: list = None, grounded: bool = None, user=None,
 ) -> dict:
     """Appends a message to an existing session and writes it back. Raises
     SessionNotFoundError if the session doesn't exist — callers must create
@@ -148,42 +168,46 @@ def append_message(
     if role not in VALID_ROLES:
         raise ValueError(f"invalid role: {role!r} (must be one of {VALID_ROLES})")
 
-    data = get_session(course_id, session_id)
-    if data is None:
+    _validate_session_id(course_id, session_id)
+    from agent.models import CourseSession, SessionMessage
+
+    session = CourseSession.objects.filter(course_id=course_id, session_id=session_id, **_user_filter(user)).first()
+    if session is None:
         raise SessionNotFoundError(f"no session '{session_id}' found for course '{course_id}'")
 
-    message = {"role": role, "content": content, "timestamp": _now()}
-    if role == "assistant":
-        message["sources"] = sources or []
-        message["grounded"] = bool(grounded)
+    now = _now()
+    position = session.messages.count()
+    SessionMessage.objects.create(
+        session=session,
+        role=role,
+        content=content,
+        timestamp=now,
+        sources=sources or [],
+        grounded=bool(grounded) if role == "assistant" else None,
+        position=position,
+    )
+    session.updated_at = now
+    session.save(update_fields=["updated_at"])
+    return get_session(course_id, session_id, user=user)
 
-    data["messages"].append(message)
-    data["updated_at"] = _now()
 
-    path = _session_path(course_id, session_id)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    return data
-
-
-def list_sessions(course_id: str) -> list:
+def list_sessions(course_id: str, user=None) -> list:
     """Returns [{session_id, created_at, updated_at, message_count}, ...] for
     every session under courses/<course_id>/sessions/, sorted by filename.
     Does not include message bodies — use get_session() for that. Returns []
     if sessions/ doesn't exist yet."""
-    sessions_dir = _sessions_dir(course_id)
-    if not sessions_dir.exists():
-        return []
+    storage._course_dir(course_id)
+    from django.db.models import Count
+    from agent.models import CourseSession
 
-    summaries = []
-    for path in sorted(sessions_dir.glob("*.json")):
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            raise SessionStorageError(f"session file '{path.name}' for '{course_id}' is corrupt: {e}")
-        summaries.append({
-            "session_id": data.get("session_id", path.stem),
-            "created_at": data.get("created_at"),
-            "updated_at": data.get("updated_at"),
-            "message_count": len(data.get("messages", [])),
-        })
-    return summaries
+    return [
+        {
+            "session_id": session.session_id,
+            "created_at": session.created_at,
+            "updated_at": session.updated_at,
+            "message_count": session.message_count,
+        }
+        for session in CourseSession.objects.filter(course_id=course_id, **_user_filter(user))
+        .annotate(message_count=Count("messages"))
+        .order_by("session_id")
+    ]

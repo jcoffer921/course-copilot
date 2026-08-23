@@ -10,7 +10,11 @@
 </head>
 <body>
 {% csrf_token %}
-<script>window.CURRENT_USER_EMAIL = "{{ user.email|escapejs }}";</script>
+<script>
+window.CURRENT_USER_EMAIL = "{{ user.email|escapejs }}";
+window.CURRENT_USER_NAME = "{{ user.get_full_name|default:user.first_name|default:user.email|escapejs }}";
+window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
+</script>
 <x-dc>
 <helmet>
   <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
@@ -32,6 +36,140 @@
     .course-chip-row:hover .course-chip-actions,.course-chip-row:focus-within .course-chip-actions{opacity:1}
     .course-chip-icon-btn{width:22px;height:22px;border:none;background:transparent;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit;opacity:.65;flex:none;padding:0}
     .course-chip-icon-btn:hover{opacity:1;background:color-mix(in srgb, var(--color-text) 12%, transparent)}
+    .notification-bell-wrap{position:relative;flex:none}
+    .notification-bell{width:32px;height:32px;border:1px solid var(--color-neutral-300);border-radius:999px;background:#fff;color:var(--color-neutral-700);display:flex;align-items:center;justify-content:center;cursor:pointer}
+    .notification-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;border-radius:999px;background:var(--color-accent);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
+    .notification-popover{position:fixed;left:250px;bottom:28px;width:340px;max-width:calc(100vw - 32px);background:#fff;border:1px solid var(--color-neutral-300);border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.18);z-index:80;overflow:hidden}
+    .deadline-calendar-shell{padding:var(--space-6);height:100%;max-width:1460px;margin:0 auto}
+    .deadline-calendar-layout{display:grid;grid-template-columns:320px minmax(0,1fr);gap:var(--space-5);height:100%;align-items:stretch}
+    .deadline-side{background:var(--color-surface);border:2px solid var(--color-neutral-800);border-radius:16px;padding:var(--space-5);display:flex;flex-direction:column;gap:var(--space-5);box-shadow:0 3px 0 var(--color-neutral-800)}
+    .deadline-side-section{border-top:1px solid var(--color-neutral-200);padding-top:var(--space-4)}
+    .deadline-side-title{font-family:var(--font-heading);font-size:18px;margin:0 0 10px}
+    .deadline-main{background:var(--color-surface);border:2px solid var(--color-neutral-800);border-radius:16px;overflow:hidden;min-height:720px;display:flex;flex-direction:column;box-shadow:0 3px 0 var(--color-neutral-800)}
+    .deadline-cal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-4);padding:var(--space-5);border-bottom:2px solid var(--color-neutral-800);background:linear-gradient(180deg,#fff,var(--color-neutral-100))}
+    .deadline-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+    .deadline-mode{display:flex;background:#fff;border:2px solid var(--color-neutral-700);border-radius:999px;padding:4px;gap:4px;box-shadow:0 1px 0 var(--color-neutral-700)}
+    .deadline-mode button{border:0;background:transparent;border-radius:999px;padding:9px 18px;font-family:var(--font-body);font-weight:800;cursor:pointer;color:var(--color-text)}
+    .deadline-mode button.active{background:var(--color-accent);color:#fff;box-shadow:inset 0 0 0 1px color-mix(in srgb,#fff 35%,transparent)}
+    .mini-cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center}
+    .mini-cal-day{height:34px;border-radius:999px;border:1px solid transparent;background:transparent;font-size:12px;font-weight:800;cursor:pointer;color:var(--color-text)}
+    .mini-cal-day:hover{background:var(--color-neutral-100);border-color:var(--color-neutral-300)}
+    .mini-cal-day.today{background:var(--color-accent);color:#fff}
+    .mini-cal-day.selected{box-shadow:inset 0 0 0 2px var(--color-neutral-800);background:var(--color-accent-100)}
+    .mini-cal-day.today.selected{background:var(--color-accent);box-shadow:inset 0 0 0 2px #fff}
+    .mini-cal-day.muted{opacity:.32}
+    .deadline-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .deadline-stat{border:1px solid var(--color-neutral-300);border-radius:10px;background:var(--color-neutral-100);padding:12px}
+    .deadline-stat-value{font-family:var(--font-heading);font-size:28px;line-height:1}
+    .deadline-stat-label{font-size:11px;font-weight:800;text-transform:uppercase;opacity:.62;margin-top:6px}
+    .deadline-filter{display:flex;align-items:center;gap:10px;border:1px solid transparent;background:transparent;border-radius:10px;padding:8px 9px;cursor:pointer;text-align:left;font-weight:800;color:var(--color-text);width:100%}
+    .deadline-filter:hover{background:var(--color-neutral-100);border-color:var(--color-neutral-200)}
+    .deadline-dot{width:10px;height:10px;border-radius:999px;flex:none;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 10%,transparent)}
+    .deadline-week-days{display:grid;grid-template-columns:70px repeat(7,minmax(120px,1fr));gap:0;padding:var(--space-4) var(--space-5) var(--space-3);background:#fff}
+    .deadline-day-pill{height:66px;border-radius:12px;background:var(--color-neutral-100);display:flex;align-items:center;justify-content:center;gap:8px;font-weight:900;border:1px solid var(--color-neutral-200)}
+    .deadline-day-pill.today{background:var(--color-accent-100);color:var(--color-accent-800);border-color:var(--color-accent)}
+    .deadline-day-pill.selected{background:#fff7ed;color:var(--color-accent-800);border-color:var(--color-accent);box-shadow:inset 0 0 0 1px var(--color-accent)}
+    .deadline-week-scroll{overflow:auto;flex:1;background:#fff;padding:0 var(--space-5) var(--space-5)}
+    .deadline-all-day-grid{display:grid;grid-template-columns:70px repeat(7,minmax(120px,1fr));gap:0;margin-bottom:var(--space-3);min-width:980px}
+    .deadline-all-day-label{font-size:11px;font-weight:900;opacity:.56;align-self:start;padding-top:8px;white-space:nowrap}
+    .deadline-all-day-cell{min-height:36px;border-left:1px solid color-mix(in srgb,var(--color-neutral-200) 75%,transparent);padding:0 6px;display:flex;flex-direction:column;gap:5px}
+    .deadline-time-grid{display:grid;grid-template-columns:70px minmax(0,1fr);position:relative;min-width:980px}
+    .deadline-time-axis{position:relative;z-index:1}
+    .deadline-time-cell{position:absolute;left:0;right:8px;font-size:12px;font-weight:800;opacity:.52;transform:translateY(-9px)}
+    .deadline-day-column-grid{display:grid;position:relative;background-image:linear-gradient(to bottom,var(--color-neutral-200) 1px,transparent 1px);background-size:100% 88px;border-top:1px solid var(--color-neutral-200)}
+    .deadline-day-column{position:relative;border-left:1px solid color-mix(in srgb,var(--color-neutral-200) 75%,transparent);background:linear-gradient(180deg,#fff,color-mix(in srgb,var(--color-neutral-100) 26%,#fff))}
+    .deadline-event{position:absolute;border-radius:10px;padding:9px 10px;overflow:hidden;box-shadow:0 2px 0 rgba(0,0,0,.12);border:1px solid rgba(0,0,0,.16);border-left-width:5px;cursor:pointer;font-size:12px;line-height:1.22;text-align:left}
+    .deadline-event:hover{filter:saturate(1.05);transform:translateY(-1px)}
+    .deadline-event.selected{outline:2px solid var(--color-neutral-800);outline-offset:2px}
+    .deadline-event-title{font-weight:900;margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+    .deadline-event-meta{font-size:11px;opacity:.76;font-weight:700}
+    .deadline-now-line{position:absolute;left:0;right:0;height:2px;background:var(--color-accent);z-index:8;box-shadow:0 0 0 1px color-mix(in srgb,var(--color-accent) 20%,transparent)}
+    .deadline-now-line::before{content:"";position:absolute;left:-5px;top:-4px;width:10px;height:10px;border-radius:999px;background:var(--color-accent)}
+    .deadline-week-empty-note{font-size:12px;font-weight:800;opacity:.48;margin:0 0 8px 70px}
+    .deadline-month-weekdays{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;margin:var(--space-4) var(--space-5) 0}
+    .deadline-month-weekday{font-size:11px;font-weight:900;text-transform:uppercase;opacity:.58;padding:0 8px 8px}
+    .deadline-month-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:1px;background:var(--color-neutral-800);margin:0 var(--space-5) var(--space-5);border:2px solid var(--color-neutral-800);overflow:hidden;border-radius:12px;width:calc(100% - (var(--space-5) * 2));box-sizing:border-box}
+    .deadline-month-cell{background:#fff;min-width:0;min-height:136px;padding:10px;display:flex;flex-direction:column;gap:6px;overflow:hidden}
+    .deadline-month-cell.muted{background:var(--color-neutral-100);opacity:.68}
+    .deadline-month-date{font-size:13px;font-weight:900;display:flex;align-items:center;justify-content:space-between}
+    .deadline-chip{display:block;width:100%;max-width:100%;min-width:0;border:1px solid rgba(0,0,0,.12);border-left-width:4px;border-radius:8px;padding:6px 8px;text-align:left;font-size:11.5px;font-weight:900;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;box-shadow:0 1px 0 rgba(0,0,0,.08)}
+    .deadline-popover{position:fixed;width:320px;max-width:calc(100vw - 24px);background:var(--color-surface);border:2px solid var(--color-neutral-800);border-radius:14px;box-shadow:0 18px 44px rgba(0,0,0,.2),0 2px 0 var(--color-neutral-800);z-index:70;padding:var(--space-4);animation:deadline-pop .12s ease-out}
+    @keyframes deadline-pop{from{opacity:0;transform:scale(.98)}to{opacity:1;transform:scale(1)}}
+    .deadline-popover-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-3)}
+    .deadline-popover-title{font-family:var(--font-heading);font-size:21px;line-height:1.12;margin:0 0 4px;overflow-wrap:anywhere}
+    .deadline-popover-meta{font-size:12.5px;font-weight:800;opacity:.62}
+    .deadline-popover-row{display:flex;gap:10px;align-items:flex-start;font-size:13px;line-height:1.35;margin-top:10px}
+    .deadline-popover-dot{width:10px;height:10px;border-radius:999px;flex:none;margin-top:4px}
+    .deadline-popover-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:var(--space-4)}
+    .deadline-status{border-radius:10px;border:1px solid var(--color-neutral-300);background:var(--color-neutral-100);padding:12px 14px;margin:0 var(--space-5) var(--space-4);font-size:13px;font-weight:700;color:var(--color-text)}
+    .deadline-status.error{background:#fef2f2;color:#991b1b;border-color:#fecaca}
+    .deadline-empty{margin:var(--space-6);border:2px dashed var(--color-neutral-300);border-radius:14px;padding:var(--space-8);text-align:center;background:var(--color-neutral-100)}
+    .deadline-empty-title{font-family:var(--font-heading);font-size:26px;margin:0 0 6px}
+    .deadline-modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.48);display:flex;align-items:center;justify-content:center;z-index:50;padding:28px}
+    .deadline-modal{width:700px;max-width:100%;max-height:calc(100vh - 56px);overflow:auto;border:2px solid var(--color-neutral-800);border-radius:18px;background:#fff;box-shadow:0 22px 60px rgba(0,0,0,.28),0 3px 0 var(--color-neutral-800)}
+    .deadline-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-5);padding:var(--space-6) var(--space-6) var(--space-5);border-bottom:2px solid var(--color-neutral-800);background:var(--color-neutral-100)}
+    .deadline-modal-head .card-title{font-size:30px;line-height:1.05}
+    .deadline-modal-close{width:42px;height:42px;border:1px solid var(--color-neutral-400);border-radius:10px;background:#fff;color:var(--color-accent-700);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none}
+    .deadline-modal-close:hover{background:var(--color-accent-100);border-color:var(--color-accent)}
+    .deadline-modal-body{padding:var(--space-6);display:flex;flex-direction:column;gap:20px}
+    .deadline-field-label{font-size:12px;font-weight:900;text-transform:uppercase;opacity:.66;margin-bottom:8px;letter-spacing:.02em}
+    .deadline-field-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+    .deadline-modal .input{min-height:48px;font-size:15px;border-radius:14px;padding-left:16px;padding-right:16px}
+    .deadline-complete-label{display:flex;align-items:center;gap:12px;font-size:15px;font-weight:800;border:1px solid var(--color-neutral-300);border-radius:14px;padding:16px 18px;background:var(--color-neutral-100)}
+    .deadline-modal-actions{display:flex;gap:12px;justify-content:flex-end;padding:0 var(--space-6) var(--space-6)}
+    .deadline-modal-actions .btn{min-width:132px;justify-content:center}
+    @media (max-width: 1050px){.deadline-calendar-layout{grid-template-columns:1fr}.deadline-side{order:2}.deadline-main{min-height:640px}.deadline-week-days{grid-template-columns:58px repeat(7,minmax(104px,1fr))}.deadline-cal-head{flex-direction:column}.deadline-toolbar{justify-content:flex-start}.deadline-calendar-shell{padding:var(--space-4)}}
+    @media (max-width: 720px){.deadline-week-days{grid-template-columns:52px repeat(7,minmax(92px,1fr));padding-left:var(--space-3);padding-right:var(--space-3);min-width:760px}.deadline-week-scroll{padding-left:var(--space-3);padding-right:var(--space-3)}.deadline-time-grid,.deadline-all-day-grid{grid-template-columns:52px minmax(708px,1fr);min-width:760px}.deadline-month-grid,.deadline-month-weekdays{min-width:760px}.deadline-main{overflow:auto}.deadline-field-grid{grid-template-columns:1fr}.deadline-modal-backdrop{padding:14px}.deadline-modal-head,.deadline-modal-body{padding:var(--space-5)}.deadline-modal-actions{padding:0 var(--space-5) var(--space-5);flex-direction:column-reverse}.deadline-modal-actions .btn{width:100%}.deadline-mode button{padding:8px 12px}.deadline-cal-head h1{font-size:25px!important}.deadline-stat-grid{grid-template-columns:1fr 1fr}}
+    .flashcard-shell{max-width:1180px;margin:0 auto;padding:var(--space-8)}
+    .flashcard-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);margin-bottom:var(--space-6)}
+    .flashcard-title-row{display:flex;align-items:center;gap:12px}
+    .flashcard-title-icon{width:38px;height:38px;border-radius:999px;background:var(--color-accent);color:#fff;display:flex;align-items:center;justify-content:center;border:2px solid var(--color-neutral-800)}
+    .flashcard-segmented{display:flex;border:2px solid var(--color-neutral-800);border-radius:999px;padding:4px;background:var(--color-neutral-100);box-shadow:0 2px 0 var(--color-neutral-800)}
+    .flashcard-segment{border:0;background:transparent;border-radius:999px;padding:10px 22px;font-family:var(--font-body);font-weight:700;font-size:14px;cursor:pointer;color:var(--color-text)}
+    .flashcard-segment.active{background:var(--color-accent);color:#fff;box-shadow:inset 0 0 0 1px color-mix(in srgb, #fff 38%, transparent)}
+    .flashcard-layout-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:var(--space-6);align-items:start}
+    .flashcard-panel{border:2px solid var(--color-neutral-800);border-radius:18px;background:var(--color-neutral-100);overflow:hidden;box-shadow:0 2px 0 var(--color-neutral-800)}
+    .flashcard-controls{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-4) var(--space-5);border-bottom:2px solid var(--color-neutral-800)}
+    .flashcard-controls-left{display:flex;align-items:center;gap:var(--space-4);flex-wrap:wrap}
+    .flashcard-select{border:2px solid var(--color-neutral-500);border-radius:999px;background:#fff;padding:10px 34px 10px 16px;font-family:var(--font-body);font-weight:700;font-size:13.5px;color:var(--color-text)}
+    .flashcard-check-label{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;cursor:pointer}
+    .flashcard-check-label input{width:17px;height:17px;accent-color:var(--color-accent)}
+    .flashcard-outline-btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:2px solid var(--color-neutral-500);border-radius:999px;background:#fff;color:var(--color-text);padding:10px 16px;font-family:var(--font-body);font-size:13.5px;font-weight:700;cursor:pointer}
+    .flashcard-outline-btn:hover{background:var(--color-neutral-100)}
+    .flashcard-icon-btn{width:34px;height:34px;border:2px solid var(--color-neutral-300);background:#fff;border-radius:999px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--color-accent-700)}
+    .flashcard-study-region{padding:var(--space-5)}
+    .flashcard-reference-card{min-height:310px;border:2px solid var(--color-neutral-800);border-radius:16px;background:var(--color-accent-100);position:relative;display:flex;align-items:center;justify-content:center;text-align:center;cursor:pointer;overflow:hidden}
+    .flashcard-reference-card::before{content:"";position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb, var(--color-accent) 8%, transparent) 1px, transparent 1px),linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 8%, transparent) 1px, transparent 1px);background-size:58px 58px;opacity:.55;pointer-events:none}
+    .flashcard-reference-card > *{position:relative;z-index:1}
+    .flashcard-category-pill{position:absolute;top:24px;left:50%;transform:translateX(-50%);border:2px solid var(--color-neutral-700);background:#fff;border-radius:999px;padding:7px 16px;font-size:12px;font-weight:800;max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .flashcard-star-btn{position:absolute;top:28px;right:28px;border:0;background:transparent;color:var(--color-accent-2-700);cursor:pointer;padding:4px}
+    .flashcard-spark{position:absolute;left:42px;bottom:72px;color:var(--color-accent);opacity:.9}
+    .flashcard-question{font-family:var(--font-heading);font-size:36px;line-height:1.16;max-width:760px;padding:0 var(--space-8);overflow-wrap:anywhere}
+    .flashcard-answer{font-size:19px;line-height:1.55;max-width:760px;padding:0 var(--space-8);overflow-wrap:anywhere}
+    .flashcard-reveal-hint{font-size:14px;font-weight:700;opacity:.62;margin-top:var(--space-4)}
+    .flashcard-mini-progress{position:absolute;bottom:32px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;font-size:13px;font-weight:800}
+    .flashcard-mini-progress-track{width:74px;height:8px;border:2px solid var(--color-neutral-700);border-radius:999px;background:#fff;overflow:hidden}
+    .flashcard-actions{display:flex;align-items:center;justify-content:center;gap:var(--space-4);padding:var(--space-5)}
+    .flashcard-footer-nav{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:var(--space-4);padding:var(--space-4) var(--space-5);border-top:2px solid var(--color-neutral-800)}
+    .flashcard-nav-left{justify-self:start}.flashcard-nav-right{justify-self:end}
+    .flashcard-card-count{font-size:13.5px;font-weight:800;opacity:.62}
+    .flashcard-stats-panel{padding:var(--space-5)}
+    .flashcard-stat-title{font-family:var(--font-heading);font-size:24px;margin:0 0 var(--space-5)}
+    .flashcard-stat-card{display:grid;grid-template-columns:1fr 96px;min-height:96px;border:2px solid var(--color-neutral-700);border-radius:10px;overflow:hidden;background:#fff;margin-bottom:var(--space-4)}
+    .flashcard-stat-copy{padding:18px}
+    .flashcard-stat-label{font-size:14px;font-weight:800;margin-bottom:16px}
+    .flashcard-stat-value{font-family:var(--font-heading);font-size:36px;line-height:1}
+    .flashcard-stat-icon{display:flex;align-items:center;justify-content:center;border-left:2px solid var(--color-neutral-700);color:var(--color-neutral-900)}
+    .flashcard-all-table{padding:var(--space-5)}
+    .flashcard-all-row{display:grid;grid-template-columns:1fr 1.35fr 100px 300px;gap:var(--space-3);align-items:center;padding:14px 0;border-bottom:1px solid var(--color-neutral-200);font-size:13.5px}
+    .flashcard-all-head{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.58;font-weight:800}
+    @media (max-width: 980px){
+      .flashcard-layout-grid{grid-template-columns:1fr}
+      .flashcard-controls{align-items:flex-start;flex-direction:column}
+      .flashcard-header{align-items:flex-start;flex-direction:column}
+      .flashcard-question{font-size:28px}
+      .flashcard-all-row{grid-template-columns:1fr}
+    }
   </style>
 </helmet>
 
@@ -62,6 +200,10 @@
       <button type="button" onClick="{{ goQuiz }}" style="{{ navBtnStyleQuiz }}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m3 17 2 2 4-4"/><path d="m3 7 2 2 4-4"/><path d="M13 6h8"/><path d="M13 12h8"/><path d="M13 18h8"/></svg>
         Quiz
+      </button>
+      <button type="button" onClick="{{ goFlashcards }}" style="{{ navBtnStyleFlashcards }}">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
+        Flashcards
       </button>
       <button type="button" onClick="{{ goGrades }}" style="{{ navBtnStyleGrades }}">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -116,10 +258,43 @@
     <div style="margin-top:auto;padding-top:var(--space-6);border-top:1px solid var(--color-neutral-200);display:flex;align-items:center;gap:10px">
       <div style="width:30px;height:30px;border-radius:999px;background:var(--color-accent-2-200);color:var(--color-accent-2-800);display:flex;align-items:center;justify-content:center;font-family:var(--font-heading);font-size:13px;flex:none">{{ userInitial }}</div>
       <div style="font-size:13px;line-height:1.3;flex:1;min-width:0">
-        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ currentUserEmail }}</div>
+        <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ currentUserName }}</div>
+        <div style="font-size:11.5px;opacity:.62;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ currentUserEmail }}</div>
         <button type="button" onClick="{{ signOut }}" style="font-size:12px;background:none;border:none;padding:0;color:inherit;text-decoration:underline;cursor:pointer">Sign out</button>
       </div>
+      <div class="notification-bell-wrap">
+        <button type="button" class="notification-bell" aria-label="Notifications" title="Notifications" onClick="{{ toggleNotifications }}">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8a6 6 0 0 0-12 0c0 4.499-1.411 5.956-2.738 7.326"/></svg>
+        </button>
+        <sc-if value="{{ notificationsUnreadCount }}" hint-placeholder-val="{{ false }}">
+          <span class="notification-badge">{{ notificationsUnreadCount }}</span>
+        </sc-if>
+      </div>
+      <button type="button" aria-label="Settings" title="Settings" onClick="{{ openSettings }}" style="width:32px;height:32px;border:1px solid var(--color-neutral-300);border-radius:999px;background:#fff;color:var(--color-neutral-700);display:flex;align-items:center;justify-content:center;cursor:pointer;flex:none">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.32-1.915Z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
     </div>
+    <sc-if value="{{ notificationsOpen }}" hint-placeholder-val="{{ false }}">
+      <div class="notification-popover">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid var(--color-neutral-200)">
+          <div style="font-family:var(--font-heading);font-size:18px">Notifications</div>
+          <button type="button" class="btn btn-ghost" style="font-size:12px;padding:5px 8px" onClick="{{ markAllNotificationsRead }}">Mark all read</button>
+        </div>
+        <sc-if value="{{ notificationsLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:16px;font-size:13px;opacity:.65">Loading…</div>
+        </sc-if>
+        <sc-if value="{{ notificationsEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:16px;font-size:13px;opacity:.65">No notifications yet.</div>
+        </sc-if>
+        <sc-for list="{{ notificationItems }}" as="n" hint-placeholder-count="3">
+          <button type="button" onClick="{{ n.onRead }}" style="{{ n.style }}">
+            <div style="font-weight:800;font-size:13px">{{ n.title }}</div>
+            <div style="font-size:12px;opacity:.68;line-height:1.35">{{ n.body }}</div>
+            <div style="font-size:11px;opacity:.5;margin-top:5px">{{ n.meta }}</div>
+          </button>
+        </sc-for>
+      </div>
+    </sc-if>
   </div>
 
   <div style="flex:1;min-width:0;position:relative;overflow-y:auto">
@@ -128,7 +303,7 @@
       <div style="padding:var(--space-8) var(--space-8);max-width:1100px">
         <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-6)">
           <div>
-            <h1 style="font-family:var(--font-heading);font-size:30px;margin:0 0 4px">Good afternoon, Jordan</h1>
+            <h1 style="font-family:var(--font-heading);font-size:30px;margin:0 0 4px">{{ dashboardGreeting }}</h1>
             <p style="margin:0;opacity:.65;font-size:14.5px">Here's what's grounded in your syllabi this week.</p>
           </div>
           <span class="tag tag-accent">Fall 2026 · CS101 + PSYC201</span>
@@ -286,8 +461,8 @@
               <sc-if value="{{ !hasUploadConflict }}" hint-placeholder-val="{{ true }}">
                 <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
                   <div>
-                    <div style="font-size:13px;margin-bottom:4px">File (PDF, TXT, MD, or PPTX)</div>
-                    <input type="file" accept=".pdf,.txt,.md,.pptx" onChange="{{ onUploadFileChange }}" style="font-size:13px"/>
+                    <div style="font-size:13px;margin-bottom:4px">File (PDF, PPTX, DOCX, TXT, or MD)</div>
+                    <input type="file" accept=".pdf,.pptx,.docx,.txt,.md" onChange="{{ onUploadFileChange }}" style="font-size:13px"/>
                   </div>
                   <div>
                     <div style="font-size:13px;margin-bottom:4px">Lecture ID</div>
@@ -664,27 +839,63 @@
         </sc-if>
 
         <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <sc-if value="{{ showQuizSetup }}" hint-placeholder-val="{{ true }}">
+            <div class="card elev-md" style="padding:var(--space-6)">
+              <div class="card-kicker">{{ courseIdUpper }}</div>
+              <div class="card-title" style="margin:0 0 var(--space-2)">Set up your quiz</div>
+              <p class="card-body" style="margin:0 0 var(--space-6)">Choose the number of questions and assessment style before OnTrack generates anything.</p>
+
+              <div style="display:grid;grid-template-columns:180px minmax(0,1fr);gap:var(--space-5);align-items:start;margin-bottom:var(--space-5)">
+                <div>
+                  <div style="font-size:12px;font-weight:900;text-transform:uppercase;opacity:.62;margin-bottom:8px">Questions</div>
+                  <input class="input" type="number" min="1" max="15" value="{{ quizSetupCount }}" onChange="{{ onQuizSetupCountChange }}" style="width:100%"/>
+                  <div style="font-size:12px;opacity:.55;margin-top:6px">Max 15</div>
+                </div>
+                <div>
+                  <div style="font-size:12px;font-weight:900;text-transform:uppercase;opacity:.62;margin-bottom:8px">Question type</div>
+                  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                    <sc-for list="{{ quizTypeOptions }}" as="opt" hint-placeholder-count="4">
+                      <button type="button" onClick="{{ opt.onClick }}" style="{{ opt.style }}">{{ opt.label }}</button>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-bottom:var(--space-6)">
+                <div style="font-size:12px;font-weight:900;text-transform:uppercase;opacity:.62;margin-bottom:8px">Quiz scope</div>
+                <select class="input" value="{{ quizSetupTopic }}" onChange="{{ onQuizSetupTopicChange }}" style="width:100%">
+                  <sc-for list="{{ quizTopicOptions }}" as="opt" hint-placeholder-count="4">
+                    <option value="{{ opt.value }}">{{ opt.label }}</option>
+                  </sc-for>
+                </select>
+                <div style="font-size:12px;opacity:.55;margin-top:6px">Choose the whole course or drill one topic from your syllabus and uploaded notes.</div>
+              </div>
+
+              <button type="button" class="btn btn-primary btn-block" onClick="{{ startQuiz }}">Start quiz</button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ !showQuizSetup }}" hint-placeholder-val="{{ false }}">
           <sc-if value="{{ !isQuizStep3 }}" hint-placeholder-val="{{ true }}">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
               <span class="tag tag-accent">{{ quizTopicLabel }}</span>
-              <span style="font-size:12.5px;opacity:.55">Question {{ quizPos }} of 3</span>
+              <span style="font-size:12.5px;opacity:.55">{{ quizProgressLabel }}</span>
             </div>
           </sc-if>
           <sc-if value="{{ isQuizStep3 }}" hint-placeholder-val="{{ false }}">
             <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--space-2)">
               <span class="tag tag-accent">{{ quizTopicLabel }}</span>
-              <span style="font-size:12.5px;opacity:.55">Complete</span>
+              <span style="font-size:12.5px;opacity:.55">{{ quizProgressLabel }}</span>
             </div>
           </sc-if>
           <div style="display:flex;gap:5px;margin-bottom:var(--space-6)">
-            <sc-for list="{{ quizDots }}" as="dot" hint-placeholder-count="3">
+            <sc-for list="{{ quizDots }}" as="dot" hint-placeholder-count="5">
               <div style="{{ dot.style }}"></div>
             </sc-for>
           </div>
 
           <sc-if value="{{ quizLoading }}" hint-placeholder-val="{{ false }}">
             <div class="card elev-md" style="padding:var(--space-6);text-align:center;opacity:.7">
-              Loading question…
+              Writing an assessment question...
             </div>
           </sc-if>
 
@@ -697,79 +908,355 @@
 
           <sc-if value="{{ showQuizQuestion }}" hint-placeholder-val="{{ true }}">
             <div class="card elev-md" style="padding:var(--space-6)">
-              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">Multiple choice</span>
+              <span class="tag tag-outline" style="margin-bottom:var(--space-3);display:inline-block">Assessment question</span>
               <div style="font-family:var(--font-heading);font-size:20px;line-height:1.35;margin-bottom:var(--space-6)">{{ quizQuestionText }}</div>
+              <sc-if value="{{ showQuizChoices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:var(--space-6)">
                 <sc-for list="{{ mcOptions }}" as="opt" hint-placeholder-count="4">
                   <button type="button" onClick="{{ opt.onClick }}" style="{{ opt.style }}">{{ opt.label }}</button>
                 </sc-for>
               </div>
+              </sc-if>
+              <sc-if value="{{ showQuizOpenEnded }}" hint-placeholder-val="{{ false }}">
+                <div style="margin-bottom:var(--space-6)">
+                  <textarea class="input" value="{{ quizOpenAnswer }}" onChange="{{ onQuizOpenAnswerChange }}" placeholder="Type your answer..." style="width:100%;min-height:120px;resize:vertical;padding:14px"></textarea>
+                </div>
+              </sc-if>
               <button type="button" class="btn btn-primary btn-block" onClick="{{ checkAnswer }}">Check answer</button>
             </div>
           </sc-if>
 
           <sc-if value="{{ isQuizStep3 }}" hint-placeholder-val="{{ false }}">
             <div class="card elev-md" style="padding:var(--space-6);text-align:center">
-              <div style="font-size:12.5px;opacity:.65;margin-bottom:var(--space-3)">Quiz complete</div>
-              <div style="font-family:var(--font-heading);font-size:32px">{{ quizCorrectCount }} of 3 correct</div>
-              <div style="font-size:12px;opacity:.55;margin-bottom:var(--space-6)">Recursion</div>
+              <div style="font-size:12.5px;opacity:.65;margin-bottom:var(--space-3)">Assessment complete</div>
+              <div style="font-family:var(--font-heading);font-size:32px">{{ quizCorrectCount }} of {{ quizTargetCount }} correct</div>
+              <div style="font-size:12px;opacity:.55;margin-bottom:var(--space-6)">{{ quizTopicLabel }}</div>
               <button type="button" class="btn btn-secondary btn-block" onClick="{{ goProgress }}">Back to Progress</button>
             </div>
+          </sc-if>
           </sc-if>
         </sc-if>
       </div>
     </sc-if>
 
-    <sc-if value="{{ isDeadlines }}" hint-placeholder-val="{{ false }}">
-      <div style="padding:var(--space-8) var(--space-8);max-width:1100px">
-        <div style="display:flex;align-items:baseline;justify-content:space-between;margin-bottom:var(--space-6)">
-          <div>
-            <h1 style="font-family:var(--font-heading);font-size:28px;margin:0 0 4px">Deadlines</h1>
-            <p style="margin:0;opacity:.65;font-size:14.5px">Everything upcoming, across every course.</p>
-          </div>
-          <button type="button" class="btn btn-primary" onClick="{{ openAddDeadline }}">+ Add deadline</button>
-        </div>
-
-        <sc-if value="{{ deadlinesLoading }}" hint-placeholder-val="{{ false }}">
-          <div class="card elev-sm" style="padding:var(--space-6);text-align:center;opacity:.7">Loading deadlines…</div>
-        </sc-if>
-        <sc-if value="{{ deadlinesError }}" hint-placeholder-val="{{ false }}">
+    <sc-if value="{{ isFlashcards }}" hint-placeholder-val="{{ false }}">
+      <div class="flashcard-shell">
+        <sc-if value="{{ showNoNotesEmptyState }}" hint-placeholder-val="{{ false }}">
           <div class="card elev-sm" style="padding:var(--space-6)">
-            <p class="card-body" style="margin:0">{{ deadlinesError }}</p>
+            <div class="card-kicker">{{ courseIdUpper }}</div>
+            <div class="card-title">{{ courseName }}</div>
+            <p class="card-body">{{ emptyStateMessage }}</p>
           </div>
         </sc-if>
-        <sc-if value="{{ deadlinesEmpty }}" hint-placeholder-val="{{ false }}">
-          <div class="card elev-sm" style="padding:var(--space-6);text-align:center;opacity:.7">No upcoming deadlines yet.</div>
-        </sc-if>
-        <sc-if value="{{ showDeadlineSyncError }}" hint-placeholder-val="{{ false }}">
-          <p style="font-size:12.5px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deadlineSyncError }}</p>
-        </sc-if>
 
-        <div class="card elev-sm" style="padding:0">
-          <sc-for list="{{ allDeadlinesRows }}" as="d" hint-placeholder-count="4">
-            <div style="display:flex;align-items:center;gap:var(--space-3);padding:14px var(--space-6);border-bottom:1px solid var(--color-neutral-200)">
-              <div style="width:44px;flex:none;text-align:center;font-family:var(--font-heading);font-size:12px;color:var(--color-accent-700);line-height:1.15">{{ d.month }}<br/><span style="font-size:16px">{{ d.day }}</span></div>
-              <div style="flex:1;min-width:0">
-                <div style="font-size:14px;font-weight:600">{{ d.title }}</div>
-                <div style="font-size:12px;opacity:.6">{{ d.courseLabel }}<sc-if value="{{ d.timeLabel }}" hint-placeholder-val="{{ false }}"> · {{ d.timeLabel }}</sc-if></div>
+        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <div class="flashcard-header">
+            <div class="flashcard-title-row">
+              <div class="flashcard-title-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
               </div>
-              <span style="{{ d.tagStyle }}">{{ d.typeLabel }}</span>
-              <sc-if value="{{ d.synced }}" hint-placeholder-val="{{ false }}">
-                <span class="tag tag-accent-2" style="flex:none">Added ✓</span>
-              </sc-if>
-              <sc-if value="{{ !d.synced }}" hint-placeholder-val="{{ true }}">
-                <button type="button" class="btn btn-secondary" style="flex:none;padding:4px 10px;font-size:12px" onClick="{{ d.onSync }}">{{ d.syncButtonLabel }}</button>
-              </sc-if>
-              <sc-if value="{{ d.isCustom }}" hint-placeholder-val="{{ false }}">
-                <button type="button" class="btn-icon btn-ghost" style="flex:none" onClick="{{ d.onEdit }}" title="Edit">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+              <div>
+                <h1 style="font-family:var(--font-heading);font-size:28px;margin:0">Flashcard</h1>
+                <p style="margin:2px 0 0;opacity:.62;font-size:13.5px">{{ flashcardDeckSubtitle }}</p>
+              </div>
+            </div>
+            <div class="flashcard-segmented" role="tablist" aria-label="Flashcard view">
+              <button type="button" class="{{ flashcardStudyModeClass }}" onClick="{{ setFlashcardStudyMode }}">Study Mode</button>
+              <button type="button" class="{{ flashcardAllCardsClass }}" onClick="{{ setFlashcardAllCardsMode }}">All Cards</button>
+            </div>
+          </div>
+
+          <div class="flashcard-layout-grid">
+            <div class="flashcard-panel">
+              <div class="flashcard-controls">
+                <div class="flashcard-controls-left">
+                  <select class="flashcard-select" value="{{ flashcardCategory }}" onChange="{{ onFlashcardCategoryChange }}">
+                    <sc-for list="{{ flashcardCategoryOptions }}" as="cat" hint-placeholder-count="2">
+                      <option value="{{ cat.value }}">{{ cat.label }}</option>
+                    </sc-for>
+                  </select>
+                  <label class="flashcard-check-label">
+                    <input type="checkbox" checked="{{ flashcardHideMastered }}" onChange="{{ toggleFlashcardHideMastered }}"/>
+                    Hide Mastered
+                  </label>
+                </div>
+                <button type="button" class="flashcard-outline-btn" onClick="{{ shuffleFlashcards }}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.5c3.2 0 4.9-1.9 6.6-6.1C11.8 7.7 13.5 6 16.5 6H22"/><path d="M2 6h1.5c1.8 0 3.1.6 4.2 2"/></svg>
+                  Shuffle
                 </button>
-                <button type="button" class="btn-icon btn-ghost" style="flex:none" onClick="{{ d.onDelete }}" title="Delete">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                </button>
+              </div>
+
+              <sc-if value="{{ flashcardsLoading }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:var(--space-8);text-align:center;opacity:.7">Building low-cost flashcards with Haiku…</div>
+              </sc-if>
+
+              <sc-if value="{{ flashcardsError }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:var(--space-6)">
+                  <p class="card-body" style="margin:0 0 var(--space-4)">{{ flashcardsError }}</p>
+                  <button type="button" class="btn btn-secondary" onClick="{{ retryFlashcards }}">Try again</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showFlashcard }}" hint-placeholder-val="{{ true }}">
+                <sc-if value="{{ flashcardIsStudyMode }}" hint-placeholder-val="{{ true }}">
+                  <div class="flashcard-study-region">
+                    <sc-if value="{{ flashcardAllVisibleMastered }}" hint-placeholder-val="{{ false }}">
+                      <div style="min-height:310px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+                        <div class="card-title" style="margin-bottom:8px">All visible cards are mastered</div>
+                        <p class="card-body" style="max-width:420px">Turn off Hide Mastered or reset progress to keep studying this deck.</p>
+                        <button type="button" class="btn btn-primary" onClick="{{ resetFlashcardProgress }}">Reset Progress</button>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ !flashcardAllVisibleMastered }}" hint-placeholder-val="{{ true }}">
+                      <div class="flashcard-reference-card" onClick="{{ flipFlashcard }}">
+                        <div class="flashcard-category-pill">{{ flashcardCategoryLabel }}</div>
+                        <button type="button" class="flashcard-star-btn" aria-label="Star this card" onClick="{{ toggleFlashcardStar }}">
+                          <svg width="26" height="26" viewBox="0 0 24 24" fill="{{ flashcardStarFill }}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.751a.53.53 0 0 1 .294.904l-3.738 3.644a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.62-2.429a2.12 2.12 0 0 0-1.973 0l-4.62 2.429a.53.53 0 0 1-.77-.56l.881-5.14a2.12 2.12 0 0 0-.611-1.878L2.15 9.789a.53.53 0 0 1 .294-.904l5.166-.751a2.12 2.12 0 0 0 1.596-1.16z"/></svg>
+                        </button>
+                        <div class="flashcard-spark">
+                          <svg width="31" height="31" viewBox="0 0 24 24" fill="currentColor" stroke="var(--color-neutral-800)" stroke-width="1.5" stroke-linejoin="round"><path d="m12 2 2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2Z"/></svg>
+                        </div>
+                        <div>
+                          <sc-if value="{{ flashcardShowingTerm }}" hint-placeholder-val="{{ true }}">
+                            <div class="flashcard-question">{{ flashcardVisibleText }}</div>
+                          </sc-if>
+                          <sc-if value="{{ !flashcardShowingTerm }}" hint-placeholder-val="{{ false }}">
+                            <div class="flashcard-answer">{{ flashcardVisibleText }}</div>
+                          </sc-if>
+                          <div class="flashcard-reveal-hint">{{ flashcardRevealHint }}</div>
+                        </div>
+                        <div class="flashcard-mini-progress">
+                          <div class="flashcard-mini-progress-track"><div style="{{ flashcardVisibleProgressBarStyle }}"></div></div>
+                          {{ flashcardVisibleProgressLabel }}
+                        </div>
+                      </div>
+
+                      <div class="flashcard-actions">
+                        <button type="button" class="btn btn-primary" onClick="{{ markFlashcardKnown }}">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                          I Know This
+                        </button>
+                        <button type="button" class="flashcard-outline-btn" onClick="{{ resetFlashcardProgress }}">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+                          Reset Progress
+                        </button>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ !flashcardIsStudyMode }}" hint-placeholder-val="{{ false }}">
+                  <div class="flashcard-all-table">
+                    <div class="flashcard-all-row flashcard-all-head">
+                      <div>Term</div><div>Definition</div><div>Status</div><div>Actions</div>
+                    </div>
+                    <sc-for list="{{ flashcardAllRows }}" as="row" hint-placeholder-count="6">
+                      <div class="flashcard-all-row">
+                        <div style="font-weight:800;overflow-wrap:anywhere">{{ row.term }}</div>
+                        <div style="opacity:.72;line-height:1.4;overflow-wrap:anywhere">{{ row.definition }}</div>
+                        <span style="{{ row.statusStyle }}">{{ row.statusLabel }}</span>
+                        <div style="display:flex;gap:6px;align-items:center">
+                          <button type="button" class="flashcard-outline-btn" style="padding:7px 10px;font-size:12px" onClick="{{ row.onMaster }}">Master</button>
+                          <button type="button" class="flashcard-outline-btn" style="padding:7px 10px;font-size:12px" onClick="{{ row.onProgress }}">Progress</button>
+                          <button type="button" class="flashcard-outline-btn" style="padding:7px 10px;font-size:12px" onClick="{{ row.onReset }}">Reset</button>
+                          <button type="button" class="flashcard-icon-btn" aria-label="Star card" onClick="{{ row.onToggleStar }}">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ row.starFill }}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.751a.53.53 0 0 1 .294.904l-3.738 3.644a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.62-2.429a2.12 2.12 0 0 0-1.973 0l-4.62 2.429a.53.53 0 0 1-.77-.56l.881-5.14a2.12 2.12 0 0 0-.611-1.878L2.15 9.789a.53.53 0 0 1 .294-.904l5.166-.751a2.12 2.12 0 0 0 1.596-1.16z"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <div class="flashcard-footer-nav">
+                  <button type="button" class="flashcard-outline-btn flashcard-nav-left" onClick="{{ previousFlashcard }}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    Previous
+                  </button>
+                  <div class="flashcard-card-count">{{ flashcardFooterCountLabel }}</div>
+                  <button type="button" class="flashcard-outline-btn flashcard-nav-right" onClick="{{ nextFlashcard }}">
+                    Next
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                  </button>
+                </div>
               </sc-if>
             </div>
-          </sc-for>
+
+            <div class="flashcard-panel flashcard-stats-panel">
+              <h2 class="flashcard-stat-title">Study Statistics</h2>
+              <sc-for list="{{ flashcardStats }}" as="stat" hint-placeholder-count="4">
+                <div class="flashcard-stat-card">
+                  <div class="flashcard-stat-copy">
+                    <div class="flashcard-stat-label">{{ stat.label }}</div>
+                    <div class="flashcard-stat-value">{{ stat.value }}</div>
+                  </div>
+                  <div class="flashcard-stat-icon" style="{{ stat.iconStyle }}">
+                    <sc-if value="{{ stat.isTotal }}" hint-placeholder-val="{{ true }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></sc-if>
+                    <sc-if value="{{ stat.isMastered }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></sc-if>
+                    <sc-if value="{{ stat.isProgress }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></sc-if>
+                    <sc-if value="{{ stat.isNotStarted }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-2-2h-5l-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2Z"/></svg></sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ flashcardSaving }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:12px;opacity:.58">Saving progress…</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isDeadlines }}" hint-placeholder-val="{{ false }}">
+      <div class="deadline-calendar-shell">
+        <div class="deadline-calendar-layout">
+          <aside class="deadline-side">
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+                <div style="font-family:var(--font-heading);font-size:21px">{{ miniCalendarTitle }}</div>
+                <div style="display:flex;gap:4px">
+                  <button type="button" class="btn-icon btn-ghost" onClick="{{ previousCalendarPeriod }}" title="Previous"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
+                  <button type="button" class="btn-icon btn-ghost" onClick="{{ nextCalendarPeriod }}" title="Next"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
+                </div>
+              </div>
+              <div class="mini-cal-grid" style="margin-bottom:7px">
+                <sc-for list="{{ miniWeekdays }}" as="w" hint-placeholder-count="7"><div style="font-size:11px;font-weight:800;opacity:.55">{{ w }}</div></sc-for>
+              </div>
+              <div class="mini-cal-grid">
+                <sc-for list="{{ miniCalendarDays }}" as="d" hint-placeholder-count="35">
+                  <button type="button" class="{{ d.className }}" onClick="{{ d.onClick }}">{{ d.day }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div class="deadline-side-section">
+              <div class="deadline-side-title">At a glance</div>
+              <div class="deadline-stat-grid">
+                <sc-for list="{{ deadlineStats }}" as="stat" hint-placeholder-count="4">
+                  <div class="deadline-stat">
+                    <div class="deadline-stat-value">{{ stat.value }}</div>
+                    <div class="deadline-stat-label">{{ stat.label }}</div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+            <div class="deadline-side-section">
+              <div class="deadline-side-title">Categories</div>
+              <sc-for list="{{ deadlineCategoryFilters }}" as="cat" hint-placeholder-count="5">
+                <button type="button" class="deadline-filter" onClick="{{ cat.onToggle }}">
+                  <span class="deadline-dot" style="{{ cat.dotStyle }}"></span>
+                  <span style="flex:1">{{ cat.label }}</span>
+                  <span style="font-size:12px;opacity:.55">{{ cat.count }}</span>
+                </button>
+              </sc-for>
+            </div>
+          </aside>
+
+          <section class="deadline-main">
+            <div class="deadline-cal-head">
+              <div>
+                <h1 style="font-family:var(--font-heading);font-size:30px;margin:0 0 3px">{{ calendarMainTitle }}</h1>
+                <p style="margin:0;opacity:.62;font-size:13.5px">{{ deadlinesScopeText }}</p>
+              </div>
+              <div class="deadline-toolbar">
+                <button type="button" class="btn btn-secondary" onClick="{{ goCalendarToday }}">Today</button>
+                <div class="deadline-mode">
+                  <button type="button" class="{{ calendarMonthClass }}" onClick="{{ setCalendarMonth }}">Month</button>
+                  <button type="button" class="{{ calendarWeekClass }}" onClick="{{ setCalendarWeek }}">Week</button>
+                  <button type="button" class="{{ calendarDayClass }}" onClick="{{ setCalendarDay }}">Day</button>
+                </div>
+                <button type="button" class="btn btn-primary" onClick="{{ openAddDeadline }}">+ Add deadline</button>
+              </div>
+            </div>
+            <sc-if value="{{ deadlinesLoading }}" hint-placeholder-val="{{ false }}"><div class="deadline-status">Loading deadlines...</div></sc-if>
+            <sc-if value="{{ deadlinesError }}" hint-placeholder-val="{{ false }}"><div class="deadline-status error">{{ deadlinesError }}</div></sc-if>
+            <sc-if value="{{ showDeadlineEmptyCard }}" hint-placeholder-val="{{ false }}">
+              <div class="deadline-empty">
+                <div class="deadline-empty-title">{{ deadlinesEmptyTitle }}</div>
+                <div style="font-size:14px;opacity:.65;margin-bottom:var(--space-4)">{{ deadlinesEmptyText }}</div>
+                <button type="button" class="btn btn-primary" onClick="{{ openAddDeadline }}">Add deadline</button>
+              </div>
+            </sc-if>
+            <sc-if value="{{ showDeadlineSyncError }}" hint-placeholder-val="{{ false }}"><p class="deadline-status error">{{ deadlineSyncError }}</p></sc-if>
+            <sc-if value="{{ showCalendarWeekOrDay }}" hint-placeholder-val="{{ true }}">
+              <div class="deadline-week-days" style="{{ deadlineCalendarColumnsStyle }}">
+                <div></div>
+                <sc-for list="{{ calendarDayHeaders }}" as="d" hint-placeholder-count="7"><div class="{{ d.className }}">{{ d.label }} <span style="font-size:28px">{{ d.day }}</span></div></sc-for>
+              </div>
+              <div class="deadline-week-scroll">
+                <sc-if value="{{ showEmptyWeekNote }}" hint-placeholder-val="{{ false }}">
+                  <div class="deadline-week-empty-note">Nothing scheduled this week.</div>
+                </sc-if>
+                <sc-if value="{{ allDayColumns.length }}" hint-placeholder-val="{{ false }}">
+                <div class="deadline-all-day-grid" style="{{ deadlineCalendarColumnsStyle }}">
+                  <div class="deadline-all-day-label">All day</div>
+                  <sc-for list="{{ allDayColumns }}" as="col" hint-placeholder-count="7">
+                    <div class="deadline-all-day-cell">
+                      <sc-for list="{{ col.events }}" as="e" hint-placeholder-count="2"><button type="button" class="deadline-chip" style="{{ e.style }}" onMouseEnter="{{ e.onOpen }}" onFocus="{{ e.onOpen }}" onClick="{{ e.onOpen }}" aria-label="{{ e.ariaLabel }}">{{ e.title }}</button></sc-for>
+                    </div>
+                  </sc-for>
+                </div>
+                </sc-if>
+                <div class="deadline-time-grid" style="{{ deadlineTimeGridStyle }}">
+                  <div class="deadline-time-axis">
+                    <sc-for list="{{ calendarTimeRows }}" as="r" hint-placeholder-count="10">
+                      <div class="deadline-time-cell" style="{{ r.style }}">{{ r.label }}</div>
+                    </sc-for>
+                  </div>
+                  <div class="deadline-day-column-grid" style="{{ deadlineDayColumnsStyle }}">
+                    <sc-for list="{{ calendarDayColumns }}" as="day" hint-placeholder-count="7">
+                      <div class="deadline-day-column">
+                        <sc-if value="{{ day.showNow }}" hint-placeholder-val="{{ false }}"><div class="deadline-now-line" style="{{ day.nowStyle }}"></div></sc-if>
+                        <sc-for list="{{ day.events }}" as="e" hint-placeholder-count="1">
+                          <button type="button" class="{{ e.className }}" style="{{ e.style }}" onMouseEnter="{{ e.onOpen }}" onFocus="{{ e.onOpen }}" onClick="{{ e.onOpen }}" aria-label="{{ e.ariaLabel }}"><div class="deadline-event-title">{{ e.title }}</div><div class="deadline-event-meta">{{ e.meta }}</div></button>
+                        </sc-for>
+                      </div>
+                    </sc-for>
+                  </div>
+                </div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ showCalendarMonth }}" hint-placeholder-val="{{ false }}">
+              <div class="deadline-month-weekdays">
+                <sc-for list="{{ fullWeekdays }}" as="w" hint-placeholder-count="7"><div class="deadline-month-weekday">{{ w }}</div></sc-for>
+              </div>
+              <div class="deadline-month-grid">
+                <sc-for list="{{ monthCalendarCells }}" as="d" hint-placeholder-count="35">
+                  <div class="{{ d.className }}">
+                    <div class="deadline-month-date" style="{{ d.labelStyle }}">{{ d.day }} <span style="font-size:11px;opacity:.5">{{ d.countLabel }}</span></div>
+                    <sc-for list="{{ d.events }}" as="e" hint-placeholder-count="2"><button type="button" class="deadline-chip" style="{{ e.style }}" onMouseEnter="{{ e.onOpen }}" onFocus="{{ e.onOpen }}" onClick="{{ e.onOpen }}" aria-label="{{ e.ariaLabel }}">{{ e.title }}</button></sc-for>
+                  </div>
+                </sc-for>
+              </div>
+            </sc-if>
+            <sc-if value="{{ deadlinePopoverOpen }}" hint-placeholder-val="{{ false }}">
+              <div class="deadline-popover" style="{{ deadlinePopoverStyle }}">
+                <div class="deadline-popover-head">
+                  <div>
+                    <div class="deadline-popover-meta">{{ deadlinePopoverCourse }}</div>
+                    <h2 class="deadline-popover-title">{{ deadlinePopoverTitle }}</h2>
+                  </div>
+                  <button type="button" class="btn-icon btn-ghost" onClick="{{ closeDeadlinePopover }}" title="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+                </div>
+                <div class="deadline-popover-row">
+                  <span class="deadline-popover-dot" style="{{ deadlinePopoverDotStyle }}"></span>
+                  <div>{{ deadlinePopoverCategory }}</div>
+                </div>
+                <div class="deadline-popover-row">
+                  <strong style="min-width:56px">Date</strong>
+                  <div>{{ deadlinePopoverDate }}</div>
+                </div>
+                <div class="deadline-popover-row">
+                  <strong style="min-width:56px">Time</strong>
+                  <div>{{ deadlinePopoverTime }}</div>
+                </div>
+                <div class="deadline-popover-actions">
+                  <button type="button" class="btn btn-secondary" onClick="{{ closeDeadlinePopover }}">Close</button>
+                  <button type="button" class="btn btn-primary" onClick="{{ editDeadlineFromPopover }}">Edit</button>
+                </div>
+              </div>
+            </sc-if>
+          </section>
         </div>
       </div>
     </sc-if>
@@ -833,25 +1320,62 @@
                 <div style="{{ m.wrapStyle }}">
                   <div style="{{ m.bubbleStyle }}">
                     <sc-for list="{{ m.blocks }}" as="blk" hint-placeholder-count="2">
+                      <sc-if value="{{ blk.isHeading }}" hint-placeholder-val="{{ false }}">
+                        <div style="{{ blk.style }}">
+                          <sc-for list="{{ blk.spans }}" as="sp" hint-placeholder-count="1">
+                            <sc-if value="{{ sp.isCode }}" hint-placeholder-val="{{ false }}"><code style="{{ sp.style }}">{{ sp.text }}</code></sc-if>
+                            <sc-if value="{{ sp.isCite }}" hint-placeholder-val="{{ false }}"><span style="{{ sp.style }}">{{ sp.text }}</span></sc-if>
+                            <sc-if value="{{ sp.bold }}" hint-placeholder-val="{{ false }}"><strong>{{ sp.text }}</strong></sc-if>
+                            <sc-if value="{{ sp.italic }}" hint-placeholder-val="{{ false }}"><em>{{ sp.text }}</em></sc-if>
+                            <sc-if value="{{ sp.isPlain }}" hint-placeholder-val="{{ true }}">{{ sp.text }}</sc-if>
+                          </sc-for>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ blk.isRule }}" hint-placeholder-val="{{ false }}">
+                        <div style="height:1px;background:var(--color-neutral-200);margin:10px 0"></div>
+                      </sc-if>
                       <sc-if value="{{ blk.isP }}" hint-placeholder-val="{{ true }}">
                         <p style="margin:0 0 8px">
                           <sc-for list="{{ blk.spans }}" as="sp" hint-placeholder-count="1">
+                            <sc-if value="{{ sp.isCode }}" hint-placeholder-val="{{ false }}"><code style="{{ sp.style }}">{{ sp.text }}</code></sc-if>
+                            <sc-if value="{{ sp.isCite }}" hint-placeholder-val="{{ false }}"><span style="{{ sp.style }}">{{ sp.text }}</span></sc-if>
                             <sc-if value="{{ sp.bold }}" hint-placeholder-val="{{ false }}"><strong>{{ sp.text }}</strong></sc-if>
-                            <sc-if value="{{ !sp.bold }}" hint-placeholder-val="{{ true }}">{{ sp.text }}</sc-if>
+                            <sc-if value="{{ sp.italic }}" hint-placeholder-val="{{ false }}"><em>{{ sp.text }}</em></sc-if>
+                            <sc-if value="{{ sp.isPlain }}" hint-placeholder-val="{{ true }}">{{ sp.text }}</sc-if>
                           </sc-for>
                         </p>
                       </sc-if>
                       <sc-if value="{{ blk.isList }}" hint-placeholder-val="{{ false }}">
-                        <ul style="margin:0 0 8px;padding-left:18px">
+                        <sc-if value="{{ blk.isOrdered }}" hint-placeholder-val="{{ false }}">
+                          <ol style="margin:0 0 10px;padding-left:20px">
+                            <sc-for list="{{ blk.items }}" as="item" hint-placeholder-count="2">
+                              <li style="margin-bottom:4px">
+                                <sc-for list="{{ item.spans }}" as="sp" hint-placeholder-count="1">
+                                  <sc-if value="{{ sp.isCode }}" hint-placeholder-val="{{ false }}"><code style="{{ sp.style }}">{{ sp.text }}</code></sc-if>
+                                  <sc-if value="{{ sp.isCite }}" hint-placeholder-val="{{ false }}"><span style="{{ sp.style }}">{{ sp.text }}</span></sc-if>
+                                  <sc-if value="{{ sp.bold }}" hint-placeholder-val="{{ false }}"><strong>{{ sp.text }}</strong></sc-if>
+                                  <sc-if value="{{ sp.italic }}" hint-placeholder-val="{{ false }}"><em>{{ sp.text }}</em></sc-if>
+                                  <sc-if value="{{ sp.isPlain }}" hint-placeholder-val="{{ true }}">{{ sp.text }}</sc-if>
+                                </sc-for>
+                              </li>
+                            </sc-for>
+                          </ol>
+                        </sc-if>
+                        <sc-if value="{{ !blk.isOrdered }}" hint-placeholder-val="{{ true }}">
+                        <ul style="margin:0 0 10px;padding-left:18px">
                           <sc-for list="{{ blk.items }}" as="item" hint-placeholder-count="2">
-                            <li style="margin-bottom:2px">
+                            <li style="margin-bottom:4px">
                               <sc-for list="{{ item.spans }}" as="sp" hint-placeholder-count="1">
+                                <sc-if value="{{ sp.isCode }}" hint-placeholder-val="{{ false }}"><code style="{{ sp.style }}">{{ sp.text }}</code></sc-if>
+                                <sc-if value="{{ sp.isCite }}" hint-placeholder-val="{{ false }}"><span style="{{ sp.style }}">{{ sp.text }}</span></sc-if>
                                 <sc-if value="{{ sp.bold }}" hint-placeholder-val="{{ false }}"><strong>{{ sp.text }}</strong></sc-if>
-                                <sc-if value="{{ !sp.bold }}" hint-placeholder-val="{{ true }}">{{ sp.text }}</sc-if>
+                                <sc-if value="{{ sp.italic }}" hint-placeholder-val="{{ false }}"><em>{{ sp.text }}</em></sc-if>
+                                <sc-if value="{{ sp.isPlain }}" hint-placeholder-val="{{ true }}">{{ sp.text }}</sc-if>
                               </sc-for>
                             </li>
                           </sc-for>
                         </ul>
+                        </sc-if>
                       </sc-if>
                       <sc-if value="{{ blk.isTable }}" hint-placeholder-val="{{ false }}">
                         <div style="margin:2px 0 10px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-lg);overflow:hidden">
@@ -871,6 +1395,18 @@
                       </sc-if>
                     </sc-for>
                   </div>
+                  <sc-if value="{{ m.hasPendingDeadline }}" hint-placeholder-val="{{ false }}">
+                    <div style="margin-top:8px;border:1px solid var(--color-neutral-300);background:#fff;border-radius:var(--radius-lg);padding:12px 14px;min-width:280px;max-width:420px">
+                      <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:8px">Deadline draft</div>
+                      <div style="font-family:var(--font-heading);font-size:18px;margin-bottom:4px">{{ m.pendingTitle }}</div>
+                      <div style="font-size:12.5px;opacity:.68;line-height:1.5">{{ m.pendingMeta }}</div>
+                      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                        <button type="button" class="btn btn-primary" onClick="{{ m.onConfirmPending }}">Add deadline</button>
+                        <button type="button" class="btn btn-secondary" onClick="{{ m.onEditPending }}">Edit details</button>
+                        <button type="button" class="btn btn-secondary" onClick="{{ m.onCancelPending }}">Cancel</button>
+                      </div>
+                    </div>
+                  </sc-if>
                   <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
                     <div style="font-size:11px;opacity:.5;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
                       <sc-if value="{{ m.hasSources }}" hint-placeholder-val="{{ false }}">
@@ -935,7 +1471,7 @@
 
         <div style="margin-bottom:var(--space-4)">
           <div style="font-size:13px;margin-bottom:4px">Syllabus <sc-if value="{{ !addClassIdLocked }}" hint-placeholder-val="{{ true }}">(optional — add it now or later)</sc-if></div>
-          <input type="file" accept=".pdf,.txt,.md" onChange="{{ onAddClassFileChange }}" style="font-size:13px"/>
+          <input type="file" accept=".pdf,.pptx,.docx,.txt,.md" onChange="{{ onAddClassFileChange }}" style="font-size:13px"/>
         </div>
 
         <sc-if value="{{ addClassError }}" hint-placeholder-val="{{ false }}">
@@ -995,13 +1531,23 @@
   </sc-if>
 
   <sc-if value="{{ deadlineModalOpen }}" hint-placeholder-val="{{ false }}">
-    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
-      <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
-        <div class="card-title" style="margin:0 0 var(--space-4)">{{ deadlineModalTitle }}</div>
-
-        <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+    <div class="deadline-modal-backdrop">
+      <div class="deadline-modal">
+        <div class="deadline-modal-head">
           <div>
-            <div style="font-size:13px;margin-bottom:4px">Course</div>
+            <div class="card-title" style="margin:0">{{ deadlineModalTitle }}</div>
+            <div style="font-size:13px;opacity:.62;margin-top:3px">{{ deadlineModalSubtitle }}</div>
+          </div>
+          <button type="button" class="deadline-modal-close" onClick="{{ closeDeadlineModal }}" title="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+
+        <div class="deadline-modal-body">
+          <div>
+            <div class="deadline-field-label">Title</div>
+            <input class="input" value="{{ deadlineTitle }}" onChange="{{ onDeadlineTitleChange }}" placeholder="Project draft, lab report, midterm..." style="width:100%"/>
+          </div>
+          <div>
+            <div class="deadline-field-label">Course</div>
             <select class="input" value="{{ deadlineCourseId }}" onChange="{{ onDeadlineCourseChange }}" style="width:100%">
               <option value="">General (all courses)</option>
               <sc-for list="{{ deadlineCourseOptions }}" as="c" hint-placeholder-count="2">
@@ -1009,41 +1555,46 @@
               </sc-for>
             </select>
           </div>
-          <div style="display:flex;gap:12px">
-            <div style="flex:1">
-              <div style="font-size:13px;margin-bottom:4px">Date</div>
+          <div class="deadline-field-grid">
+            <div>
+              <div class="deadline-field-label">Date</div>
               <input class="input" type="date" value="{{ deadlineDate }}" onChange="{{ onDeadlineDateChange }}" style="width:100%"/>
             </div>
-            <div style="flex:1">
-              <div style="font-size:13px;margin-bottom:4px">Time (optional)</div>
-              <input class="input" type="time" value="{{ deadlineTime }}" onChange="{{ onDeadlineTimeChange }}" style="width:100%"/>
+            <div>
+              <div class="deadline-field-label">Type</div>
+              <select class="input" value="{{ deadlineType }}" onChange="{{ onDeadlineTypeChange }}" style="width:100%">
+                <sc-for list="{{ deadlineTypeOptions }}" as="opt" hint-placeholder-count="5">
+                  <option value="{{ opt.value }}">{{ opt.label }}</option>
+                </sc-for>
+              </select>
             </div>
           </div>
-          <div>
-            <div style="font-size:13px;margin-bottom:4px">Title</div>
-            <input class="input" value="{{ deadlineTitle }}" onChange="{{ onDeadlineTitleChange }}" style="width:100%"/>
+          <div class="deadline-field-grid">
+            <div>
+              <div class="deadline-field-label">Start time</div>
+              <input class="input" type="time" value="{{ deadlineTime }}" onChange="{{ onDeadlineTimeChange }}" style="width:100%"/>
+            </div>
+            <div>
+              <div class="deadline-field-label">End time</div>
+              <input class="input" type="time" value="{{ deadlineEndTime }}" onChange="{{ onDeadlineEndTimeChange }}" style="width:100%"/>
+            </div>
           </div>
-          <div>
-            <div style="font-size:13px;margin-bottom:4px">Type</div>
-            <select class="input" value="{{ deadlineType }}" onChange="{{ onDeadlineTypeChange }}" style="width:100%">
-              <option value="exam">Exam</option>
-              <option value="assignment">Assignment</option>
-              <option value="reading">Reading</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
+          <label class="deadline-complete-label">
+            <input type="checkbox" checked="{{ deadlineCompleted }}" onChange="{{ onDeadlineCompletedChange }}" style="width:17px;height:17px;accent-color:var(--color-accent)"/>
+            Mark complete
+          </label>
+
+          <sc-if value="{{ deadlineModalError }}" hint-placeholder-val="{{ false }}">
+            <p class="deadline-status error" style="margin:0">{{ deadlineModalError }}</p>
+          </sc-if>
+
+          <sc-if value="{{ deadlineModalLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.7;padding:8px 0">Saving...</div>
+          </sc-if>
         </div>
 
-        <sc-if value="{{ deadlineModalError }}" hint-placeholder-val="{{ false }}">
-          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deadlineModalError }}</p>
-        </sc-if>
-
-        <sc-if value="{{ deadlineModalLoading }}" hint-placeholder-val="{{ false }}">
-          <div style="font-size:13px;opacity:.7;padding:8px 0">Saving…</div>
-        </sc-if>
-
         <sc-if value="{{ !deadlineModalLoading }}" hint-placeholder-val="{{ true }}">
-          <div style="display:flex;gap:8px">
+          <div class="deadline-modal-actions">
             <button type="button" class="btn btn-secondary" onClick="{{ closeDeadlineModal }}">Cancel</button>
             <button type="button" class="btn btn-primary" onClick="{{ submitDeadlineModal }}">{{ deadlineSubmitLabel }}</button>
           </div>
@@ -1073,6 +1624,52 @@
     </div>
   </sc-if>
 
+  <sc-if value="{{ settingsOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:60">
+      <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:92vw">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-4)">
+          <div>
+            <div class="card-title" style="margin:0">Settings</div>
+            <p class="card-body" style="margin:2px 0 0">Profile and notification preferences.</p>
+          </div>
+          <button type="button" aria-label="Close settings" onClick="{{ closeSettings }}" style="width:32px;height:32px;border:1px solid var(--color-neutral-300);border-radius:999px;background:#fff;cursor:pointer">x</button>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:var(--space-4);margin-bottom:var(--space-5)">
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">Display name</div>
+            <input class="input" value="{{ settingsName }}" onChange="{{ onSettingsNameChange }}" style="width:100%"/>
+          </div>
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">Username</div>
+            <input class="input" value="{{ settingsUsername }}" onChange="{{ onSettingsUsernameChange }}" style="width:100%"/>
+          </div>
+          <label style="display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:12px 14px;border:1px solid var(--color-neutral-200);border-radius:var(--radius-lg);cursor:pointer">
+            <span>
+              <span style="display:block;font-weight:700;font-size:14px">Notifications</span>
+              <span style="display:block;font-size:12.5px;opacity:.65">Allow OnTrack to show browser reminders.</span>
+            </span>
+            <input type="checkbox" checked="{{ settingsNotifications }}" onChange="{{ onSettingsNotificationsChange }}" style="width:18px;height:18px;accent-color:var(--color-accent)"/>
+          </label>
+        </div>
+
+        <sc-if value="{{ settingsError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ settingsError }}</p>
+        </sc-if>
+
+        <sc-if value="{{ settingsSaving }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Saving…</div>
+        </sc-if>
+        <sc-if value="{{ !settingsSaving }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px;justify-content:flex-end">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeSettings }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ saveSettings }}">Save</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
   </div>
 </div>
 {% endverbatim %}
@@ -1094,25 +1691,99 @@ function getCookie(name) {
   return cookieValue;
 }
 
+function readJsonResponse(response) {
+  const contentType = response.headers.get('content-type') || '';
+  return response.text().then(text => {
+    if (contentType.indexOf('application/json') !== -1) {
+      return { ok: response.ok, status: response.status, data: text ? JSON.parse(text) : {} };
+    }
+    const message = response.ok
+      ? 'Server returned a non-JSON response.'
+      : 'Server returned an HTML error page. If this happened after updating deadlines, run database migrations and try again.';
+    return { ok: false, status: response.status, data: { detail: message } };
+  });
+}
+
 function slugify(name) {
   return name.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 64);
 }
 
+function isoDateLocal(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function addDays(date, days) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function startOfWeek(date) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+
+function minutesFromTime(value) {
+  if (!value) return null;
+  const bits = String(value).slice(0, 5).split(':').map(Number);
+  if (bits.length !== 2 || isNaN(bits[0]) || isNaN(bits[1])) return null;
+  return bits[0] * 60 + bits[1];
+}
+
+function normalizeDeadlineType(type) {
+  const raw = String(type || 'other').toLowerCase().replace(/[-\s]+/g, '_');
+  const map = { assignment: 'hw', homework: 'hw', exam: 'test_quiz', test: 'test_quiz', quiz: 'test_quiz', reading: 'class' };
+  const normalized = map[raw] || raw;
+  return ['hw', 'project', 'test_quiz', 'class', 'other'].indexOf(normalized) >= 0 ? normalized : 'other';
+}
+
+function cleanStudyText(text) {
+  const el = document.createElement('textarea');
+  el.innerHTML = String(text || '');
+  return el.value
+    .replace(/<\s*cite\b[^>]*>/gi, '')
+    .replace(/<\s*\/\s*cite\s*>/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Lightweight markdown -> block model for chat bubbles. The template engine
 // only supports text interpolation (no raw HTML injection), so instead of
-// producing an HTML string, this produces plain data (paragraphs/lists/tables
-// of {text, bold} spans) that ontrack.html renders with nested sc-for/sc-if.
+// producing an HTML string, this produces plain data that ontrack.html renders
+// with nested sc-for/sc-if.
+function normalizeAssistantMarkdown(text) {
+  return (text || '')
+    .replace(/\\([\\`*_{}\[\]()#+\-.!<>])/g, '$1')
+    .replace(/<cite\b[^>]*>/gi, '')
+    .replace(/<\/cite>/gi, '');
+}
+
 function parseInlineSpans(line) {
   const spans = [];
-  const re = /\*\*(.+?)\*\*/g;
+  const codeStyle = 'font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.92em;background:color-mix(in srgb, var(--color-text) 8%, transparent);border-radius:4px;padding:1px 4px';
+  const citeStyle = 'font-size:.95em;color:var(--color-accent-800,var(--color-accent-700))';
+  const re = /`([^`]+)`|\*\*(.+?)\*\*|\*(\S(?:.*?\S)?)\*|\[(\d+(?:[-,]\d+)*)\]/g;
   let last = 0, m;
+  const addPlain = (text) => {
+    if (text) spans.push({ text: text, bold: false, italic: false, isCode: false, isCite: false, isPlain: true });
+  };
   while ((m = re.exec(line))) {
-    if (m.index > last) spans.push({ text: line.slice(last, m.index), bold: false });
-    spans.push({ text: m[1], bold: true });
+    if (m.index > last) addPlain(line.slice(last, m.index));
+    if (m[1]) {
+      spans.push({ text: m[1], bold: false, italic: false, isCode: true, isCite: false, isPlain: false, style: codeStyle });
+    } else if (m[2]) {
+      spans.push({ text: m[2], bold: true, italic: false, isCode: false, isCite: false, isPlain: false });
+    } else if (m[3]) {
+      spans.push({ text: m[3], bold: false, italic: true, isCode: false, isCite: false, isPlain: false });
+    } else if (m[4]) {
+      spans.push({ text: '[' + m[4] + ']', bold: false, italic: false, isCode: false, isCite: true, isPlain: false, style: citeStyle });
+    }
     last = re.lastIndex;
   }
-  if (last < line.length) spans.push({ text: line.slice(last), bold: false });
-  if (spans.length === 0) spans.push({ text: '', bold: false });
+  if (last < line.length) addPlain(line.slice(last));
+  if (spans.length === 0) addPlain('');
   return spans;
 }
 
@@ -1132,12 +1803,31 @@ function tableRowGridStyle(colCount) {
 }
 
 function parseMarkdownBlocks(text) {
-  const lines = (text || '').replace(/\r\n/g, '\n').split('\n');
+  const lines = normalizeAssistantMarkdown(text).replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
     if (!line.trim()) { i++; continue; }
+
+    if (/^\s*-{3,}\s*$/.test(line)) {
+      blocks.push({ isP: false, isList: false, isTable: false, isHeading: false, isRule: true });
+      i++;
+      continue;
+    }
+
+    const headingMatch = line.match(/^\s{0,3}(#{2,4})\s+(.+?)\s*#*\s*$/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      const size = level === 2 ? '16px' : level === 3 ? '14.5px' : '13.5px';
+      blocks.push({
+        isP: false, isList: false, isTable: false, isHeading: true, isRule: false,
+        spans: parseInlineSpans(headingMatch[2]),
+        style: 'font-family:var(--font-heading);font-size:' + size + ';font-weight:700;line-height:1.25;margin:10px 0 6px'
+      });
+      i++;
+      continue;
+    }
 
     if (line.trim().startsWith('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) {
       const header = splitTableRow(line);
@@ -1149,7 +1839,7 @@ function parseMarkdownBlocks(text) {
       }
       const gridStyle = tableRowGridStyle(header.length);
       blocks.push({
-        isP: false, isList: false, isTable: true,
+        isP: false, isList: false, isTable: true, isHeading: false, isRule: false,
         header: header, rows: rows,
         headerRowStyle: gridStyle + 'background:color-mix(in srgb, var(--color-text) 5%, transparent)',
         dataRowStyle: gridStyle + 'border-top:1px solid var(--color-neutral-200)'
@@ -1157,25 +1847,31 @@ function parseMarkdownBlocks(text) {
       continue;
     }
 
-    if (/^\s*[-*]\s+/.test(line)) {
+    if (/^\s*[-*]\s+/.test(line) || /^\s*\d+\.\s+/.test(line)) {
+      const ordered = /^\s*\d+\.\s+/.test(line);
+      const itemRe = ordered ? /^\s*\d+\.\s+/ : /^\s*[-*]\s+/;
       const items = [];
-      while (i < lines.length && /^\s*[-*]\s+/.test(lines[i])) {
-        items.push({ spans: parseInlineSpans(lines[i].replace(/^\s*[-*]\s+/, '')) });
+      while (i < lines.length && itemRe.test(lines[i])) {
+        items.push({ spans: parseInlineSpans(lines[i].replace(itemRe, '')) });
         i++;
       }
-      blocks.push({ isP: false, isList: true, isTable: false, items: items });
+      blocks.push({ isP: false, isList: true, isOrdered: ordered, isTable: false, isHeading: false, isRule: false, items: items });
       continue;
     }
 
     const paraLines = [];
     while (
-      i < lines.length && lines[i].trim() && !/^\s*[-*]\s+/.test(lines[i]) &&
+      i < lines.length && lines[i].trim() &&
+      !/^\s*-{3,}\s*$/.test(lines[i]) &&
+      !/^\s{0,3}#{2,4}\s+/.test(lines[i]) &&
+      !/^\s*[-*]\s+/.test(lines[i]) &&
+      !/^\s*\d+\.\s+/.test(lines[i]) &&
       !(lines[i].trim().startsWith('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1]))
     ) {
       paraLines.push(lines[i]);
       i++;
     }
-    blocks.push({ isP: true, isList: false, isTable: false, spans: parseInlineSpans(paraLines.join(' ')) });
+    blocks.push({ isP: true, isList: false, isTable: false, isHeading: false, isRule: false, spans: parseInlineSpans(paraLines.join(' ')) });
   }
   return blocks;
 }
@@ -1183,12 +1879,21 @@ function parseMarkdownBlocks(text) {
 class Component extends DCLogic {
   state = {
     currentUserEmail: window.CURRENT_USER_EMAIL,
+    currentUserName: window.CURRENT_USER_NAME || window.CURRENT_USER_EMAIL,
+    currentUsername: window.CURRENT_USERNAME || '',
+    notificationsEnabled: false,
+    settingsOpen: false, settingsName: '', settingsUsername: '', settingsNotifications: false,
+    settingsLoading: false, settingsSaving: false, settingsError: null,
     tab: 'dashboard', course: 'all',
     courseMeta: null, courseDrafts: [], dashboardDeadlines: [], dashboardStreak: 0, dashboardLoading: false, dashboardError: null,
     dashboardSyncingKeys: {}, dashboardSyncError: null,
     dashboardRecentAttempts: [], dashboardRecentLoading: false, dashboardRecentError: null,
     quizStep: 0, quizQuestion: null, quizMcAnswer: null,
-    quizCorrectCount: 0, quizLoading: false, quizError: null, quizErrorSource: null,
+    quizOpenAnswer: '', quizStarted: false, quizSetupCount: '5', quizSetupType: 'multiple_choice', quizSetupTopic: 'all', quizSeenQuestions: [],
+    quizCorrectCount: 0, quizTargetCount: 5, quizLoading: false, quizError: null, quizErrorSource: null,
+    flashcards: [], flashcardIndex: 0, flashcardFlipped: false, flashcardReverse: false,
+    flashcardKnown: {}, flashcardStarred: {}, flashcardMode: 'study', flashcardHideMastered: false,
+    flashcardCategory: 'all', flashcardSaving: false, flashcardsLoading: false, flashcardsError: null,
     gradesLoading: false, gradesError: null, gradesItems: [], gradesBreakdown: null,
     gradesWhatIfTarget: '', gradesWhatIfLoading: false, gradesWhatIfError: null, gradesWhatIf: null,
     gradesSummaryLoading: false, gradesSummaryError: null, gradesSummary: null,
@@ -1207,11 +1912,15 @@ class Component extends DCLogic {
     deleteCourseId: null, deleteCourseName: '', deleteCourseOpen: false,
     deleteCourseLoading: false, deleteCourseError: null,
     deadlinesLoading: false, deadlinesError: null, allDeadlines: [], deadlineSyncingIds: {}, deadlineSyncError: null,
-    deadlineModalOpen: false, deadlineEditingId: null, deadlineCourseId: '', deadlineDate: '',
-    deadlineTime: '', deadlineTitle: '', deadlineType: 'other',
+    calendarView: 'week', calendarSelectedDate: isoDateLocal(new Date()), deadlineCategoryFilters: { hw: true, project: true, test_quiz: true, class: true, other: true },
+    deadlineModalOpen: false, deadlineEditingId: null, deadlineReplacingSyllabusKey: null, deadlineCourseId: '', deadlineDate: '',
+    deadlineTime: '', deadlineEndTime: '', deadlineTitle: '', deadlineType: 'other', deadlineCompleted: false,
     deadlineModalLoading: false, deadlineModalError: null,
+    deadlinePopoverEvent: null, deadlinePopoverStyle: 'display:none',
+    currentMinuteTick: Date.now(),
     deleteDeadlineId: null, deleteDeadlineTitle: '', deleteDeadlineOpen: false,
-    deleteDeadlineLoading: false, deleteDeadlineError: null
+    deleteDeadlineLoading: false, deleteDeadlineError: null,
+    notificationsOpen: false, notificationsLoading: false, notifications: [], notificationsUnreadCount: 0, notificationsError: null
   };
 
   _quizSeq = 0;
@@ -1229,6 +1938,7 @@ class Component extends DCLogic {
   _renameSeq = 0;
   _deleteCourseSeq = 0;
   _deadlinesSeq = 0;
+  _profileSeq = 0;
 
   navBtn(active) {
     return {
@@ -1251,8 +1961,112 @@ class Component extends DCLogic {
   }
 
   componentDidMount() {
+    this.loadProfile();
+    this.loadNotifications();
     this.loadDashboard();
     this.loadDashboardRecent(this.state.course);
+    window.addEventListener('keydown', this.handleFlashcardKeyDown);
+    window.addEventListener('keydown', this.handleDeadlineKeyDown);
+    document.addEventListener('mousedown', this.handleDeadlineDocumentMouseDown, true);
+    this._deadlineClock = window.setInterval(() => this.setState({ currentMinuteTick: Date.now() }), 60000);
+  }
+
+  loadProfile() {
+    const seq = ++this._profileSeq;
+    this.setState({ settingsLoading: true, settingsError: null });
+    fetch('/api/profile/')
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._profileSeq) return;
+        if (!ok) {
+          this.setState({ settingsLoading: false, settingsError: data.detail || 'Could not load profile settings.' });
+          return;
+        }
+        this.setState({
+          settingsLoading: false,
+          currentUserEmail: data.email || this.state.currentUserEmail,
+          currentUserName: data.display_name || this.state.currentUserName,
+          currentUsername: data.username || this.state.currentUsername,
+          notificationsEnabled: !!data.notifications_enabled,
+        });
+      })
+      .catch(e => {
+        if (seq !== this._profileSeq) return;
+        this.setState({ settingsLoading: false, settingsError: 'Network error: ' + e.message });
+      });
+  }
+
+  loadNotifications() {
+    this.setState({ notificationsLoading: true, notificationsError: null });
+    fetch('/api/notifications/')
+      .then(readJsonResponse)
+      .then(({ ok, data }) => {
+        if (!ok) { this.setState({ notificationsLoading: false, notificationsError: data.detail || 'Could not load notifications.' }); return; }
+        this.setState({
+          notificationsLoading: false,
+          notifications: data.notifications || [],
+          notificationsUnreadCount: data.unread_count || 0
+        });
+      })
+      .catch(e => this.setState({ notificationsLoading: false, notificationsError: 'Network error: ' + e.message }));
+  }
+
+  toggleNotifications() {
+    const open = !this.state.notificationsOpen;
+    this.setState({ notificationsOpen: open });
+    if (open) this.loadNotifications();
+  }
+
+  markNotificationsRead(ids) {
+    fetch('/api/notifications/read/', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify(ids ? { ids: ids } : {})
+    })
+      .then(readJsonResponse)
+      .then(({ ok, data }) => {
+        if (!ok) return;
+        this.setState({ notifications: data.notifications || [], notificationsUnreadCount: data.unread_count || 0 });
+      });
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('keydown', this.handleFlashcardKeyDown);
+    window.removeEventListener('keydown', this.handleDeadlineKeyDown);
+    document.removeEventListener('mousedown', this.handleDeadlineDocumentMouseDown, true);
+    if (this._deadlineClock) window.clearInterval(this._deadlineClock);
+  }
+
+  handleDeadlineKeyDown = (e) => {
+    if (e.key === 'Escape' && this.state.deadlinePopoverEvent) {
+      this.closeDeadlinePopover();
+    }
+  };
+
+  handleDeadlineDocumentMouseDown = (e) => {
+    if (!this.state.deadlinePopoverEvent) return;
+    const target = e.target;
+    if (target && target.closest && (target.closest('.deadline-popover') || target.closest('.deadline-event') || target.closest('.deadline-chip'))) return;
+    this.closeDeadlinePopover();
+  };
+
+  handleFlashcardKeyDown = (e) => {
+    if (this.state.tab !== 'flashcards' || this.state.flashcardsLoading || this.state.flashcardsError || !this.state.flashcards.length) return;
+    const tag = e.target && e.target.tagName ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+    if (e.key === ' ') {
+      e.preventDefault();
+      this.flipFlashcard();
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      this.nextFlashcard(this.state.course);
+    } else if (e.key === 'ArrowLeft') {
+      e.preventDefault();
+      this.previousFlashcard();
+    } else if (e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      this.toggleFlashcardStar();
+    }
   }
 
   loadDashboard() {
@@ -1297,11 +2111,13 @@ class Component extends DCLogic {
       });
   }
 
-  loadAllDeadlines() {
+  loadAllDeadlines(courseId) {
     const seq = ++this._deadlinesSeq;
+    const selectedCourse = courseId || this.state.course;
+    const qs = selectedCourse && selectedCourse !== 'all' ? ('?course_id=' + encodeURIComponent(selectedCourse)) : '';
     this.setState({ deadlinesLoading: true, deadlinesError: null });
-    fetch('/api/deadlines/')
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+    fetch('/api/deadlines/' + qs)
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._deadlinesSeq) return;
         if (!ok) { this.setState({ deadlinesLoading: false, deadlinesError: data.detail || 'Could not load deadlines.' }); return; }
@@ -1314,23 +2130,80 @@ class Component extends DCLogic {
   }
 
   openAddDeadline() {
+    const defaultCourseId = this.state.course && this.state.course !== 'all' ? this.state.course : '';
     this.setState({
-      deadlineModalOpen: true, deadlineEditingId: null, deadlineCourseId: '',
-      deadlineDate: '', deadlineTime: '', deadlineTitle: '', deadlineType: 'other',
+      deadlineModalOpen: true, deadlineEditingId: null, deadlineReplacingSyllabusKey: null, deadlineCourseId: defaultCourseId,
+      deadlineDate: this.state.calendarSelectedDate || '', deadlineTime: '', deadlineEndTime: '', deadlineTitle: '', deadlineType: 'other', deadlineCompleted: false,
       deadlineModalLoading: false, deadlineModalError: null
     });
   }
 
   openEditDeadline(event) {
+    this.closeDeadlinePopover();
     this.setState({
-      deadlineModalOpen: true, deadlineEditingId: event.id, deadlineCourseId: event.course_id || '',
-      deadlineDate: event.date, deadlineTime: event.time || '', deadlineTitle: event.title, deadlineType: event.type,
+      deadlineModalOpen: true,
+      deadlineEditingId: event.id || null,
+      deadlineReplacingSyllabusKey: event.source === 'syllabus' ? event.key : null,
+      deadlineCourseId: event.course_id || '',
+      deadlineDate: event.date, deadlineTime: event.time || '', deadlineEndTime: event.end_time || '',
+      deadlineTitle: event.title, deadlineType: normalizeDeadlineType(event.type), deadlineCompleted: !!event.completed,
       deadlineModalLoading: false, deadlineModalError: null
     });
   }
 
+  openDeadlinePopover(event, browserEvent) {
+    if (browserEvent && browserEvent.stopPropagation) browserEvent.stopPropagation();
+    const rect = browserEvent && browserEvent.currentTarget && browserEvent.currentTarget.getBoundingClientRect
+      ? browserEvent.currentTarget.getBoundingClientRect()
+      : { left: 24, right: 24, top: 100, bottom: 140 };
+    const width = 320;
+    const margin = 12;
+    const estimatedHeight = 290;
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1024;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 768;
+    let left = rect.right + margin;
+    if (left + width + margin > viewportWidth) left = rect.left - width - margin;
+    left = Math.max(margin, Math.min(left, viewportWidth - width - margin));
+    let top = rect.top;
+    if (top + estimatedHeight + margin > viewportHeight) top = viewportHeight - estimatedHeight - margin;
+    top = Math.max(margin, top);
+    this.setState({
+      deadlinePopoverEvent: event,
+      deadlinePopoverStyle: 'left:' + Math.round(left) + 'px;top:' + Math.round(top) + 'px'
+    });
+  }
+
+  closeDeadlinePopover() {
+    this.setState({ deadlinePopoverEvent: null, deadlinePopoverStyle: 'display:none' });
+  }
+
+  editDeadlineFromPopover() {
+    const event = this.state.deadlinePopoverEvent;
+    if (event) this.openEditDeadline(event);
+  }
+
+  prefillDeadlineModal(deadline) {
+    this.setState({
+      deadlineModalOpen: true,
+      deadlineEditingId: null,
+      deadlineReplacingSyllabusKey: null,
+      deadlineCourseId: deadline.course_id || (this.state.course !== 'all' ? this.state.course : ''),
+      deadlineDate: deadline.date || this.state.calendarSelectedDate || '',
+      deadlineTime: deadline.time || '',
+      deadlineEndTime: deadline.end_time || '',
+      deadlineTitle: deadline.title || '',
+      deadlineType: normalizeDeadlineType(deadline.type),
+      deadlineCompleted: !!deadline.completed,
+      deadlineModalLoading: false,
+      deadlineModalError: null
+    });
+  }
+
   closeDeadlineModal() {
-    this.setState({ deadlineModalOpen: false, deadlineEditingId: null, deadlineModalError: null, deadlineSyncError: null });
+    this.setState({
+      deadlineModalOpen: false, deadlineEditingId: null, deadlineReplacingSyllabusKey: null,
+      deadlineModalError: null, deadlineSyncError: null
+    });
   }
 
   submitDeadlineModal() {
@@ -1344,24 +2217,67 @@ class Component extends DCLogic {
       course_id: s.deadlineCourseId || null,
       date: s.deadlineDate,
       time: s.deadlineTime || null,
+      end_time: s.deadlineEndTime || null,
       title: s.deadlineTitle,
-      type: s.deadlineType
+      type: s.deadlineType,
+      completed: !!s.deadlineCompleted
     };
+    if (s.deadlineReplacingSyllabusKey) body.replaces_syllabus_key = s.deadlineReplacingSyllabusKey;
     const url = s.deadlineEditingId ? `/api/deadlines/${s.deadlineEditingId}/` : '/api/deadlines/';
     const method = s.deadlineEditingId ? 'PATCH' : 'POST';
     fetch(url, {
       method: method, headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
       body: JSON.stringify(body)
     })
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (!ok) { this.setState({ deadlineModalLoading: false, deadlineModalError: data.detail || 'Could not save this deadline.' }); return; }
         this.closeDeadlineModal();
         this.loadAllDeadlines();
+        this.loadNotifications();
       })
       .catch(e => {
         this.setState({ deadlineModalLoading: false, deadlineModalError: 'Network error: ' + e.message });
       });
+  }
+
+  confirmPendingDeadline(deadline, index) {
+    if (!deadline || !deadline.title || !deadline.date) return;
+    const body = {
+      course_id: deadline.course_id || (this.state.course !== 'all' ? this.state.course : null),
+      date: deadline.date,
+      time: deadline.time || null,
+      end_time: deadline.end_time || null,
+      title: deadline.title,
+      type: normalizeDeadlineType(deadline.type),
+      completed: !!deadline.completed
+    };
+    fetch('/api/deadlines/', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify(body)
+    })
+      .then(readJsonResponse)
+      .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.detail || 'Could not add that deadline.');
+        const messages = this.state.chatMessages.map((m, i) =>
+          i === index ? Object.assign({}, m, { pendingDeadline: null }) : m
+        );
+        this.setState({
+          chatMessages: messages.concat([{ from: 'assistant', text: 'Added the deadline to your calendar.', sources: [], grounded: true }])
+        });
+        this.loadAllDeadlines();
+        this.loadNotifications();
+      })
+      .catch(e => {
+        this.setState({ chatError: e.message });
+      });
+  }
+
+  dismissPendingDeadline(index) {
+    const messages = this.state.chatMessages.map((m, i) =>
+      i === index ? Object.assign({}, m, { pendingDeadline: null }) : m
+    );
+    this.setState({ chatMessages: messages });
   }
 
   openDeleteDeadline(event) {
@@ -1376,10 +2292,12 @@ class Component extends DCLogic {
     const id = this.state.deleteDeadlineId;
     this.setState({ deleteDeadlineLoading: true, deleteDeadlineError: null });
     fetch(`/api/deadlines/${id}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
-      .then(r => {
-        if (!r.ok) return r.json().then(data => { throw new Error(data.detail || 'Could not delete this deadline.'); });
+      .then(readJsonResponse)
+      .then(({ ok, data }) => {
+        if (!ok) throw new Error(data.detail || 'Could not delete this deadline.');
         this.closeDeleteDeadline();
         this.loadAllDeadlines();
+        this.loadNotifications();
       })
       .catch(e => {
         this.setState({ deleteDeadlineLoading: false, deleteDeadlineError: e.message });
@@ -1393,13 +2311,14 @@ class Component extends DCLogic {
       deadlineSyncError: null
     });
     fetch(`/api/deadlines/${event.id}/calendar-sync/`, { method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         const syncing = Object.assign({}, this.state.deadlineSyncingIds);
         delete syncing[event.id];
         if (!ok) { this.setState({ deadlineSyncingIds: syncing, deadlineSyncError: data.detail || 'Could not add to Google Calendar.' }); return; }
         this.setState({ deadlineSyncingIds: syncing });
         this.loadAllDeadlines();
+        this.loadNotifications();
       })
       .catch(e => {
         const syncing = Object.assign({}, this.state.deadlineSyncingIds);
@@ -1501,7 +2420,8 @@ class Component extends DCLogic {
             chatSending: false,
             chatSessionId: sessionId,
             chatMessages: this.state.chatMessages.concat([{
-              from: 'assistant', text: data.answer, sources: data.sources || [], grounded: !!data.grounded
+              from: 'assistant', text: data.answer, sources: data.sources || [], grounded: !!data.grounded,
+              pendingDeadline: data.pending_deadline || null
             }])
           });
           this.loadChatSessions(courseId);
@@ -1534,19 +2454,229 @@ class Component extends DCLogic {
 
   loadQuestion(courseId) {
     const seq = ++this._quizSeq;
-    this.setState({ quizLoading: true, quizError: null, quizErrorSource: null, quizQuestion: null, quizMcAnswer: null });
+    const selectedType = this.state.quizSetupType === 'mixed'
+      ? ['multiple_choice', 'true_false', 'open_ended'][Math.floor(Math.random() * 3)]
+      : this.state.quizSetupType;
+    this.setState({ quizLoading: true, quizError: null, quizErrorSource: null, quizQuestion: null, quizMcAnswer: null, quizOpenAnswer: '' });
+    const selectedTopic = this.state.quizSetupTopic && this.state.quizSetupTopic !== 'all' ? this.state.quizSetupTopic : null;
     fetch(`/api/courses/${courseId}/quiz/generate/`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') }, body: '{}'
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ mode: 'assessment', question_type: selectedType, topic: selectedTopic, previous_questions: this.state.quizSeenQuestions || [] })
     })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
       .then(({ ok, data }) => {
         if (seq !== this._quizSeq) return;
         if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not generate a question.', quizErrorSource: 'generate' }); return; }
-        this.setState({ quizLoading: false, quizQuestion: data });
+        const seen = (this.state.quizSeenQuestions || []).concat([data.question]).slice(-15);
+        this.setState({ quizLoading: false, quizQuestion: data, quizSeenQuestions: seen });
       })
       .catch(e => {
         if (seq !== this._quizSeq) return;
         this.setState({ quizLoading: false, quizError: 'Network error: ' + e.message, quizErrorSource: 'generate' });
+      });
+  }
+
+  startQuiz(courseId) {
+    const rawCount = parseInt(this.state.quizSetupCount, 10);
+    const count = Math.max(1, Math.min(15, isNaN(rawCount) ? 5 : rawCount));
+    this.setState({
+      quizStarted: true,
+      quizTargetCount: count,
+      quizSetupCount: String(count),
+      quizStep: 0,
+      quizCorrectCount: 0,
+      quizQuestion: null,
+      quizMcAnswer: null,
+      quizOpenAnswer: '',
+      quizSeenQuestions: [],
+      quizError: null,
+      quizErrorSource: null
+    }, () => this.loadQuestion(courseId));
+  }
+
+  loadFlashcards(courseId) {
+    const seq = ++this._quizSeq;
+    this.setState({
+      flashcardsLoading: true, flashcardsError: null,
+      flashcards: [], flashcardIndex: 0, flashcardFlipped: false,
+      flashcardKnown: {}, flashcardStarred: {},
+    });
+    fetch(`/api/courses/${courseId}/flashcards/generate/`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ count: 8 })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (seq !== this._quizSeq) return;
+        if (!ok) { this.setState({ flashcardsLoading: false, flashcardsError: data.detail || 'Could not generate flashcards.' }); return; }
+        const flashcards = (data.flashcards || []).map(card => Object.assign({
+          status: 'not_started',
+          starred: false,
+        }, card, {
+          term: cleanStudyText(card.term),
+          definition: cleanStudyText(card.definition),
+        }));
+        this.setState({
+          flashcardsLoading: false, flashcards: flashcards, flashcardIndex: 0,
+          flashcardFlipped: false, flashcardCategory: 'all'
+        });
+      })
+      .catch(e => {
+        if (seq !== this._quizSeq) return;
+        this.setState({ flashcardsLoading: false, flashcardsError: 'Network error: ' + e.message });
+      });
+  }
+
+  flipFlashcard() {
+    this.setState({ flashcardFlipped: !this.state.flashcardFlipped });
+  }
+
+  flashcardKey(card) {
+    if (!card) return '';
+    return card.key || ((card.term || '') + '|' + (card.definition || ''));
+  }
+
+  flashcardSourceName(card) {
+    if (!card) return 'All Categories';
+    const source = card.source || 'course';
+    if (source === 'web') return 'Web';
+    if (source === 'course+web') return 'Course + web';
+    return 'Course material';
+  }
+
+  flashcardVisibleIndices() {
+    const category = this.state.flashcardCategory || 'all';
+    const indices = [];
+    this.state.flashcards.forEach((card, index) => {
+      if (this.state.flashcardHideMastered && card.status === 'mastered') return;
+      if (category !== 'all' && this.flashcardSourceName(card) !== category) return;
+      indices.push(index);
+    });
+    return indices;
+  }
+
+  currentFlashcardIndex() {
+    const visible = this.flashcardVisibleIndices();
+    if (!visible.length) return this.state.flashcardIndex;
+    return visible.indexOf(this.state.flashcardIndex) >= 0 ? this.state.flashcardIndex : visible[0];
+  }
+
+  selectFlashcard(index) {
+    if (index < 0 || index >= this.state.flashcards.length) return;
+    this.setState({ flashcardIndex: index, flashcardFlipped: false });
+  }
+
+  previousFlashcard() {
+    const visible = this.flashcardVisibleIndices();
+    if (!visible.length) return;
+    const pos = visible.indexOf(this.state.flashcardIndex);
+    const previousIndex = visible[pos > 0 ? pos - 1 : visible.length - 1];
+    this.setState({ flashcardIndex: previousIndex, flashcardFlipped: false });
+  }
+
+  nextFlashcard(courseId) {
+    const visible = this.flashcardVisibleIndices();
+    if (!visible.length) return;
+    const pos = visible.indexOf(this.state.flashcardIndex);
+    const nextIndex = visible[pos >= 0 && pos + 1 < visible.length ? pos + 1 : 0];
+    this.setState({ flashcardIndex: nextIndex, flashcardFlipped: false });
+  }
+
+  saveFlashcardProgress(index, patch, advance) {
+    const card = this.state.flashcards[index];
+    if (!card) return;
+    const nextCard = Object.assign({}, card, patch);
+    nextCard.term = cleanStudyText(nextCard.term);
+    nextCard.definition = cleanStudyText(nextCard.definition);
+    const flashcards = this.state.flashcards.slice();
+    flashcards[index] = nextCard;
+    this.setState({ flashcards: flashcards, flashcardSaving: true, flashcardsError: null });
+    fetch(`/api/courses/${this.state.course}/flashcards/progress/`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({
+        key: nextCard.key,
+        term: nextCard.term,
+        definition: nextCard.definition,
+        status: nextCard.status || 'not_started',
+        starred: !!nextCard.starred,
+      })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          this.setState({ flashcardSaving: false, flashcardsError: data.detail || 'Could not save flashcard progress.' });
+          return;
+        }
+        const latest = this.state.flashcards.slice();
+        if (latest[index]) {
+          latest[index] = Object.assign({}, latest[index], {
+            key: data.key || latest[index].key,
+            status: data.status || latest[index].status || 'not_started',
+            starred: !!data.starred,
+          });
+        }
+        this.setState({ flashcards: latest, flashcardSaving: false }, () => {
+          if (advance) this.nextFlashcard(this.state.course);
+        });
+      })
+      .catch(e => {
+        this.setState({ flashcardSaving: false, flashcardsError: 'Network error: ' + e.message });
+      });
+  }
+
+  markFlashcardKnown(known) {
+    const index = this.currentFlashcardIndex();
+    const card = this.state.flashcards[index];
+    if (!card) return;
+    this.saveFlashcardProgress(index, { status: known ? 'mastered' : 'in_progress' }, true);
+  }
+
+  toggleFlashcardStar() {
+    const index = this.currentFlashcardIndex();
+    const card = this.state.flashcards[index];
+    if (!card) return;
+    this.saveFlashcardProgress(index, { starred: !card.starred }, false);
+  }
+
+  shuffleFlashcards() {
+    const cards = this.state.flashcards.slice();
+    for (let i = cards.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = cards[i];
+      cards[i] = cards[j];
+      cards[j] = tmp;
+    }
+    this.setState({ flashcards: cards, flashcardIndex: 0, flashcardFlipped: false });
+  }
+
+  toggleFlashcardDirection() {
+    this.setState({ flashcardReverse: !this.state.flashcardReverse, flashcardFlipped: false });
+  }
+
+  toggleFlashcardHideMastered() {
+    this.setState({ flashcardHideMastered: !this.state.flashcardHideMastered, flashcardIndex: 0, flashcardFlipped: false });
+  }
+
+  resetFlashcardProgress() {
+    const keys = this.state.flashcards.map(card => this.flashcardKey(card)).filter(Boolean);
+    this.setState({ flashcardSaving: true, flashcardsError: null });
+    fetch(`/api/courses/${this.state.course}/flashcards/progress/reset/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+      body: JSON.stringify({ keys: keys })
+    })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          this.setState({ flashcardSaving: false, flashcardsError: data.detail || 'Could not reset flashcard progress.' });
+          return;
+        }
+        const flashcards = this.state.flashcards.map(card => Object.assign({}, card, { status: 'not_started' }));
+        this.setState({ flashcards: flashcards, flashcardSaving: false, flashcardIndex: 0, flashcardFlipped: false });
+      })
+      .catch(e => {
+        this.setState({ flashcardSaving: false, flashcardsError: 'Network error: ' + e.message });
       });
   }
 
@@ -1607,7 +2737,10 @@ class Component extends DCLogic {
 
   checkAnswer(courseId) {
     const s = this.state;
-    if (!s.quizQuestion || s.quizMcAnswer == null) return;
+    const userAnswer = (s.quizQuestion && s.quizQuestion.question_type === 'open_ended')
+      ? (s.quizOpenAnswer || '').trim()
+      : s.quizMcAnswer;
+    if (!s.quizQuestion || !userAnswer) return;
     const seq = this._quizSeq;
     const q = s.quizQuestion;
     this.setState({ quizLoading: true, quizError: null, quizErrorSource: null });
@@ -1615,7 +2748,7 @@ class Component extends DCLogic {
       method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
       body: JSON.stringify({
         lecture_id: q.lecture_id, chunk_id: q.chunk_id, topic: q.topic,
-        question: q.question, correct_answer: q.correct_answer, user_answer: s.quizMcAnswer
+        question: q.question, correct_answer: q.correct_answer, user_answer: userAnswer
       })
     })
       .then(r => r.json().then(data => ({ ok: r.ok, data })))
@@ -1623,11 +2756,11 @@ class Component extends DCLogic {
         if (seq !== this._quizSeq) return;
         if (!ok) { this.setState({ quizLoading: false, quizError: data.detail || 'Could not record your answer.', quizErrorSource: 'record' }); return; }
         const nextCount = this.state.quizCorrectCount + (data.correct ? 1 : 0);
-        if (this.state.quizStep + 1 < 3) {
+        if (this.state.quizStep + 1 < this.state.quizTargetCount) {
           this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: this.state.quizStep + 1 });
           this.loadQuestion(courseId);
         } else {
-          this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: 3 });
+          this.setState({ quizLoading: false, quizCorrectCount: nextCount, quizStep: this.state.quizTargetCount });
         }
       })
       .catch(e => {
@@ -1943,6 +3076,91 @@ class Component extends DCLogic {
       .catch(() => { location.href = '/'; });
   }
 
+  openSettings() {
+    this.setState({
+      settingsOpen: true,
+      settingsName: this.state.currentUserName || '',
+      settingsUsername: this.state.currentUsername || '',
+      settingsNotifications: !!this.state.notificationsEnabled,
+      settingsError: null,
+    });
+  }
+
+  closeSettings() {
+    this.setState({ settingsOpen: false, settingsSaving: false, settingsError: null });
+  }
+
+  onSettingsNameChange(e) {
+    this.setState({ settingsName: e.target.value });
+  }
+
+  onSettingsUsernameChange(e) {
+    this.setState({ settingsUsername: e.target.value });
+  }
+
+  onSettingsNotificationsChange(e) {
+    this.setState({ settingsNotifications: !!e.target.checked });
+  }
+
+  saveSettings() {
+    const name = (this.state.settingsName || '').trim();
+    const username = (this.state.settingsUsername || '').trim();
+    const notifications = !!this.state.settingsNotifications;
+    if (!name) {
+      this.setState({ settingsError: 'Name is required.' });
+      return;
+    }
+    if (!username) {
+      this.setState({ settingsError: 'Username is required.' });
+      return;
+    }
+
+    const requestBrowserPermission = () => {
+      if (!notifications || !('Notification' in window) || Notification.permission === 'granted') {
+        return Promise.resolve(true);
+      }
+      if (Notification.permission === 'denied') {
+        return Promise.resolve(false);
+      }
+      return Notification.requestPermission().then(permission => permission === 'granted');
+    };
+
+    this.setState({ settingsSaving: true, settingsError: null });
+    requestBrowserPermission()
+      .then(granted => {
+        if (notifications && !granted) {
+          throw new Error('Browser notification permission was not granted.');
+        }
+        return fetch('/api/profile/', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+          body: JSON.stringify({
+            display_name: name,
+            username: username,
+            notifications_enabled: notifications,
+          })
+        });
+      })
+      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(({ ok, data }) => {
+        if (!ok) {
+          this.setState({ settingsSaving: false, settingsError: data.detail || 'Could not save settings.' });
+          return;
+        }
+        this.setState({
+          settingsSaving: false,
+          settingsOpen: false,
+          currentUserEmail: data.email || this.state.currentUserEmail,
+          currentUserName: data.display_name || name,
+          currentUsername: data.username || username,
+          notificationsEnabled: !!data.notifications_enabled,
+        });
+      })
+      .catch(e => {
+        this.setState({ settingsSaving: false, settingsError: e.message || 'Could not save settings.' });
+      });
+  }
+
   openAddClass() {
     this.setState({
       addClassOpen: true, addClassName: '', addClassId: '', addClassIdLocked: false,
@@ -2122,10 +3340,27 @@ class Component extends DCLogic {
     const realCourseIds = Object.keys(s.courseMeta || {}).sort();
     const fallbackCourse = realCourseIds[0] || null;
 
+    const deadlineCategoryInfo = {
+      hw: { label: 'HW', bg: 'var(--color-accent-100)', text: 'var(--color-accent-800)', dot: 'var(--color-accent)' },
+      project: { label: 'Project', bg: 'var(--color-accent-2-100)', text: 'var(--color-accent-2-800)', dot: 'var(--color-accent-2)' },
+      test_quiz: { label: 'Test/Quiz', bg: '#efe9ff', text: '#5f43b2', dot: '#8f75e8' },
+      class: { label: 'Class', bg: '#e6f3f5', text: '#24606a', dot: '#75bdc8' },
+      other: { label: 'Other', bg: 'var(--color-neutral-200)', text: 'var(--color-text)', dot: 'var(--color-neutral-500)' },
+      overdue: { label: 'Overdue', bg: '#fee2e2', text: '#991b1b', dot: '#dc2626' }
+    };
+    const deadlineInfo = (type) => deadlineCategoryInfo[normalizeDeadlineType(type)] || deadlineCategoryInfo.other;
+    const isDeadlineOverdue = (d) => {
+      const type = normalizeDeadlineType(d.type);
+      return ['hw', 'project', 'test_quiz'].indexOf(type) >= 0 && !d.completed && d.date < isoDateLocal(new Date());
+    };
+    const deadlineEventStyle = (d, extra) => {
+      const info = isDeadlineOverdue(d) ? deadlineCategoryInfo.overdue : deadlineInfo(d.type);
+      const past = d.date < isoDateLocal(new Date()) && !isDeadlineOverdue(d);
+      return 'background:' + info.bg + ';color:' + info.text + ';border-left-color:' + info.dot + ';opacity:' + (past ? '.52' : '1') + ';' + (extra || '');
+    };
     const typeStyle = (type) => {
-      if (type === 'exam') return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-accent-700);color:#fff;flex:none';
-      if (type === 'assignment') return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-accent-2-200);color:var(--color-accent-2-800);flex:none';
-      return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:var(--color-neutral-200);color:var(--color-text);flex:none';
+      const info = deadlineInfo(type);
+      return 'font-size:11px;font-weight:600;padding:3px 9px;border-radius:99px;background:' + info.bg + ';color:' + info.text + ';flex:none';
     };
     const statusColor = { developing: 'var(--color-accent-700)', weak: 'var(--color-accent-700)', strong: 'var(--color-accent-2-700)', unassessed: 'var(--color-neutral-400)' };
     const statusLabel = { developing: 'Developing', weak: 'Weak', strong: 'Strong', unassessed: 'Not yet quizzed' };
@@ -2289,9 +3524,21 @@ class Component extends DCLogic {
     }));
 
     const goToQuiz = (courseId) => {
+      this.setState({
+        tab: 'quiz', course: courseId, quizStarted: false, quizStep: 0, quizCorrectCount: 0,
+        quizSetupTopic: 'all', quizSeenQuestions: [],
+        quizMcAnswer: null, quizOpenAnswer: '', quizQuestion: null, quizError: null
+      });
+    };
+
+    const goToFlashcards = (courseId) => {
       const hasNotes = !!(courseMetaFor(courseId) && courseMetaFor(courseId).notes_count > 0);
-      this.setState({ tab: 'quiz', course: courseId, quizStep: 0, quizCorrectCount: 0, quizMcAnswer: null, quizQuestion: null, quizError: null });
-      if (hasNotes || !courseMetaLoaded) this.loadQuestion(courseId);
+      this.setState({
+        tab: 'flashcards', course: courseId, flashcards: [], flashcardIndex: 0,
+        flashcardFlipped: false, flashcardKnown: {}, flashcardStarred: {}, flashcardMode: 'study',
+        flashcardHideMastered: false, flashcardCategory: 'all', flashcardSaving: false, flashcardsError: null
+      });
+      if (hasNotes || !courseMetaLoaded) this.loadFlashcards(courseId);
     };
 
     const setTab = (t) => {
@@ -2305,7 +3552,7 @@ class Component extends DCLogic {
       }
       if (t === 'deadlines') {
         this.setState({ tab: t, deadlineSyncError: null });
-        this.loadAllDeadlines();
+        this.loadAllDeadlines(s.course);
         return;
       }
       if (t === 'grades' && s.course === 'all') {
@@ -2319,6 +3566,8 @@ class Component extends DCLogic {
       if (!targetCourse) return;
       if (t === 'quiz') {
         goToQuiz(targetCourse);
+      } else if (t === 'flashcards') {
+        goToFlashcards(targetCourse);
       } else if (t === 'chat') {
         if (targetCourse !== s.course) {
           this.setState({ tab: t, course: targetCourse, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null });
@@ -2342,15 +3591,18 @@ class Component extends DCLogic {
       this._quizSeq++;
       this._chatSeq++;
       if (courseId === 'all') {
-        const bounce = s.tab === 'quiz' || s.tab === 'progress' || s.tab === 'chat';
+        const bounce = s.tab === 'quiz' || s.tab === 'flashcards' || s.tab === 'progress' || s.tab === 'chat';
         this.setState(bounce ? { course: 'all', tab: 'dashboard' } : { course: 'all' });
         if (bounce) this.loadDashboard();
         this.loadDashboardRecent('all');
         if (s.tab === 'grades') { this.setState({ course: 'all' }); this.loadGradesSummary(); }
+        if (s.tab === 'deadlines') { this.setState({ course: 'all', deadlinePopoverEvent: null }); this.loadAllDeadlines('all'); }
         return;
       }
       if (s.tab === 'quiz') {
         goToQuiz(courseId);
+      } else if (s.tab === 'flashcards') {
+        goToFlashcards(courseId);
       } else if (s.tab === 'dashboard') {
         this.setState({ course: courseId });
         this.loadDashboardRecent(courseId);
@@ -2365,6 +3617,9 @@ class Component extends DCLogic {
       } else if (s.tab === 'grades') {
         this.setState({ course: courseId, gradesWhatIfTarget: '' });
         this.loadGrades(courseId);
+      } else if (s.tab === 'deadlines') {
+        this.setState({ course: courseId, deadlineSyncError: null, deadlinePopoverEvent: null });
+        this.loadAllDeadlines(courseId);
       } else {
         this.setState({ course: courseId });
       }
@@ -2381,7 +3636,7 @@ class Component extends DCLogic {
       const key = d.course_id + '|' + d.date + '|' + d.title;
       return {
         month: dp.monthAbbrUpper, day: dp.day, title: d.title,
-        typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : 'Other',
+        typeLabel: deadlineInfo(d.type).label,
         tagStyle: typeStyle(d.type),
         synced: !!d.synced,
         addButtonLabel: s.dashboardSyncingKeys[key] ? 'Adding…' : 'Add to Calendar',
@@ -2389,43 +3644,243 @@ class Component extends DCLogic {
       };
     });
     const courseLabel = (id) => id ? id.toUpperCase() : 'General';
-    const allDeadlinesRows = s.allDeadlines.map(d => {
-      const dp = dateParts(d.date);
-      const isCustom = d.source === 'custom';
-      return {
-        month: dp.monthAbbrUpper, day: dp.day, title: d.title,
+    const formatDateShort = (isoDate) => {
+      if (!isoDate) return 'No date';
+      const d = new Date(isoDate + 'T00:00:00');
+      return MONTH_LABELS[d.getMonth()] + ' ' + d.getDate();
+    };
+    const formatDeadlineWhen = (d) => {
+      const dateLabel = formatDateShort(d.date);
+      if (!d.time) return dateLabel + ' · All day';
+      return dateLabel + ' · ' + d.time.slice(0, 5) + (d.end_time ? '-' + d.end_time.slice(0, 5) : '');
+    };
+    const formatTimeDisplay = (value) => {
+      const minutes = minutesFromTime(value);
+      if (minutes === null) return '';
+      const hour24 = Math.floor(minutes / 60);
+      const minute = minutes % 60;
+      const suffix = hour24 >= 12 ? 'PM' : 'AM';
+      const hour = hour24 % 12 || 12;
+      return hour + ':' + String(minute).padStart(2, '0') + ' ' + suffix;
+    };
+    const selectedDate = new Date((s.calendarSelectedDate || isoDateLocal(new Date())) + 'T00:00:00');
+    const todayIso = isoDateLocal(new Date());
+    const visibleDeadlineData = s.allDeadlines
+      .filter(d => s.course === 'all' || d.course_id === s.course)
+      .map(d => Object.assign({}, d, { type: normalizeDeadlineType(d.type), completed: !!d.completed }))
+      .filter(d => s.deadlineCategoryFilters[normalizeDeadlineType(d.type)]);
+    const enrichedDeadlines = visibleDeadlineData.map(d => {
+      const start = minutesFromTime(d.time);
+      const end = minutesFromTime(d.end_time) || (start !== null ? start + 60 : null);
+      const timeRange = d.time ? (formatTimeDisplay(d.time) + (d.end_time ? ' - ' + formatTimeDisplay(d.end_time) : '')) : 'All day';
+      const meta = courseLabel(d.course_id) + ' · ' + timeRange;
+      return Object.assign({}, d, {
+        calendarUid: (d.id || d.key || (d.date + '|' + d.title + '|' + (d.time || 'all-day'))),
+        startMinutes: start,
+        endMinutes: end,
+        meta: meta,
+        timeRange: timeRange,
+        dateLabel: formatDateShort(d.date),
+        categoryLabel: deadlineInfo(d.type).label,
         courseLabel: courseLabel(d.course_id),
-        timeLabel: d.time ? d.time.slice(0, 5) : '',
-        typeLabel: d.type === 'exam' ? 'Exam' : d.type === 'assignment' ? 'Assignment' : d.type === 'reading' ? 'Reading' : 'Other',
-        tagStyle: typeStyle(d.type),
-        synced: !!d.synced,
-        isCustom: isCustom,
-        syncButtonLabel: (isCustom ? s.deadlineSyncingIds[d.id] : s.dashboardSyncingKeys[d.course_id + '|' + d.date + '|' + d.title]) ? 'Adding…' : 'Add to Calendar',
-        // Syllabus rows have no id (d.id is null), so they go through the
-        // Dashboard tab's addToCalendar rather than syncDeadlineToCalendar.
-        // addToCalendar only updates dashboardDeadlines itself, so without
-        // this explicit reload the row here would never flip to "Added ✓" —
-        // reloading from the server (which recomputes `synced`) is what
-        // actually reflects the new state. Errors are routed into
-        // deadlineSyncError (not dashboardSyncError) so they're visible in
-        // this tab instead of only the Dashboard's markup.
-        onSync: isCustom
-          ? (() => this.syncDeadlineToCalendar(d))
-          : (() => this.addToCalendar(d.course_id, d.date, d.title, d.type, d.course_id + '|' + d.date + '|' + d.title, 'deadlineSyncError').then(() => this.loadAllDeadlines())),
         onEdit: () => this.openEditDeadline(d),
-        onDelete: () => this.openDeleteDeadline(d)
+        style: deadlineEventStyle(d, '')
+      });
+    });
+    const deadlinesEmpty = !s.deadlinesLoading && !s.deadlinesError && enrichedDeadlines.length === 0;
+    const deadlinesScopeText = s.course === 'all'
+      ? 'Everything upcoming, across every course.'
+      : 'Upcoming deadlines for ' + courseDisplayName + '.';
+    const deadlinesEmptyText = s.course === 'all'
+      ? 'Add one manually or import a syllabus deadline when you have course dates.'
+      : 'Add one manually or switch courses to review the full schedule.';
+    const deadlinesEmptyTitle = s.course === 'all' ? 'No upcoming deadlines' : 'No deadlines here';
+    const visibleDeadlinesCount = enrichedDeadlines.length + (enrichedDeadlines.length === 1 ? ' event' : ' events');
+    const overdueCount = enrichedDeadlines.filter(isDeadlineOverdue).length;
+    const todayCount = enrichedDeadlines.filter(d => d.date === todayIso).length;
+    const weekEndIso = isoDateLocal(addDays(new Date(), 7));
+    const weekCount = enrichedDeadlines.filter(d => d.date >= todayIso && d.date <= weekEndIso).length;
+    const deadlineStats = [
+      { value: String(enrichedDeadlines.length), label: 'Visible' },
+      { value: String(todayCount), label: 'Today' },
+      { value: String(weekCount), label: 'Next 7 days' },
+      { value: String(overdueCount), label: 'Overdue' }
+    ];
+    const miniWeekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+    const monthAnchor = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+    const miniStart = addDays(monthAnchor, -monthAnchor.getDay());
+    const miniCalendarDays = Array.from({ length: 42 }, (_, i) => {
+      const d = addDays(miniStart, i);
+      const iso = isoDateLocal(d);
+      let cls = 'mini-cal-day';
+      if (d.getMonth() !== selectedDate.getMonth()) cls += ' muted';
+      if (iso === todayIso) cls += ' today';
+      if (iso === s.calendarSelectedDate) cls += ' selected';
+      return { day: String(d.getDate()), className: cls, onClick: () => this.setState({ calendarSelectedDate: iso, deadlinePopoverEvent: null }) };
+    });
+    const miniCalendarTitle = MONTH_LABELS[selectedDate.getMonth()] + ' ' + selectedDate.getFullYear();
+    let calendarMainTitle = s.calendarView === 'day'
+      ? MONTH_LABELS[selectedDate.getMonth()] + ' ' + selectedDate.getDate() + ', ' + selectedDate.getFullYear()
+      : miniCalendarTitle;
+    const viewStart = s.calendarView === 'day' ? selectedDate : startOfWeek(selectedDate);
+    const viewDays = Array.from({ length: s.calendarView === 'day' ? 1 : 7 }, (_, i) => addDays(viewStart, i));
+    if (s.calendarView === 'week') {
+      const viewEnd = viewDays[viewDays.length - 1];
+      calendarMainTitle = viewStart.getMonth() === viewEnd.getMonth()
+        ? MONTH_LABELS[viewStart.getMonth()] + ' ' + viewStart.getFullYear()
+        : MONTH_LABELS[viewStart.getMonth()] + ' ' + viewStart.getDate() + ' - ' + MONTH_LABELS[viewEnd.getMonth()] + ' ' + viewEnd.getDate();
+    }
+    const calendarDayHeaders = viewDays.map(d => {
+      const iso = isoDateLocal(d);
+      return {
+        label: miniWeekdays[d.getDay()],
+        day: String(d.getDate()),
+        className: 'deadline-day-pill' + (iso === todayIso ? ' today' : '') + (iso === s.calendarSelectedDate ? ' selected' : '')
       };
     });
-    const deadlinesEmpty = !s.deadlinesLoading && !s.deadlinesError && allDeadlinesRows.length === 0;
+    const CALENDAR_START_HOUR = 8;
+    const CALENDAR_END_HOUR = 19;
+    const HOUR_HEIGHT = 88;
+    const calendarStartMinutes = CALENDAR_START_HOUR * 60;
+    const calendarEndMinutes = CALENDAR_END_HOUR * 60;
+    const calendarHeight = (CALENDAR_END_HOUR - CALENDAR_START_HOUR) * HOUR_HEIGHT;
+    const timeRows = Array.from({ length: CALENDAR_END_HOUR - CALENDAR_START_HOUR }, (_, i) => calendarStartMinutes + i * 60);
+    const deadlineCalendarColumnsStyle = 'grid-template-columns:70px repeat(' + viewDays.length + ',minmax(' + (s.calendarView === 'day' ? '220px' : '120px') + ',1fr))';
+    const deadlineTimeGridStyle = 'height:' + calendarHeight + 'px';
+    const deadlineDayColumnsStyle = 'grid-template-columns:repeat(' + viewDays.length + ',minmax(' + (s.calendarView === 'day' ? '220px' : '120px') + ',1fr));height:' + calendarHeight + 'px';
+    const calendarTimeRows = timeRows.map(min => ({
+      label: ((min / 60) > 12 ? (min / 60 - 12) : (min / 60)) + ((min / 60) >= 12 ? ' pm' : ' am'),
+      style: 'top:' + ((min - calendarStartMinutes) / 60 * HOUR_HEIGHT) + 'px'
+    }));
+    const assignCollisionColumns = (events) => {
+      const sorted = events.slice().sort((a, b) => (a.startMinutes - b.startMinutes) || ((a.endMinutes || a.startMinutes + 60) - (b.endMinutes || b.startMinutes + 60)));
+      const groups = [];
+      sorted.forEach(event => {
+        const end = event.endMinutes || event.startMinutes + 60;
+        let group = groups.find(g => event.startMinutes < g.end && end > g.start);
+        if (!group) {
+          group = { start: event.startMinutes, end: end, events: [] };
+          groups.push(group);
+        }
+        group.start = Math.min(group.start, event.startMinutes);
+        group.end = Math.max(group.end, end);
+        group.events.push(event);
+      });
+      return groups.reduce((acc, group) => {
+        const columns = [];
+        group.events.forEach(event => {
+          const eventEnd = event.endMinutes || event.startMinutes + 60;
+          let col = 0;
+          while (columns[col] && event.startMinutes < columns[col]) col++;
+          columns[col] = eventEnd;
+          acc.push(Object.assign({}, event, { collisionIndex: col, collisionTotal: 0 }));
+        });
+        const total = Math.max(1, columns.length);
+        return acc.map(event => group.events.some(g => g.calendarUid === event.calendarUid)
+          ? Object.assign({}, event, { collisionTotal: total })
+          : event);
+      }, []);
+    };
+    const eventAriaLabel = (e) => e.title + ', ' + e.courseLabel + ', ' + e.dateLabel + ', ' + e.timeRange;
+    const timedEventStyle = (e) => {
+      const clampedStart = Math.max(calendarStartMinutes, e.startMinutes);
+      const clampedEnd = Math.min(calendarEndMinutes, e.endMinutes || e.startMinutes + 60);
+      const top = ((clampedStart - calendarStartMinutes) / 60) * HOUR_HEIGHT;
+      const height = Math.max(34, ((clampedEnd - clampedStart) / 60) * HOUR_HEIGHT - 6);
+      const total = e.collisionTotal || 1;
+      const gap = 6;
+      const widthPct = 100 / total;
+      const leftPct = (e.collisionIndex || 0) * widthPct;
+      const width = 'calc(' + widthPct + '% - ' + (gap + gap / total) + 'px)';
+      const left = 'calc(' + leftPct + '% + ' + gap + 'px)';
+      return deadlineEventStyle(e, 'top:' + top + 'px;height:' + height + 'px;left:' + left + ';width:' + width + ';');
+    };
+    const allDayColumnsRaw = viewDays.map(day => {
+      const iso = isoDateLocal(day);
+      return enrichedDeadlines
+        .filter(e => e.date === iso && e.startMinutes === null)
+        .map(e => Object.assign({}, e, {
+          style: deadlineEventStyle(e, ''),
+          ariaLabel: eventAriaLabel(e),
+          onOpen: (ev) => this.openDeadlinePopover(e, ev)
+        }));
+    });
+    const allDayColumns = allDayColumnsRaw.some(events => events.length)
+      ? allDayColumnsRaw.map(events => ({ events: events }))
+      : [];
+    const calendarDayColumns = viewDays.map(day => {
+      const iso = isoDateLocal(day);
+      const dayEvents = assignCollisionColumns(enrichedDeadlines.filter(e => e.date === iso && e.startMinutes !== null && (e.endMinutes || e.startMinutes + 60) > calendarStartMinutes && e.startMinutes < calendarEndMinutes));
+      const now = new Date(s.currentMinuteTick);
+      const nowMinutes = now.getHours() * 60 + now.getMinutes();
+      const showNow = iso === todayIso && nowMinutes >= calendarStartMinutes && nowMinutes <= calendarEndMinutes;
+      return {
+        showNow: showNow,
+        nowStyle: 'top:' + (((nowMinutes - calendarStartMinutes) / 60) * HOUR_HEIGHT) + 'px',
+        events: dayEvents.map(e => Object.assign({}, e, {
+          className: 'deadline-event' + (s.deadlinePopoverEvent && s.deadlinePopoverEvent.calendarUid === e.calendarUid ? ' selected' : ''),
+          style: timedEventStyle(e),
+          ariaLabel: eventAriaLabel(e),
+          onOpen: (ev) => this.openDeadlinePopover(e, ev)
+        }))
+      };
+    });
+    const visibleWeekEventCount = calendarDayColumns.reduce((sum, day) => sum + day.events.length, 0) + allDayColumnsRaw.reduce((sum, events) => sum + events.length, 0);
+    const showEmptyWeekNote = !s.deadlinesLoading && !s.deadlinesError && visibleWeekEventCount === 0;
+    const monthStart = addDays(monthAnchor, -monthAnchor.getDay());
+    const monthCalendarCells = Array.from({ length: 42 }, (_, i) => {
+      const d = addDays(monthStart, i);
+      const iso = isoDateLocal(d);
+      const dayEvents = enrichedDeadlines.filter(e => e.date === iso);
+      const events = dayEvents.slice(0, 4).map(e => Object.assign({}, e, {
+        style: deadlineEventStyle(e, ''),
+        ariaLabel: eventAriaLabel(e),
+        onOpen: (ev) => this.openDeadlinePopover(e, ev)
+      }));
+      return {
+        day: String(d.getDate()),
+        className: 'deadline-month-cell' + (d.getMonth() !== selectedDate.getMonth() ? ' muted' : ''),
+        labelStyle: 'font-weight:900;color:' + (iso === todayIso ? 'var(--color-accent-700)' : 'inherit'),
+        countLabel: dayEvents.length > 4 ? '+' + (dayEvents.length - 4) : '',
+        events: events
+      };
+    });
+    const fullWeekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const categoryCounts = { hw: 0, project: 0, test_quiz: 0, class: 0, other: 0 };
+    s.allDeadlines.filter(d => s.course === 'all' || d.course_id === s.course).forEach(d => { categoryCounts[normalizeDeadlineType(d.type)]++; });
+    const deadlineCategoryFilters = ['hw', 'project', 'test_quiz', 'class', 'other'].map(type => {
+      const info = deadlineCategoryInfo[type];
+      return {
+        label: info.label,
+        count: categoryCounts[type] || 0,
+        dotStyle: 'background:' + info.dot + ';opacity:' + (s.deadlineCategoryFilters[type] ? '1' : '.25'),
+        onToggle: () => this.setState({ deadlineCategoryFilters: Object.assign({}, s.deadlineCategoryFilters, { [type]: !s.deadlineCategoryFilters[type] }), deadlinePopoverEvent: null })
+      };
+    });
 
     const deadlineCourseOptions = realCourseIds.map(id => ({ id: id, name: (courseMetaFor(id) && courseMetaFor(id).course_name) || id.toUpperCase() }));
     const onDeadlineCourseChange = (e) => this.setState({ deadlineCourseId: e.target.value });
     const onDeadlineDateChange = (e) => this.setState({ deadlineDate: e.target.value });
     const onDeadlineTimeChange = (e) => this.setState({ deadlineTime: e.target.value });
+    const onDeadlineEndTimeChange = (e) => this.setState({ deadlineEndTime: e.target.value });
     const onDeadlineTitleChange = (e) => this.setState({ deadlineTitle: e.target.value });
     const onDeadlineTypeChange = (e) => this.setState({ deadlineType: e.target.value });
-    const deadlineModalTitle = s.deadlineEditingId ? 'Edit deadline' : 'Add deadline';
-    const deadlineSubmitLabel = s.deadlineEditingId ? 'Save' : 'Add deadline';
+    const onDeadlineCompletedChange = (e) => this.setState({ deadlineCompleted: !!e.target.checked });
+    const deadlineModalTitle = (s.deadlineEditingId || s.deadlineReplacingSyllabusKey) ? 'Edit deadline' : 'Add deadline';
+    const deadlineSubmitLabel = (s.deadlineEditingId || s.deadlineReplacingSyllabusKey) ? 'Save' : 'Add deadline';
+    const deadlineModalSubtitle = (s.deadlineEditingId || s.deadlineReplacingSyllabusKey)
+      ? 'Update the date, category, course, or completion state.'
+      : 'Create a course-specific or general deadline.';
+    const deadlineTypeOptions = ['hw', 'project', 'test_quiz', 'class', 'other'].map(value => ({ value: value, label: deadlineCategoryInfo[value].label }));
+    const popoverEvent = s.deadlinePopoverEvent;
+    const popoverInfo = popoverEvent ? (deadlineInfo(popoverEvent.type) || deadlineCategoryInfo.other) : deadlineCategoryInfo.other;
+    const deadlinePopoverOpen = !!popoverEvent;
+    const deadlinePopoverTitle = popoverEvent ? popoverEvent.title : '';
+    const deadlinePopoverCourse = popoverEvent ? popoverEvent.courseLabel : '';
+    const deadlinePopoverCategory = popoverInfo.label;
+    const deadlinePopoverDotStyle = 'background:' + popoverInfo.dot;
+    const deadlinePopoverDate = popoverEvent ? popoverEvent.dateLabel : '';
+    const deadlinePopoverTime = popoverEvent ? popoverEvent.timeRange : '';
     const weakTopicsForCourse = (id) => ((courseMetaFor(id) && courseMetaFor(id).weak_topics) || []).map(t => Object.assign({}, t, { course_id: id }));
     const rawWeakTopics = s.course === 'all'
       ? realCourseIds.map(weakTopicsForCourse).reduce((a, b) => a.concat(b), []).sort((a, b) => a.score - b.score)
@@ -2532,8 +3987,76 @@ class Component extends DCLogic {
       onClick: () => this.setState({ quizMcAnswer: label }),
       style: mcOptionStyle(s.quizMcAnswer === label)
     }));
+    const quizTypeOptionStyle = (selected) => 'width:100%;text-align:left;padding:14px 15px;border-radius:var(--radius-lg);cursor:pointer;font-size:14px;font-family:var(--font-body);font-weight:800;' +
+      (selected ? 'border:2px solid var(--color-accent-700);background:var(--color-accent-100);color:var(--color-accent-800)' : 'border:1px solid var(--color-neutral-200);background:#fff;color:var(--color-text)');
+    const quizTypeOptions = [
+      { value: 'multiple_choice', label: 'Multiple choice' },
+      { value: 'open_ended', label: 'Open ended' },
+      { value: 'true_false', label: 'True/False' },
+      { value: 'mixed', label: 'All of the above' }
+    ].map(opt => ({
+      label: opt.label,
+      onClick: () => this.setState({ quizSetupType: opt.value }),
+      style: quizTypeOptionStyle(s.quizSetupType === opt.value)
+    }));
+    const quizTopicOptions = [{ value: 'all', label: 'Whole course' }].concat(
+      progressTopicsRaw.map(t => ({ value: t.topic, label: t.topic }))
+    );
     const quizTopicLabel = s.quizQuestion ? s.quizQuestion.topic : (s.quizError ? '—' : 'Loading…');
-    const showQuizQuestion = !s.quizLoading && !s.quizError && !!s.quizQuestion && s.quizStep < 3;
+    const assessmentComplete = s.quizStep >= s.quizTargetCount;
+    const showQuizQuestion = !s.quizLoading && !s.quizError && !!s.quizQuestion && !assessmentComplete;
+    const showQuizSetup = !s.quizStarted && !s.quizLoading;
+    const showQuizOpenEnded = !!(s.quizQuestion && s.quizQuestion.question_type === 'open_ended');
+    const showQuizChoices = !!(s.quizQuestion && s.quizQuestion.question_type !== 'open_ended');
+    const quizProgressLabel = assessmentComplete ? 'Complete' : 'Question ' + (s.quizStep + 1) + ' of ' + s.quizTargetCount;
+    const sourceNames = Array.from(new Set(s.flashcards.map(card => this.flashcardSourceName(card))));
+    const flashcardCategoryOptions = [{ value: 'all', label: 'All Categories' }].concat(sourceNames.map(name => ({ value: name, label: name })));
+    const visibleFlashcardIndices = this.flashcardVisibleIndices();
+    const currentFlashcardIndex = visibleFlashcardIndices.indexOf(s.flashcardIndex) >= 0
+      ? s.flashcardIndex
+      : (visibleFlashcardIndices.length ? visibleFlashcardIndices[0] : s.flashcardIndex);
+    const currentFlashcard = s.flashcards[currentFlashcardIndex] || null;
+    const visiblePosition = visibleFlashcardIndices.indexOf(currentFlashcardIndex);
+    const showFlashcard = !s.flashcardsLoading && !s.flashcardsError && s.flashcards.length > 0;
+    const flashcardAllVisibleMastered = s.flashcards.length > 0 && visibleFlashcardIndices.length === 0;
+    const masteredCount = s.flashcards.filter(card => card.status === 'mastered').length;
+    const studyingCount = s.flashcards.filter(card => card.status === 'in_progress').length;
+    const notStartedCount = Math.max(0, s.flashcards.length - masteredCount - studyingCount);
+    const starredCount = s.flashcards.filter(card => card.starred).length;
+    const flashcardIsStarred = !!(currentFlashcard && currentFlashcard.starred);
+    const flashcardProgressPct = s.flashcards.length ? Math.round(((s.flashcardIndex + 1) / s.flashcards.length) * 100) : 0;
+    const flashcardFrontIsTerm = s.flashcardReverse ? s.flashcardFlipped : !s.flashcardFlipped;
+    const flashcardVisibleText = currentFlashcard
+      ? cleanStudyText(flashcardFrontIsTerm ? currentFlashcard.term : currentFlashcard.definition)
+      : '';
+    const statusLabelFor = (status) => status === 'mastered' ? 'Mastered' : status === 'in_progress' ? 'In Progress' : 'Not Started';
+    const statusStyleFor = (status) => 'font-size:11.5px;font-weight:800;color:' +
+      (status === 'mastered' ? 'var(--color-accent-2-700)' : status === 'in_progress' ? 'var(--color-accent-700)' : 'var(--color-neutral-600)');
+    const flashcardAllRows = s.flashcards.map((card, i) => ({
+      term: cleanStudyText(card.term),
+      definition: cleanStudyText(card.definition),
+      statusLabel: statusLabelFor(card.status),
+      statusStyle: statusStyleFor(card.status),
+      starFill: card.starred ? 'currentColor' : 'none',
+      onMaster: () => this.saveFlashcardProgress(i, { status: 'mastered' }, false),
+      onProgress: () => this.saveFlashcardProgress(i, { status: 'in_progress' }, false),
+      onReset: () => this.saveFlashcardProgress(i, { status: 'not_started' }, false),
+      onToggleStar: () => this.saveFlashcardProgress(i, { starred: !card.starred }, false)
+    }));
+    const flashcardSourceLabel = currentFlashcard ? this.flashcardSourceName(currentFlashcard) : '';
+    const flashcardStats = [
+      { label: 'Total Cards', value: s.flashcards.length, iconStyle: 'background:var(--color-accent-2-200)', isTotal: true },
+      { label: 'Mastered', value: masteredCount, iconStyle: 'background:var(--color-accent-2-300)', isMastered: true },
+      { label: 'In Progress', value: studyingCount, iconStyle: 'background:var(--color-accent-200)', isProgress: true },
+      { label: 'Not Started', value: notStartedCount, iconStyle: 'background:var(--color-neutral-200)', isNotStarted: true },
+    ];
+    const visibleCount = visibleFlashcardIndices.length;
+    const visibleProgressNumber = visiblePosition >= 0 ? visiblePosition + 1 : 0;
+    const visibleProgressPct = visibleCount ? Math.round((visibleProgressNumber / visibleCount) * 100) : 0;
+    const flashcardFooterCountLabel = visibleCount ? ('Card ' + visibleProgressNumber + ' of ' + visibleCount) : 'No visible cards';
+    const flashcardVisibleProgressLabel = visibleProgressNumber + '/' + visibleCount;
+    const flashcardVisibleProgressBarStyle = 'width:' + visibleProgressPct + '%;height:100%;background:var(--color-accent);border-radius:999px';
+    const flashcardRevealHint = s.flashcardFlipped ? 'Click to show prompt' : 'Click to reveal answer';
     const retryQuiz = () => {
       if (s.quizErrorSource === 'record') {
         this.checkAnswer(s.course);
@@ -2541,8 +4064,22 @@ class Component extends DCLogic {
         this.loadQuestion(s.course);
       }
     };
+    const onQuizSetupCountChange = (e) => {
+      const value = e.target.value;
+      if (value === '') {
+        this.setState({ quizSetupCount: '' });
+        return;
+      }
+      const parsed = parseInt(value, 10);
+      if (isNaN(parsed)) return;
+      this.setState({ quizSetupCount: String(Math.max(1, Math.min(15, parsed))) });
+    };
+    const onQuizOpenAnswerChange = (e) => this.setState({ quizOpenAnswer: e.target.value });
+    const onQuizSetupTopicChange = (e) => this.setState({ quizSetupTopic: e.target.value, quizSeenQuestions: [] });
+    const retryFlashcards = () => this.loadFlashcards(s.course);
+    const onFlashcardCategoryChange = (e) => this.setState({ flashcardCategory: e.target.value, flashcardIndex: 0, flashcardFlipped: false });
 
-    const quizDots = [0, 1, 2].map(i => ({
+    const quizDots = Array.from({ length: s.quizTargetCount }).map((_, i) => ({
       style: 'height:5px;flex:1;border-radius:99px;background:' + (i <= s.quizStep ? 'var(--color-accent-700)' : 'var(--color-neutral-200)')
     }));
 
@@ -2556,11 +4093,24 @@ class Component extends DCLogic {
       : 'background:var(--color-neutral-100);padding:11px 15px;border-radius:var(--radius-lg);font-size:14px;line-height:1.45';
 
     const hasSources = (m) => m.from === 'assistant' && !!(m.grounded && m.sources && m.sources.length);
-    const chatMessages = s.chatMessages.map(m => ({
+    const formatPendingDeadlineMeta = (deadline) => {
+      if (!deadline) return '';
+      const info = deadlineCategoryInfo[normalizeDeadlineType(deadline.type)] || deadlineCategoryInfo.other;
+      const course = deadline.course_id ? deadline.course_id.toUpperCase() : 'General';
+      const time = deadline.time ? (' · ' + deadline.time + (deadline.end_time ? ('-' + deadline.end_time) : '')) : ' · All day';
+      return course + ' · ' + info.label + ' · ' + (deadline.date || 'No date') + time;
+    };
+    const chatMessages = s.chatMessages.map((m, index) => ({
       blocks: parseMarkdownBlocks(m.text), rowStyle: msgStyle(m.from), wrapStyle: wrapStyle(m.from), bubbleStyle: bubbleStyle(m.from),
       isAssistant: m.from === 'assistant',
       hasSources: hasSources(m),
       notGroundedText: !hasSources(m) && m.from === 'assistant' ? 'Not grounded in your course material' : '',
+      hasPendingDeadline: !!m.pendingDeadline,
+      pendingTitle: m.pendingDeadline ? m.pendingDeadline.title : '',
+      pendingMeta: formatPendingDeadlineMeta(m.pendingDeadline),
+      onConfirmPending: () => this.confirmPendingDeadline(m.pendingDeadline, index),
+      onEditPending: () => this.prefillDeadlineModal(m.pendingDeadline),
+      onCancelPending: () => this.dismissPendingDeadline(index),
       sourceItems: hasSources(m)
         ? m.sources.map(src => ({
             text: src,
@@ -2609,14 +4159,48 @@ class Component extends DCLogic {
       onClick: () => this.openChatSession(s.course, sess.session_id)
     }));
     const chatSessionsEmpty = !s.chatSessionsLoading && !s.chatSessionsError && s.chatSessions.length === 0;
+    const notificationItems = s.notifications.map(n => ({
+      title: n.title,
+      body: n.body,
+      meta: (n.course_id || 'General').toUpperCase() + (n.due_date ? ' · Due ' + n.due_date : ''),
+      style: 'display:block;width:100%;border:0;border-bottom:1px solid var(--color-neutral-200);background:' + (n.read ? '#fff' : 'var(--color-accent-100)') + ';text-align:left;padding:12px 16px;cursor:pointer;color:var(--color-text)',
+      onRead: () => this.markNotificationsRead([n.id])
+    }));
+
+    const displayName = s.currentUserName || s.currentUserEmail || 'there';
+    const greetingHour = new Date().getHours();
+    const greetingPrefix = greetingHour < 12 ? 'Good morning' : greetingHour < 18 ? 'Good afternoon' : 'Good evening';
 
     return {
       currentUserEmail: s.currentUserEmail,
-      userInitial: s.currentUserEmail ? s.currentUserEmail[0].toUpperCase() : '?',
+      currentUserName: displayName,
+      currentUsername: s.currentUsername,
+      userInitial: displayName ? displayName[0].toUpperCase() : '?',
+      dashboardGreeting: greetingPrefix + ', ' + displayName,
+      openSettings: () => this.openSettings(),
+      closeSettings: () => this.closeSettings(),
+      saveSettings: () => this.saveSettings(),
+      onSettingsNameChange: (e) => this.onSettingsNameChange(e),
+      onSettingsUsernameChange: (e) => this.onSettingsUsernameChange(e),
+      onSettingsNotificationsChange: (e) => this.onSettingsNotificationsChange(e),
+      settingsOpen: s.settingsOpen,
+      settingsName: s.settingsName,
+      settingsUsername: s.settingsUsername,
+      settingsNotifications: s.settingsNotifications,
+      settingsSaving: s.settingsSaving,
+      settingsError: s.settingsError,
+      notificationsOpen: s.notificationsOpen,
+      notificationsUnreadCount: s.notificationsUnreadCount,
+      notificationsLoading: s.notificationsLoading,
+      notificationsEmpty: !s.notificationsLoading && s.notifications.length === 0,
+      notificationItems: notificationItems,
+      toggleNotifications: () => this.toggleNotifications(),
+      markAllNotificationsRead: () => this.markNotificationsRead(null),
       isDashboard: s.tab === 'dashboard',
       isChat: s.tab === 'chat',
       isProgress: s.tab === 'progress',
       isQuiz: s.tab === 'quiz',
+      isFlashcards: s.tab === 'flashcards',
       isGrades: s.tab === 'grades',
       isGradesAllCourses: s.tab === 'grades' && s.course === 'all',
       isDeadlines: s.tab === 'deadlines',
@@ -2624,6 +4208,7 @@ class Component extends DCLogic {
       navBtnStyleChat: this.navBtn(s.tab === 'chat'),
       navBtnStyleProgress: this.navBtn(s.tab === 'progress'),
       navBtnStyleQuiz: this.navBtn(s.tab === 'quiz'),
+      navBtnStyleFlashcards: this.navBtn(s.tab === 'flashcards'),
       navBtnStyleGrades: this.navBtn(s.tab === 'grades'),
       navBtnStyleDeadlines: this.navBtn(s.tab === 'deadlines'),
       courseChipStyleAll: this.courseChip(s.course === 'all'),
@@ -2659,6 +4244,7 @@ class Component extends DCLogic {
       goChat: () => setTab('chat'),
       goProgress: () => setTab('progress'),
       goQuiz: () => setTab('quiz'),
+      goFlashcards: () => setTab('flashcards'),
       goGrades: () => setTab('grades'),
       goDeadlines: () => setTab('deadlines'),
       gradesLoading: s.gradesLoading, gradesError: s.gradesError,
@@ -2705,15 +4291,44 @@ class Component extends DCLogic {
       yourCoursesGridStyle: 'display:grid;grid-template-columns:' + (s.course === 'all' ? '1fr 1fr' : '1fr') + ';gap:var(--space-4);margin-bottom:var(--space-6)',
       yourCoursesCards: yourCoursesCards,
       deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
-      allDeadlinesRows: allDeadlinesRows, deadlinesEmpty: deadlinesEmpty, deadlinesLoading: s.deadlinesLoading, deadlinesError: s.deadlinesError,
+      miniCalendarTitle: miniCalendarTitle, miniWeekdays: miniWeekdays, miniCalendarDays: miniCalendarDays,
+      fullWeekdays: fullWeekdays, deadlineStats: deadlineStats,
+      calendarMainTitle: calendarMainTitle, calendarDayHeaders: calendarDayHeaders, calendarTimeRows: calendarTimeRows,
+      deadlineCalendarColumnsStyle: deadlineCalendarColumnsStyle, deadlineTimeGridStyle: deadlineTimeGridStyle,
+      deadlineDayColumnsStyle: deadlineDayColumnsStyle, calendarDayColumns: calendarDayColumns,
+      allDayColumns: allDayColumns, showEmptyWeekNote: showEmptyWeekNote,
+      monthCalendarCells: monthCalendarCells, deadlineCategoryFilters: deadlineCategoryFilters,
+      visibleDeadlinesCount: visibleDeadlinesCount,
+      showCalendarWeekOrDay: !s.deadlinesLoading && !s.deadlinesError && s.calendarView !== 'month',
+      showCalendarMonth: !deadlinesEmpty && !s.deadlinesLoading && !s.deadlinesError && s.calendarView === 'month',
+      calendarMonthClass: s.calendarView === 'month' ? 'active' : '',
+      calendarWeekClass: s.calendarView === 'week' ? 'active' : '',
+      calendarDayClass: s.calendarView === 'day' ? 'active' : '',
+      setCalendarMonth: () => this.setState({ calendarView: 'month', deadlinePopoverEvent: null }),
+      setCalendarWeek: () => this.setState({ calendarView: 'week', deadlinePopoverEvent: null }),
+      setCalendarDay: () => this.setState({ calendarView: 'day', deadlinePopoverEvent: null }),
+      goCalendarToday: () => this.setState({ calendarSelectedDate: isoDateLocal(new Date()), deadlinePopoverEvent: null }),
+      previousCalendarPeriod: () => this.setState({ calendarSelectedDate: isoDateLocal(addDays(selectedDate, s.calendarView === 'month' ? -30 : s.calendarView === 'week' ? -7 : -1)), deadlinePopoverEvent: null }),
+      nextCalendarPeriod: () => this.setState({ calendarSelectedDate: isoDateLocal(addDays(selectedDate, s.calendarView === 'month' ? 30 : s.calendarView === 'week' ? 7 : 1)), deadlinePopoverEvent: null }),
+      deadlinesEmpty: deadlinesEmpty, showDeadlineEmptyCard: deadlinesEmpty && s.calendarView === 'month',
+      deadlinesEmptyTitle: deadlinesEmptyTitle, deadlinesEmptyText: deadlinesEmptyText,
+      deadlinesScopeText: deadlinesScopeText, deadlinesLoading: s.deadlinesLoading, deadlinesError: s.deadlinesError,
       showDeadlineSyncError: !!s.deadlineSyncError, deadlineSyncError: s.deadlineSyncError,
       openAddDeadline: () => this.openAddDeadline(),
+      deadlinePopoverOpen: deadlinePopoverOpen, deadlinePopoverStyle: s.deadlinePopoverStyle,
+      deadlinePopoverTitle: deadlinePopoverTitle, deadlinePopoverCourse: deadlinePopoverCourse,
+      deadlinePopoverCategory: deadlinePopoverCategory, deadlinePopoverDotStyle: deadlinePopoverDotStyle,
+      deadlinePopoverDate: deadlinePopoverDate, deadlinePopoverTime: deadlinePopoverTime,
+      closeDeadlinePopover: () => this.closeDeadlinePopover(), editDeadlineFromPopover: () => this.editDeadlineFromPopover(),
       deadlineModalOpen: s.deadlineModalOpen, deadlineModalTitle: deadlineModalTitle, deadlineSubmitLabel: deadlineSubmitLabel,
+      deadlineModalSubtitle: deadlineModalSubtitle, deadlineTypeOptions: deadlineTypeOptions,
       deadlineCourseId: s.deadlineCourseId, deadlineCourseOptions: deadlineCourseOptions, onDeadlineCourseChange: onDeadlineCourseChange,
       deadlineDate: s.deadlineDate, onDeadlineDateChange: onDeadlineDateChange,
       deadlineTime: s.deadlineTime, onDeadlineTimeChange: onDeadlineTimeChange,
+      deadlineEndTime: s.deadlineEndTime, onDeadlineEndTimeChange: onDeadlineEndTimeChange,
       deadlineTitle: s.deadlineTitle, onDeadlineTitleChange: onDeadlineTitleChange,
       deadlineType: s.deadlineType, onDeadlineTypeChange: onDeadlineTypeChange,
+      deadlineCompleted: s.deadlineCompleted, onDeadlineCompletedChange: onDeadlineCompletedChange,
       deadlineModalLoading: s.deadlineModalLoading, deadlineModalError: s.deadlineModalError,
       closeDeadlineModal: () => this.closeDeadlineModal(), submitDeadlineModal: () => this.submitDeadlineModal(),
       deleteDeadlineOpen: s.deleteDeadlineOpen, deleteDeadlineTitle: s.deleteDeadlineTitle,
@@ -2751,10 +4366,60 @@ class Component extends DCLogic {
       submitUpload: () => this.submitUpload(false),
       confirmOverwrite: () => this.submitUpload(true),
       quizPos: s.quizStep + 1,
-      isQuizStep3: s.quizStep === 3,
+      isQuizStep3: assessmentComplete,
+      quizTargetCount: s.quizTargetCount,
+      showQuizSetup: showQuizSetup,
+      quizSetupCount: s.quizSetupCount,
+      onQuizSetupCountChange: onQuizSetupCountChange,
+      quizTypeOptions: quizTypeOptions,
+      quizSetupTopic: s.quizSetupTopic,
+      quizTopicOptions: quizTopicOptions,
+      onQuizSetupTopicChange: onQuizSetupTopicChange,
+      startQuiz: () => this.startQuiz(s.course),
+      quizProgressLabel: quizProgressLabel,
+      showFlashcard: showFlashcard,
+      flashcardsLoading: s.flashcardsLoading,
+      flashcardsError: s.flashcardsError,
+      flashcardSaving: s.flashcardSaving,
+      flashcardDeckSubtitle: s.flashcards.length
+        ? (masteredCount + ' mastered · ' + studyingCount + ' in progress · ' + starredCount + ' starred')
+        : 'Low-cost definition drills generated with Haiku.',
+      flashcardStudyModeClass: 'flashcard-segment' + (s.flashcardMode === 'study' ? ' active' : ''),
+      flashcardAllCardsClass: 'flashcard-segment' + (s.flashcardMode === 'all' ? ' active' : ''),
+      flashcardIsStudyMode: s.flashcardMode === 'study',
+      setFlashcardStudyMode: () => this.setState({ flashcardMode: 'study', flashcardFlipped: false }),
+      setFlashcardAllCardsMode: () => this.setState({ flashcardMode: 'all', flashcardFlipped: false }),
+      flashcardHideMastered: s.flashcardHideMastered,
+      toggleFlashcardHideMastered: () => this.toggleFlashcardHideMastered(),
+      flashcardCategory: s.flashcardCategory,
+      flashcardCategoryOptions: flashcardCategoryOptions,
+      onFlashcardCategoryChange: onFlashcardCategoryChange,
+      flashcardAllVisibleMastered: flashcardAllVisibleMastered,
+      flashcardCategoryLabel: flashcardSourceLabel,
+      flashcardShowingTerm: flashcardFrontIsTerm,
+      flashcardVisibleText: flashcardVisibleText,
+      flashcardRevealHint: flashcardRevealHint,
+      flashcardVisibleProgressLabel: flashcardVisibleProgressLabel,
+      flashcardVisibleProgressBarStyle: flashcardVisibleProgressBarStyle,
+      flashcardFooterCountLabel: flashcardFooterCountLabel,
+      flashcardStats: flashcardStats,
+      flashcardAllRows: flashcardAllRows,
+      flashcardStarFill: flashcardIsStarred ? 'currentColor' : 'none',
+      flipFlashcard: () => this.flipFlashcard(),
+      nextFlashcard: () => this.nextFlashcard(s.course),
+      previousFlashcard: () => this.previousFlashcard(),
+      markFlashcardKnown: () => this.markFlashcardKnown(true),
+      toggleFlashcardStar: (e) => { if (e && e.stopPropagation) e.stopPropagation(); this.toggleFlashcardStar(); },
+      shuffleFlashcards: () => this.shuffleFlashcards(),
+      resetFlashcardProgress: () => this.resetFlashcardProgress(),
+      retryFlashcards: retryFlashcards,
       quizCorrectCount: s.quizCorrectCount,
       quizTopicLabel: quizTopicLabel,
       showQuizQuestion: showQuizQuestion,
+      showQuizChoices: showQuizChoices,
+      showQuizOpenEnded: showQuizOpenEnded,
+      quizOpenAnswer: s.quizOpenAnswer,
+      onQuizOpenAnswerChange: onQuizOpenAnswerChange,
       quizLoading: s.quizLoading,
       quizError: s.quizError,
       quizQuestionText: s.quizQuestion ? s.quizQuestion.question : '',

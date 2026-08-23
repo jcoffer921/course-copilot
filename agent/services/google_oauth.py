@@ -76,7 +76,7 @@ def verify_id_token(id_token_jwt: str) -> dict:
     return google_id_token.verify_oauth2_token(id_token_jwt, google_auth_requests.Request(), client_id)
 
 
-def get_or_create_account(google_sub: str, email: str, credentials):
+def get_or_create_account(google_sub: str, email: str, credentials, name: str = None):
     """Gets or creates the User + GoogleAccount for this Google identity,
     keyed by google_sub (stable across email changes), not email. Always
     updates the stored tokens/email to the latest from this login, whether
@@ -99,9 +99,14 @@ def get_or_create_account(google_sub: str, email: str, credentials):
         account.refresh_token = credentials.refresh_token or account.refresh_token
         account.token_expiry = expiry
         account.save()
+        user = account.user
+        user.email = email
+        if name and not user.first_name:
+            user.first_name = name
+        user.save(update_fields=["email", "first_name"])
         return account.user
     except GoogleAccount.DoesNotExist:
-        user = User.objects.create_user(username=google_sub, email=email)
+        user = User.objects.create_user(username=google_sub, email=email, first_name=name or "")
         GoogleAccount.objects.create(
             user=user, google_sub=google_sub, email=email,
             access_token=credentials.token,

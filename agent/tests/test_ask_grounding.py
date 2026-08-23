@@ -66,6 +66,19 @@ def _seed_course(course_id):
     })
 
 
+def test_build_web_search_tool_requires_approved_domains():
+    assert ask._build_web_search_tool([]) is None
+
+
+def test_build_web_search_tool_scopes_to_approved_domains():
+    assert ask._build_web_search_tool(["docs.python.org"]) == {
+        "type": "web_search_20250305",
+        "name": "web_search",
+        "allowed_domains": ["docs.python.org"],
+        "max_uses": ask.WEB_SEARCH_MAX_USES,
+    }
+
+
 async def test_no_web_search_tool_when_no_domains_approved(isolated_courses_dir, monkeypatch):
     _seed_course("testcourse")
     canned = json.dumps({"answer": "not covered", "grounded": False, "sources": []})
@@ -92,10 +105,10 @@ async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir,
     assert result["grounded"] is True
     call = fake_client.messages.calls[0]
     assert call["tools"] == [{
-        "type": "web_search_20260209",
+        "type": "web_search_20250305",
         "name": "web_search",
         "allowed_domains": ["docs.python.org"],
-        "max_uses": 5,
+        "max_uses": ask.WEB_SEARCH_MAX_USES,
     }]
 
 

@@ -8,6 +8,8 @@ from django.utils import timezone
 from agent.models import GoogleAccount
 from agent.services import calendar_sync, custom_events, storage
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):
@@ -26,6 +28,33 @@ def test_create_event_assigns_id_and_defaults(isolated_courses_dir):
     assert event["synced"] is False
     assert event["google_event_id"] is None
     assert isinstance(event["id"], str) and event["id"]
+
+
+def test_create_event_accepts_duration_and_completion(isolated_courses_dir):
+    event = custom_events.create_event(
+        "cs101", "2026-09-01", "09:00", "Project work", "project",
+        end_time="10:30", completed=True,
+    )
+
+    assert event["end_time"] == "10:30"
+    assert event["completed"] is True
+    assert custom_events.list_events()[0]["end_time"] == "10:30"
+
+
+def test_create_event_rejects_end_time_without_start(isolated_courses_dir):
+    with pytest.raises(ValueError):
+        custom_events.create_event("cs101", "2026-09-01", None, "Project work", "project", end_time="10:30")
+
+
+def test_create_event_rejects_end_time_before_start(isolated_courses_dir):
+    with pytest.raises(ValueError):
+        custom_events.create_event("cs101", "2026-09-01", "11:00", "Project work", "project", end_time="10:30")
+
+
+def test_create_event_maps_legacy_types(isolated_courses_dir):
+    event = custom_events.create_event("cs101", "2026-09-01", None, "Midterm", "exam")
+
+    assert event["type"] == "test_quiz"
 
 
 def test_create_event_general_has_null_course_id(isolated_courses_dir):
@@ -58,6 +87,13 @@ def test_update_event_changes_fields(isolated_courses_dir):
     assert updated["time"] == "15:30"
     assert updated["date"] == "2026-09-01"  # untouched field preserved
     assert custom_events.list_events()[0]["title"] == "Renamed"
+
+
+def test_update_event_validates_duration(isolated_courses_dir):
+    created = custom_events.create_event("cs101", "2026-09-01", "09:00", "Original", "other")
+
+    with pytest.raises(ValueError):
+        custom_events.update_event(created["id"], end_time="08:30")
 
 
 def test_update_event_rejects_invalid_type(isolated_courses_dir):
@@ -160,6 +196,19 @@ def test_sync_event_to_calendar_creates_timed_event_when_time_set(isolated_cours
     assert kwargs["body"]["start"]["dateTime"] == "2026-09-01T14:00:00"
     assert kwargs["body"]["end"]["dateTime"] == "2026-09-01T15:00:00"
     assert "timeZone" in kwargs["body"]["start"]
+
+
+@pytest.mark.django_db
+def test_sync_event_to_calendar_uses_explicit_end_time(isolated_courses_dir, user_with_valid_token):
+    created = custom_events.create_event("cs101", "2026-09-01", "14:00", "Project block", "project", end_time="16:30")
+
+    mock_service = _mock_calendar_build("evt-2b")
+    with patch("agent.services.custom_events.calendar_sync.build", return_value=mock_service):
+        custom_events.sync_event_to_calendar(user_with_valid_token, created["id"])
+
+    _, kwargs = mock_service.events.return_value.insert.call_args
+    assert kwargs["body"]["start"]["dateTime"] == "2026-09-01T14:00:00"
+    assert kwargs["body"]["end"]["dateTime"] == "2026-09-01T16:30:00"
 
 
 @pytest.mark.django_db

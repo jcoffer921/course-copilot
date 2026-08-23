@@ -81,7 +81,7 @@ def add_deadline_to_calendar(user, course_id: str, date: str, title: str, event_
     refreshed. Returns {"google_event_id": "..."}."""
     from agent.models import GoogleAccount
 
-    already_synced = storage.read_calendar_sync(course_id)
+    already_synced = storage.read_calendar_sync(course_id, user=user)
     if any(r["date"] == date and r["title"] == title for r in already_synced):
         raise AlreadySyncedError(f"'{title}' on {date} is already on your Google Calendar")
 
@@ -123,6 +123,6 @@ def add_deadline_to_calendar(user, course_id: str, date: str, title: str, event_
     storage.append_calendar_sync_record(course_id, {
         "date": date, "title": title, "type": event_type,
         "google_event_id": event["id"], "synced_at": timezone.now().isoformat(),
-    })
+    }, user=user)
 
     return {"google_event_id": event["id"]}

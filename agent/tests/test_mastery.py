@@ -2,6 +2,8 @@ import pytest
 
 from agent.services import mastery, storage
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):

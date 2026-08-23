@@ -2,6 +2,8 @@ import pytest
 
 from agent.services import storage
 
+pytestmark = pytest.mark.django_db
+
 
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):
@@ -37,10 +39,9 @@ def test_append_calendar_sync_record_accumulates_across_calls(isolated_courses_d
     assert {r["google_event_id"] for r in records} == {"evt-1", "evt-2"}
 
 
-def test_read_calendar_sync_raises_on_corrupt_json(isolated_courses_dir):
+def test_read_calendar_sync_ignores_legacy_corrupt_json(isolated_courses_dir):
     course_dir = isolated_courses_dir / "cs101"
     course_dir.mkdir(parents=True)
     (course_dir / "calendar_sync.json").write_text("{not valid json", encoding="utf-8")
 
-    with pytest.raises(storage.CalendarSyncStorageError):
-        storage.read_calendar_sync("cs101")
+    assert storage.read_calendar_sync("cs101") == []
