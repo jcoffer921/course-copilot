@@ -124,36 +124,51 @@ class CourseNotFoundError(Exception):
     """
 
 
-def _course_dir(course_id: str) -> Path:
-    """Resolves courses/<course_id>, guarding against path traversal."""
+def _validate_course_id(course_id: str) -> None:
+    """Raises InvalidCourseIdError if course_id isn't a safe slug. Shared by
+    _course_dir (which also resolves a per-user filesystem path) and every
+    DB-scoped function below that only ever needed course_id validated, not
+    a directory resolved — they called _course_dir(course_id) purely for
+    this check and discarded its return value."""
     if not COURSE_ID_RE.fullmatch(course_id):
         raise InvalidCourseIdError(f"invalid course_id: {course_id!r}")
+
+
+def _course_dir(course_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>, guarding against path
+    traversal. `user` is required — course content has no valid unowned
+    state now that storage is per-user; a missing user is a caller bug, not
+    a runtime condition to handle gracefully (fails loudly per CLAUDE.md)."""
+    if user is None:
+        raise ValueError("_course_dir requires a user — course content is always user-scoped")
+    _validate_course_id(course_id)
     resolved_courses_dir = COURSES_DIR.resolve()
-    course_dir = (COURSES_DIR / course_id).resolve()
+    course_dir = (COURSES_DIR / str(user.pk) / course_id).resolve()
     if not course_dir.is_relative_to(resolved_courses_dir):
         raise InvalidCourseIdError(f"invalid course_id: {course_id!r}")
     return course_dir
 
 
-def _lecture_path(course_id: str, lecture_id: str) -> Path:
-    """Resolves courses/<course_id>/notes/<lecture_id>.json, guarding against
-    path traversal via lecture_id the same way _course_dir does for course_id."""
+def _lecture_path(course_id: str, lecture_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>/notes/<lecture_id>.json,
+    guarding against path traversal via lecture_id the same way _course_dir
+    does for course_id."""
     if not LECTURE_ID_RE.fullmatch(lecture_id):
         raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
-    notes_dir = _course_dir(course_id) / "notes"
+    notes_dir = _course_dir(course_id, user) / "notes"
     path = (notes_dir / f"{lecture_id}.json").resolve()
     if path.parent != notes_dir.resolve():
         raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
     return path
 
 
-def _reference_path(course_id: str, reference_id: str) -> Path:
-    """Resolves courses/<course_id>/references/<reference_id>.json, guarding
-    against path traversal via reference_id the same way _lecture_path does
-    for lecture_id."""
+def _reference_path(course_id: str, reference_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>/references/<reference_id>.json,
+    guarding against path traversal via reference_id the same way
+    _lecture_path does for lecture_id."""
     if not REFERENCE_ID_RE.fullmatch(reference_id):
         raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
-    references_dir = _course_dir(course_id) / "references"
+    references_dir = _course_dir(course_id, user) / "references"
     path = (references_dir / f"{reference_id}.json").resolve()
     if path.parent != references_dir.resolve():
         raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
