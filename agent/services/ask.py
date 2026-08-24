@@ -9,6 +9,7 @@ CLI use.
 import json
 import re
 from datetime import date
+from urllib.parse import urlparse
 
 from asgiref.sync import sync_to_async
 
@@ -50,9 +51,15 @@ array.
 - Keep it scannable: short paragraphs, no walls of text.
 
 Grounding tiers, in order:
-1. Answer from SYLLABUS, NOTES, REFERENCES, and LEARNING_TOOLS first, always. These are this course's \
-own real material and saved OnTrack data, including quiz attempts, mastery scores, flashcard progress, \
-entered grades, and grade-calculator results.
+1. Answer from SYLLABUS, NOTES, REFERENCES, SAVED_SITES, RECALLED_CONVERSATIONS, and LEARNING_TOOLS \
+first, always. These are this course's own real material and saved OnTrack data, including saved site \
+addresses, relevant earlier chat excerpts, quiz attempts, mastery scores, flashcard progress, entered \
+grades, and grade-calculator results. SAVED_SITES contain only URL metadata, not page contents; you may \
+provide or identify a saved URL, but do not summarize or quote that page unless its contents are \
+otherwise available in REFERENCES/NOTES or a permitted web search result. RECALLED_CONVERSATIONS are \
+memory of earlier chats for this same course; use them for continuity, user preferences, prior decisions, \
+and previously discussed details. Do not treat a recalled assistant message as an independent source for \
+course facts unless its sources are also available or cited.
 2. Only if that material genuinely doesn't cover the question, and only if a web_search tool is \
 available to you, you may search the web — restricted to the domains you've been given access to. \
 If no web_search tool is available, you have no other source: say the material doesn't cover it.
@@ -84,7 +91,7 @@ Schema:
 {
   "answer": "string",
   "grounded": true/false,
-  "sources": ["syllabus" | "<lecture_id>" | "<reference_id>" | "quiz_history" | "mastery_scores" | "flashcards" | "grades" | "grade_calculator" | "<full URL>", ...]
+  "sources": ["syllabus" | "<lecture_id>" | "<reference_id>" | "saved_sites" | "recalled_conversations" | "quiz_history" | "mastery_scores" | "flashcards" | "grades" | "grade_calculator" | "<full URL>", ...]
 }
 
 Notes on fields:
@@ -94,14 +101,32 @@ everything you said is accurate. A truthful, non-fabricated "this isn't covered"
 false, since the question itself remains unanswered.
 - "sources" lists which part(s) of the material — and/or which cited web result(s) — the answer draws \
 from: "syllabus", specific lecture_ids (from NOTES), specific reference_ids (from REFERENCES), \
-"quiz_history", "mastery_scores", "flashcards", "grades", "grade_calculator", and/or full URLs \
-(from a permitted web search). Empty list when grounded is false.
+"saved_sites" or full saved URLs (from SAVED_SITES), "recalled_conversations" (from earlier same-course \
+chat excerpts), "quiz_history", "mastery_scores", "flashcards", "grades", "grade_calculator", and/or \
+full URLs (from a permitted web search). Empty list when grounded is false.
 """
 
 
 MAX_PAUSE_TURN_CONTINUATIONS = 3
 WEB_SEARCH_MAX_USES = 5
 DEADLINE_INTENT_RE = re.compile(r"\b(add|create|schedule|put|make)\b.*\b(deadline|homework|hw|project|quiz|test|exam|class|event)\b", re.I)
+SAVE_SITE_INTENT_RE = re.compile(r"\b(save|remember|store|add)\b.*\b(site|link|url|address|book|textbook)\b", re.I)
+URL_RE = re.compile(r"https?://[^\s<>()\"']+", re.I)
+
+
+def _parse_json_response(raw: str) -> dict:
+    """Parses the model's JSON response, tolerating a leading preamble the
+    model adds despite being told not to (verified in practice: Cora
+    sometimes explains a limitation in prose before the JSON when no tool
+    use follows to trigger ask_async's post-tool-use text-block trim).
+    Finds the first '{' and decodes from there with a streaming JSON
+    decoder, so anything before it — and any trailing text after the object
+    closes — is ignored rather than breaking the parse."""
+    start = raw.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("no JSON object found in model output", raw, 0)
+    obj, _ = json.JSONDecoder().raw_decode(raw, start)
+    return obj
 
 
 DEADLINE_EXTRACTION_PROMPT = """Extract a calendar deadline/event request for OnTrack.
@@ -141,8 +166,74 @@ def _build_web_search_tool(approved_domains: list[str]) -> dict | None:
     }
 
 
+def _domains_from_saved_sites(saved_sites: list[dict]) -> list[str]:
+    domains = []
+    for site in saved_sites or []:
+        parsed = urlparse(site.get("url") or "")
+        if parsed.scheme in {"http", "https"} and parsed.netloc:
+            domains.append(parsed.netloc.lower())
+    return domains
+
+
+def _merge_allowed_domains(*domain_lists: list[str]) -> list[str]:
+    seen = set()
+    merged = []
+    for domains in domain_lists:
+        for domain in domains or []:
+            normalized = str(domain or "").strip().lower()
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                merged.append(normalized)
+    return merged
+
+
 def _looks_like_deadline_request(question: str) -> bool:
     return bool(DEADLINE_INTENT_RE.search(question or ""))
+
+
+def _looks_like_save_site_request(question: str) -> bool:
+    text = question or ""
+    if "?" in text:
+        # A question mark means the user is asking something, not just issuing
+        # a save command — even one that also mentions a save-verb and a URL
+        # (e.g. "remember the textbook site <url> and tell me if ... ?").
+        # Fall through to normal grounded Q&A rather than silently swallowing it.
+        return False
+    return bool(URL_RE.search(text) and SAVE_SITE_INTENT_RE.search(text))
+
+
+def _title_for_saved_site(question: str, url: str) -> str:
+    quoted = re.findall(r"[\"']([^\"']{1,255})[\"']", question or "")
+    quoted = [q.strip() for q in quoted if q.strip() and url not in q]
+    if quoted:
+        return quoted[-1]
+
+    without_url = (question or "").replace(url, " ")
+    as_match = re.search(r"\bas\s+(.+)$", without_url, re.I)
+    if as_match:
+        title = re.sub(r"[.?!]\s*$", "", as_match.group(1)).strip()
+        if title:
+            return title[:255]
+
+    lower = (question or "").lower()
+    if "textbook" in lower:
+        return "Textbook"
+    if "book" in lower:
+        return "Course Book"
+
+    parsed = urlparse(url)
+    return parsed.netloc or "Saved Site"
+
+
+def _extract_save_site_request(question: str) -> dict:
+    match = URL_RE.search(question or "")
+    if not match:
+        raise ValueError("no URL found to save")
+    url = match.group(0).rstrip(".,;:!?)\"]}'")
+    return {
+        "url": url,
+        "title": _title_for_saved_site(question, url),
+    }
 
 
 def _recent_quiz_attempts(course_id: str, user=None, limit: int = 20) -> list:
@@ -253,7 +344,7 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
     raw = "".join(block.text for block in response.content if block.type == "text").strip()
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
     try:
-        data = json.loads(raw)
+        data = _parse_json_response(raw)
     except json.JSONDecodeError as e:
         raise ValueError(f"deadline extraction did not return valid JSON: {e}\n\nRaw output:\n{raw}")
     deadline = data.get("deadline") or {}
@@ -282,11 +373,34 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
 
 
 async def ask_async(course_id: str, question: str, session_id: str = None, user=None) -> dict:
-    client = get_client()
-
     syllabus = await sync_to_async(storage.read_syllabus)(course_id)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
+
+    if _looks_like_save_site_request(question):
+        request = _extract_save_site_request(question)
+        site = await sync_to_async(storage.save_site)(
+            course_id, request["url"], title=request["title"], user=user,
+        )
+        answer = (
+            f"Saved **{site['title']}** for this course: {site['url']}\n\n"
+            "I only stored the address, not the page contents."
+        )
+        result = {
+            "answer": answer,
+            "grounded": True,
+            "sources": [site["url"]],
+            "saved_site": site,
+        }
+        if session_id is not None:
+            await sync_to_async(sessions.append_message)(course_id, session_id, "user", question, user=user)
+            await sync_to_async(sessions.append_message)(
+                course_id, session_id, "assistant", result["answer"],
+                sources=result["sources"], grounded=result["grounded"], user=user,
+            )
+        return result
+
+    client = get_client()
 
     if _looks_like_deadline_request(question):
         result = await _extract_deadline_request(client, question, course_id, syllabus)
@@ -300,7 +414,12 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
 
     notes = await sync_to_async(storage.read_notes)(course_id)
     references = await sync_to_async(storage.read_references)(course_id)
+    saved_sites = await sync_to_async(storage.list_saved_sites)(course_id, user=user)
+    recalled_conversations = await sync_to_async(sessions.relevant_messages)(
+        course_id, question, session_id=session_id, user=user,
+    )
     approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id)
+    allowed_domains = _merge_allowed_domains(approved_domains, _domains_from_saved_sites(saved_sites))
     learning_tools = await sync_to_async(_learning_tools_context)(course_id, user=user)
 
     context = f"SYLLABUS:\n{json.dumps(syllabus, indent=2)}\n\n"
@@ -312,6 +431,21 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
         context += f"REFERENCES:\n{json.dumps(references, indent=2)}\n\n"
     else:
         context += "REFERENCES: none available yet for this course.\n\n"
+    if saved_sites:
+        context += (
+            "SAVED_SITES:\n"
+            f"{json.dumps(saved_sites, indent=2)}\n\n"
+            "Saved sites are URL metadata only. Their page contents have not been stored.\n\n"
+        )
+    else:
+        context += "SAVED_SITES: none available yet for this course.\n\n"
+    if recalled_conversations:
+        context += (
+            "RECALLED_CONVERSATIONS:\n"
+            f"{json.dumps(recalled_conversations, indent=2)}\n\n"
+        )
+    else:
+        context += "RECALLED_CONVERSATIONS: no relevant earlier conversations found for this course.\n\n"
     context += f"LEARNING_TOOLS:\n{json.dumps(learning_tools, indent=2, default=str)}"
 
     session = None
@@ -331,11 +465,26 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
     # from the required JSON format on later ones despite the system prompt
     # repeating the instruction every call (confirmed in practice: turn 2 of
     # a session failed JSON parsing once this replayed as plain text).
+    # The context block (syllabus+notes+references+...) is identical across
+    # every question in a session and often across separate stateless calls
+    # for the same course within the cache TTL — a cache_control breakpoint
+    # after it (kept in its own content block, separate from the question
+    # that follows) lets repeated/back-to-back questions reuse it at cache
+    # read pricing instead of paying full input price every time.
+    def _context_message(role_content: str) -> dict:
+        return {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": context, "cache_control": {"type": "ephemeral"}},
+                {"type": "text", "text": f"\n\nQuestion: {role_content}"},
+            ],
+        }
+
     messages = []
     if session and session["messages"]:
         prior = session["messages"]
         first = prior[0]
-        messages.append({"role": "user", "content": f"{context}\n\nQuestion: {first['content']}"})
+        messages.append(_context_message(first["content"]))
         for m in prior[1:]:
             if m["role"] == "assistant":
                 envelope = json.dumps({
@@ -348,14 +497,14 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
                 messages.append({"role": m["role"], "content": m["content"]})
         messages.append({"role": "user", "content": question})
     else:
-        messages.append({"role": "user", "content": f"{context}\n\nQuestion: {question}"})
+        messages.append(_context_message(question))
 
     # No domains approved for this course yet means the agent stays scoped to
     # course material only, same as it does today — the web_search tool is
     # simply never offered, rather than failing or (worse) searching
     # unrestricted.
     tools = []
-    web_search_tool = _build_web_search_tool(approved_domains)
+    web_search_tool = _build_web_search_tool(allowed_domains)
     if web_search_tool:
         tools.append(web_search_tool)
 
@@ -397,7 +546,7 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
     raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
 
     try:
-        data = json.loads(raw)
+        data = _parse_json_response(raw)
     except json.JSONDecodeError as e:
         raise ValueError(f"model did not return valid JSON: {e}\n\nRaw output:\n{raw}")
 

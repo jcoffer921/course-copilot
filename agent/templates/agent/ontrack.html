@@ -987,7 +987,7 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
               </div>
 
               <sc-if value="{{ flashcardsLoading }}" hint-placeholder-val="{{ false }}">
-                <div style="padding:var(--space-8);text-align:center;opacity:.7">Building low-cost flashcards with Haiku…</div>
+                <div style="padding:var(--space-8);text-align:center;opacity:.7">Loading flashcards...</div>
               </sc-if>
 
               <sc-if value="{{ flashcardsError }}" hint-placeholder-val="{{ false }}">
@@ -1407,6 +1407,12 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
                       </div>
                     </div>
                   </sc-if>
+                  <div style="margin-top:4px;display:flex;justify-content:flex-end;width:100%">
+                    <button type="button" class="btn btn-secondary btn-icon" title="{{ m.copyTitle }}" aria-label="{{ m.copyTitle }}" onClick="{{ m.onCopy }}" style="width:auto;height:26px;min-width:70px;padding:0 8px;font-size:11px;gap:5px">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      <span>{{ m.copyLabel }}</span>
+                    </button>
+                  </div>
                   <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
                     <div style="font-size:11px;opacity:.5;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
                       <sc-if value="{{ m.hasSources }}" hint-placeholder-val="{{ false }}">
@@ -1699,7 +1705,7 @@ function readJsonResponse(response) {
     }
     const message = response.ok
       ? 'Server returned a non-JSON response.'
-      : 'Server returned an HTML error page. If this happened after updating deadlines, run database migrations and try again.';
+      : 'Server returned an HTML error page. Run database migrations if this started after an update, then try again.';
     return { ok: false, status: response.status, data: { detail: message } };
   });
 }
@@ -1903,7 +1909,7 @@ class Component extends DCLogic {
     gradingSetupLoading: false, gradingSetupError: null, gradesNotice: null,
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
-    chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
+    chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null, chatCopiedIndex: null,
     chatSessionId: null, chatSessions: [], chatSessionsLoading: false, chatSessionsError: null,
     addClassOpen: false, addClassName: '', addClassId: '', addClassIdLocked: false,
     addClassFile: null, addClassLoading: false, addClassError: null,
@@ -2035,6 +2041,7 @@ class Component extends DCLogic {
     window.removeEventListener('keydown', this.handleDeadlineKeyDown);
     document.removeEventListener('mousedown', this.handleDeadlineDocumentMouseDown, true);
     if (this._deadlineClock) window.clearInterval(this._deadlineClock);
+    if (this._chatCopyTimer) window.clearTimeout(this._chatCopyTimer);
   }
 
   handleDeadlineKeyDown = (e) => {
@@ -2280,6 +2287,35 @@ class Component extends DCLogic {
     this.setState({ chatMessages: messages });
   }
 
+  copyChatMessage(text, index) {
+    const value = String(text || '');
+    const markCopied = () => {
+      this.setState({ chatCopiedIndex: index });
+      clearTimeout(this._chatCopyTimer);
+      this._chatCopyTimer = setTimeout(() => {
+        if (this.state.chatCopiedIndex === index) this.setState({ chatCopiedIndex: null });
+      }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(markCopied).catch(() => this.copyChatMessageFallback(value, markCopied));
+      return;
+    }
+    this.copyChatMessageFallback(value, markCopied);
+  }
+
+  copyChatMessageFallback(text, onDone) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(area);
+    onDone();
+  }
+
   openDeleteDeadline(event) {
     this.setState({ deleteDeadlineOpen: true, deleteDeadlineId: event.id, deleteDeadlineTitle: event.title, deleteDeadlineError: null, deleteDeadlineLoading: false });
   }
@@ -2369,7 +2405,7 @@ class Component extends DCLogic {
     const seq = ++this._sessionsSeq;
     this.setState({ chatSessionsLoading: true, chatSessionsError: null });
     fetch(`/api/courses/${courseId}/sessions/`)
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._sessionsSeq) return;
         if (!ok) { this.setState({ chatSessionsLoading: false, chatSessionsError: data.detail || 'Could not load past chats.' }); return; }
@@ -2383,16 +2419,16 @@ class Component extends DCLogic {
 
   openChatSession(courseId, sessionId) {
     const seq = ++this._chatSeq;
-    this.setState({ chatLoading: true, chatError: null });
+    this.setState({ chatLoading: true, chatError: null, chatCopiedIndex: null });
     fetch(`/api/courses/${courseId}/sessions/${sessionId}/`)
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._chatSeq) return;
         if (!ok) { this.setState({ chatLoading: false, chatError: data.detail || 'Could not load that chat.' }); return; }
         const messages = (data.messages || []).map(m => ({
           from: m.role, text: m.content, sources: m.sources || [], grounded: !!m.grounded
         }));
-        this.setState({ chatLoading: false, chatSessionId: sessionId, chatMessages: messages, chatInput: '' });
+        this.setState({ chatLoading: false, chatSessionId: sessionId, chatMessages: messages, chatInput: '', chatCopiedIndex: null });
       })
       .catch(e => {
         if (seq !== this._chatSeq) return;
@@ -2404,7 +2440,7 @@ class Component extends DCLogic {
     const seq = ++this._chatSeq;
     this.setState({
       chatMessages: this.state.chatMessages.concat([{ from: 'user', text: question }]),
-      chatInput: '', chatSending: true, chatError: null
+      chatInput: '', chatSending: true, chatError: null, chatCopiedIndex: null
     });
 
     const ask = (sessionId) => {
@@ -2412,7 +2448,7 @@ class Component extends DCLogic {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
         body: JSON.stringify({ question: question, session_id: sessionId })
       })
-        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(readJsonResponse)
         .then(({ ok, data }) => {
           if (seq !== this._chatSeq) return;
           if (!ok) { this.setState({ chatSending: false, chatError: data.detail || 'Could not get an answer.' }); return; }
@@ -2440,7 +2476,7 @@ class Component extends DCLogic {
     fetch(`/api/courses/${courseId}/sessions/`, {
       method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }
     })
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._chatSeq) return;
         if (!ok) { this.setState({ chatSending: false, chatError: data.detail || 'Could not start a new chat.' }); return; }
@@ -2958,14 +2994,26 @@ class Component extends DCLogic {
       Tests: ['test'],
       Quizzes: ['quiz'],
       Projects: ['project', 'presentation', 'capstone'],
+      'Lab and Demo': ['lab', 'demo'],
+      'Final Project': ['final project'],
+      'Class Participation': ['class participation', 'participation'],
       Midterm: ['midterm'],
       Final: ['final'],
     };
     // Fixed precedence order, independent of `choices`' own ordering: more-specific
-    // keywords (e.g. "project") must be checked before the generic "midterm"/"final"
-    // keywords, so a legacy name like "Final Project" routes to Projects rather than
-    // Final just because 'final' happens to appear earlier in `choices`.
-    const precedence = ['Homework', 'Tests', 'Quizzes', 'Projects', 'Midterm', 'Final'];
+    // keywords (e.g. "final project") must be checked before the generic
+    // "final" keyword.
+    const precedence = [
+      'Final Project',
+      'Lab and Demo',
+      'Class Participation',
+      'Homework',
+      'Tests',
+      'Quizzes',
+      'Projects',
+      'Midterm',
+      'Final',
+    ];
     for (const category of precedence) {
       if (!choices.includes(category)) continue;
       const keywords = synonyms[category];
@@ -3570,9 +3618,9 @@ class Component extends DCLogic {
         goToFlashcards(targetCourse);
       } else if (t === 'chat') {
         if (targetCourse !== s.course) {
-          this.setState({ tab: t, course: targetCourse, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null });
+          this.setState({ tab: t, course: targetCourse, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatCopiedIndex: null });
         } else {
-          this.setState({ tab: t });
+          this.setState({ tab: t, chatCopiedIndex: null });
         }
         this.loadChatSessions(targetCourse);
       } else if (t === 'progress') {
@@ -3608,7 +3656,7 @@ class Component extends DCLogic {
         this.loadDashboardRecent(courseId);
       } else if (s.tab === 'chat') {
         if (courseId !== s.course) {
-          this.setState({ course: courseId, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null });
+          this.setState({ course: courseId, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatCopiedIndex: null });
           this.loadChatSessions(courseId);
         }
       } else if (s.tab === 'progress') {
@@ -4103,6 +4151,9 @@ class Component extends DCLogic {
     const chatMessages = s.chatMessages.map((m, index) => ({
       blocks: parseMarkdownBlocks(m.text), rowStyle: msgStyle(m.from), wrapStyle: wrapStyle(m.from), bubbleStyle: bubbleStyle(m.from),
       isAssistant: m.from === 'assistant',
+      copyLabel: s.chatCopiedIndex === index ? 'Copied' : 'Copy',
+      copyTitle: s.chatCopiedIndex === index ? 'Copied message' : 'Copy message',
+      onCopy: () => this.copyChatMessage(m.text, index),
       hasSources: hasSources(m),
       notGroundedText: !hasSources(m) && m.from === 'assistant' ? 'Not grounded in your course material' : '',
       hasPendingDeadline: !!m.pendingDeadline,
@@ -4144,7 +4195,7 @@ class Component extends DCLogic {
     };
     const startNewChat = () => {
       this._chatSeq++;
-      this.setState({ chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatLoading: false });
+      this.setState({ chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatLoading: false, chatCopiedIndex: null });
     };
     const sessionItemStyle = (active) => 'padding:8px;border-radius:var(--radius-lg);cursor:pointer;font-size:12.5px;' +
       (active ? 'background:var(--color-neutral-200)' : '');

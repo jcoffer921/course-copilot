@@ -122,7 +122,11 @@ def test_build_dashboard_next_deadline_uncapped_but_top_level_deadlines_windowed
     data = dashboard.build_dashboard()
 
     assert data["courses"]["cs101"]["next_deadline"] == {
-        "course_id": "cs101", "date": far_date, "title": "Midterm", "type": "exam",
+        # reminders.upcoming_deadlines() normalizes syllabus date types through
+        # storage.normalize_date_type() — "exam" is a legacy alias for "test_quiz" —
+        # and tags each deadline with its replaces_syllabus_key-matching "key".
+        "course_id": "cs101", "date": far_date, "title": "Midterm", "type": "test_quiz",
+        "key": f"cs101|{far_date}|Midterm|test_quiz",
     }
     assert data["deadlines"] == []
 

@@ -95,6 +95,17 @@ class IngestReferenceRequestSerializer(serializers.Serializer):
     title = serializers.CharField(required=False, allow_blank=True, default=None)
 
 
+class SavedSiteRequestSerializer(serializers.Serializer):
+    url = serializers.URLField(max_length=2048)
+    title = serializers.CharField(required=False, allow_blank=True, max_length=255, default=None)
+
+    def validate_url(self, value):
+        try:
+            return storage.validate_saved_site_url(value)
+        except ValueError as e:
+            raise serializers.ValidationError(str(e))
+
+
 class ApproveDomainsRequestSerializer(serializers.Serializer):
     # allow_blank=True here deliberately: an empty-string domain is a content
     # problem, not a request-shape problem, so it's left for
@@ -125,6 +136,7 @@ class GenerateFlashcardsRequestSerializer(serializers.Serializer):
     topic = serializers.CharField(required=False, allow_blank=False, default=None)
     chunk_id = serializers.CharField(required=False, allow_blank=False, default=None)
     count = serializers.IntegerField(required=False, min_value=1, max_value=12, default=8)
+    regenerate = serializers.BooleanField(required=False, default=False)
 
 
 class FlashcardProgressUpdateSerializer(serializers.Serializer):

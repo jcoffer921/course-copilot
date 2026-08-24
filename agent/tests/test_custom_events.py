@@ -178,7 +178,10 @@ def test_sync_event_to_calendar_creates_all_day_event_when_no_time(isolated_cour
     assert kwargs["body"]["start"] == {"date": "2026-09-01"}
     assert kwargs["body"]["end"] == {"date": "2026-09-02"}
 
-    updated = custom_events.list_events()[0]
+    # Syncing a legacy (pre-auth, user=NULL) event claims it for the acting
+    # user — sync status is inherently per-user (each user has their own
+    # Google Calendar), so it must not silently mutate what other users see.
+    updated = custom_events.list_events(user=user_with_valid_token)[0]
     assert updated["synced"] is True
     assert updated["google_event_id"] == "evt-1"
     assert updated["synced_at"] is not None

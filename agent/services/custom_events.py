@@ -85,6 +85,7 @@ def update_event(event_id: str, user=None, **fields) -> dict:
     if fields.get("type") is not None:
         fields["type"] = _coerce_event_type(fields["type"])
 
+    storage.claim_custom_event(event_id, user)
     events = storage.read_custom_events(user=user)
     for event in events:
         if event["id"] == event_id:
@@ -99,6 +100,7 @@ def update_event(event_id: str, user=None, **fields) -> dict:
 
 
 def delete_event(event_id: str, user=None) -> None:
+    storage.claim_custom_event(event_id, user)
     events = storage.read_custom_events(user=user)
     remaining = [e for e in events if e["id"] != event_id]
     if len(remaining) == len(events):
@@ -135,6 +137,7 @@ def sync_event_to_calendar(user, event_id: str) -> dict:
     can't be used."""
     from agent.models import GoogleAccount
 
+    storage.claim_custom_event(event_id, user)
     events = storage.read_custom_events(user=user)
     event = next((e for e in events if e["id"] == event_id), None)
     if event is None:

@@ -43,7 +43,7 @@ def test_add_deadline_to_calendar_creates_event_and_records_it(isolated_courses_
 
     assert result == {"google_event_id": "event-abc"}
     build.assert_called_once()
-    records = storage.read_calendar_sync("cs101")
+    records = storage.read_calendar_sync("cs101", user=user_with_valid_token)
     assert len(records) == 1
     assert records[0]["date"] == "2026-09-01"
     assert records[0]["title"] == "Midterm"

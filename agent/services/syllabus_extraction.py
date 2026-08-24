@@ -31,7 +31,7 @@ Schema:
   "course_id": "string",
   "course_name": "string",
   "dates": [{"date": "YYYY-MM-DD", "title": "string", "type": "exam|assignment|reading|other"}],
-  "grading": [{"component": "Homework|Tests|Quizzes|Midterm|Final|Projects|Other", "weight_pct": 0}],
+  "grading": [{"component": "Homework|Tests|Quizzes|Midterm|Final|Projects|Lab and Demo|Final Project|Class Participation|Other", "weight_pct": 0}],
   "topics": ["string"]
 }
 
@@ -51,19 +51,24 @@ from an explicit year stated elsewhere in the same document.
 - "weight_pct" is a number (e.g. 20 for 20%). If weights aren't given, drop that \
 whole grading[] entry — never emit {"component": ...} with no "weight_pct".
 - "component" MUST be exactly one of: Homework, Tests, Quizzes, Midterm, Final, \
-Projects, Other. Map the syllabus's own wording onto these:
+Projects, Lab and Demo, Final Project, Class Participation, Other. Map the \
+syllabus's own wording onto these:
     - Homework: homework, assignments, problem sets, exercises
     - Tests: recurring or unlabeled tests/exams not specifically called out as \
 "the midterm" or "the final"
     - Quizzes: quizzes
     - Midterm: an exam explicitly labeled as the midterm
     - Final: an exam explicitly labeled as the final
-    - Projects: projects, presentations, capstone work
-    - Other: anything real that doesn't fit the six above (participation, \
-attendance, lab reports, etc.) — use Other rather than dropping the entry or \
-forcing it into the wrong bucket.
+    - Projects: projects, presentations, capstone work that is not explicitly \
+the final project
+    - Lab and Demo: lab work, labs, demos, lab demonstrations
+    - Final Project: an explicitly labeled final project
+    - Class Participation: class participation, participation
+    - Other: anything real that doesn't fit the categories above (attendance, \
+miscellaneous course requirements, etc.) — use Other rather than dropping the \
+entry or forcing it into the wrong bucket.
   If two or more syllabus lines map to the same bucket (e.g. "Problem Sets" 15% \
-and "Lab Assignments" 10%, both Homework), merge them into ONE grading[] entry \
+and "Weekly Exercises" 10%, both Homework), merge them into ONE grading[] entry \
 with the summed weight_pct — never emit two entries with the same component.
 - "topics" is a flat list of topic/unit names as they appear in the syllabus.
 """

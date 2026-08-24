@@ -6,9 +6,9 @@ OnTrack is an AI agent scoped to the current semester's coursework, built on the
 ## Stack
 - Anthropic API (Messages endpoint), Python
 - Sonnet for extraction/quiz/chat; reserve Opus for rubric critique if reasoning quality matters more than cost
-- Structured JSON per course as the knowledge store (no vector DB in v1, no relational DB either — flat files, single user)
+- Structured JSON per course as the knowledge store for extracted/generated content (syllabus, notes, references, quiz_history) — no vector DB
 - Django + DRF, served over **ASGI** (uvicorn), not WSGI — the agent makes per-request calls to the Anthropic API, which are I/O-bound; async views (`adrf`) + `AsyncAnthropic` keep the event loop free instead of blocking a worker thread per call
-- Django's own `db.sqlite3` is used ONLY for its built-in auth/session/admin tables — never for course content
+- Django's `db.sqlite3` holds auth/session/admin tables plus mutable per-user state that benefits from relational queries/constraints (flashcard progress, grades, quiz attempts, mastery scores, calendar sync records, custom events, notifications, sessions, saved sites) — extracted/generated *content* itself (syllabus, notes, references) still lives in per-course JSON, never the DB
 - Google Calendar API for deadline sync — built (`calendar_sync.py` + `custom_events.py`); requires a user-provided Google Cloud OAuth client
 
 ## Non-negotiable constraints
@@ -27,8 +27,12 @@ course-copilot/
     asgi.py                # run THIS (uvicorn config.asgi:application), not wsgi.py
     wsgi.py                 # kept for tooling compat only — not how this project runs
   agent/                  # Django app: services + async DRF views + CLI commands
-    models.py               # Django ORM — account/auth only (GoogleAccount), in db.sqlite3
-                            # alongside the built-in auth tables; never course content
+    models.py               # Django ORM, in db.sqlite3 alongside the built-in auth tables:
+                            # GoogleAccount/UserSettings (account/auth) plus mutable per-user
+                            # state models (FlashcardProgress, GradeItem, CalendarSyncRecord,
+                            # CustomEvent, Notification, SavedSite, QuizAttempt, MasteryScore,
+                            # CourseSession/SessionMessage) — never extracted/generated content,
+                            # which stays in per-course JSON (see Schemas below)
     auth_views.py           # Google Sign-In: login redirect, OAuth callback, logout — plain
                             # Django views (browser-redirect flow), not DRF
     authentication.py       # DRF authentication class controlling 401-vs-403 on an

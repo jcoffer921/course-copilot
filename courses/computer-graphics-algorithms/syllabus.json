@@ -4,12 +4,22 @@
   "dates": [],
   "grading": [
     {
-      "component": "Other",
-      "weight_pct": 80
+      "component": "Lab and Demo",
+      "weight_pct": 60.0,
+      "total_items": null,
+      "drop_lowest": null
     },
     {
-      "component": "Projects",
-      "weight_pct": 20
+      "component": "Final Project",
+      "weight_pct": 20.0,
+      "total_items": null,
+      "drop_lowest": null
+    },
+    {
+      "component": "Class Participation",
+      "weight_pct": 20.0,
+      "total_items": null,
+      "drop_lowest": null
     }
   ],
   "topics": [
