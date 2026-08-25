@@ -7,6 +7,8 @@ from agent.services import storage
 @pytest.fixture
 def isolated_courses_dir(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "COURSES_DIR", tmp_path)
+    from agent.models import FlashcardProgress
+    FlashcardProgress.objects.all().delete()
     return tmp_path
 
 
@@ -38,7 +40,7 @@ def test_update_flashcard_progress_writes_and_annotates(isolated_courses_dir):
 
 
 @pytest.mark.django_db
-def test_not_started_unstarred_removes_progress_record(isolated_courses_dir):
+def test_not_started_unstarred_clears_progress_but_keeps_card(isolated_courses_dir):
     result = storage.update_flashcard_progress("cs101", {
         "term": "Closure",
         "definition": "Captured state.",
@@ -54,7 +56,11 @@ def test_not_started_unstarred_removes_progress_record(isolated_courses_dir):
         "starred": False,
     })
 
-    assert storage.read_flashcard_progress("cs101")["cards"] == {}
+    card = storage.read_flashcard_progress("cs101")["cards"][result["key"]]
+    assert card["term"] == "Closure"
+    assert card["definition"] == "Captured state."
+    assert card["starred"] is False
+    assert "status" not in card
 
 
 @pytest.mark.django_db
@@ -77,7 +83,7 @@ def test_not_started_starred_preserves_star_without_progress_status(isolated_cou
 
 
 @pytest.mark.django_db
-def test_reset_flashcard_progress_removes_only_requested_keys(isolated_courses_dir):
+def test_reset_flashcard_progress_clears_only_requested_keys(isolated_courses_dir):
     first = storage.update_flashcard_progress("cs101", {
         "term": "A", "definition": "One", "status": "mastered", "starred": False,
     })
@@ -88,8 +94,9 @@ def test_reset_flashcard_progress_removes_only_requested_keys(isolated_courses_d
     storage.reset_flashcard_progress("cs101", [first["key"]])
 
     cards = storage.read_flashcard_progress("cs101")["cards"]
-    assert first["key"] not in cards
+    assert "status" not in cards[first["key"]]
     assert second["key"] in cards
+    assert cards[second["key"]]["status"] == "mastered"
 
 
 @pytest.mark.django_db

@@ -12,6 +12,7 @@ import shutil
 from datetime import datetime, timezone
 import hashlib
 from pathlib import Path
+from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent  # project root
 COURSES_DIR = BASE_DIR / "courses"
@@ -35,7 +36,18 @@ def normalize_date_type(value: str) -> str:
 
 VALID_NOTE_SOURCES = {"notes", "slides"}
 
-GRADING_CATEGORY_CHOICES = ["Homework", "Tests", "Quizzes", "Midterm", "Final", "Projects", "Other"]
+GRADING_CATEGORY_CHOICES = [
+    "Homework",
+    "Tests",
+    "Quizzes",
+    "Midterm",
+    "Final",
+    "Projects",
+    "Lab and Demo",
+    "Final Project",
+    "Class Participation",
+    "Other",
+]
 
 # course_id becomes a path segment under COURSES_DIR — restrict it to a safe
 # charset so values like "../../etc" or an absolute path can't escape courses/.
@@ -89,6 +101,10 @@ class FlashcardProgressStorageError(Exception):
 
 class GradesStorageError(Exception):
     """Raised when grades.json on disk is corrupt/unreadable."""
+
+
+class SavedSiteStorageError(Exception):
+    """Raised when saved site metadata cannot be read or written."""
 
 
 class CalendarSyncStorageError(Exception):
@@ -631,7 +647,11 @@ def _flashcard_user_filter(user=None) -> dict:
 
 def _scope_user_queryset(queryset, user=None, include_legacy: bool = True):
     if not getattr(user, "is_authenticated", False):
-        return queryset
+        # An anonymous caller must only ever see anonymous (user=NULL) rows —
+        # returning the queryset unfiltered here would leak every
+        # authenticated user's data (quiz history, grades, saved sites, etc.)
+        # to any unauthenticated request.
+        return queryset.filter(user__isnull=True)
     from django.db.models import Q
 
     scoped = Q(user=user)
@@ -718,6 +738,35 @@ def annotate_flashcards_with_progress(course_id: str, flashcards: list, user=Non
     return annotated
 
 
+def read_saved_flashcards(course_id: str, user=None) -> list:
+    """Returns previously generated flashcards for a course/user."""
+    _course_dir(course_id)
+    from agent.models import FlashcardProgress
+
+    records = (
+        FlashcardProgress.objects
+        .filter(course_id=course_id, **_flashcard_user_filter(user))
+        .exclude(term="")
+        .exclude(definition="")
+        .order_by("id")
+    )
+    flashcards = []
+    for record in records:
+        flashcards.append({
+            "key": record.card_key,
+            "term": record.term,
+            "definition": record.definition,
+            "source": "saved",
+            "url": None,
+            "status": record.status if record.status in {"mastered", "in_progress"} else "not_started",
+            "starred": bool(record.starred),
+        })
+    return flashcards
+
+
+FLASHCARD_CACHE_LIMIT = 200
+
+
 def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -> None:
     """Stores generated card text so course Q&A can reference the full deck,
     even before the learner marks progress or stars cards."""
@@ -754,10 +803,31 @@ def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -
                 starred=False,
             )
 
+    _trim_untouched_flashcard_cache(course_id, user)
+
+
+def _trim_untouched_flashcard_cache(course_id: str, user=None) -> None:
+    """Evicts the oldest never-studied, unstarred cached cards once a
+    course/user's cache exceeds FLASHCARD_CACHE_LIMIT rows. Cards the learner
+    has actually starred or made progress on are never evicted here."""
+    from agent.models import FlashcardProgress
+
+    lookup = {"course_id": course_id, "status__isnull": True, "starred": False, **_flashcard_user_filter(user)}
+    stale_ids = list(
+        FlashcardProgress.objects.filter(**lookup)
+        .order_by("-updated_at")
+        .values_list("id", flat=True)[FLASHCARD_CACHE_LIMIT:]
+    )
+    if stale_ids:
+        FlashcardProgress.objects.filter(id__in=stale_ids).delete()
+
 
 def update_flashcard_progress(course_id: str, card: dict, user=None) -> dict:
-    """Updates one flashcard progress record. status=not_started removes the
-    record unless the card is starred."""
+    """Updates one flashcard progress record.
+
+    status=not_started clears progress but keeps card text cached so decks can
+    be reloaded without another model call.
+    """
     status = card.get("status")
     if status not in {"mastered", "in_progress", "not_started"}:
         raise ValueError("status must be mastered, in_progress, or not_started")
@@ -769,28 +839,28 @@ def update_flashcard_progress(course_id: str, card: dict, user=None) -> dict:
 
     lookup = {"course_id": course_id, "card_key": key, **_flashcard_user_filter(user)}
     user_value = user if getattr(user, "is_authenticated", False) else None
+    existing = FlashcardProgress.objects.filter(**lookup).first()
+    term = card.get("term") or (existing.term if existing else "")
+    definition = card.get("definition") or (existing.definition if existing else "")
 
     if status == "not_started":
-        if starred:
-            FlashcardProgress.objects.update_or_create(
-                **lookup,
-                defaults={
-                    "user": user_value,
-                    "term": card.get("term", ""),
-                    "definition": card.get("definition", ""),
-                    "status": None,
-                    "starred": True,
-                },
-            )
-        else:
-            FlashcardProgress.objects.filter(**lookup).delete()
+        FlashcardProgress.objects.update_or_create(
+            **lookup,
+            defaults={
+                "user": user_value,
+                "term": term,
+                "definition": definition,
+                "status": None,
+                "starred": starred,
+            },
+        )
     else:
         FlashcardProgress.objects.update_or_create(
             **lookup,
             defaults={
                 "user": user_value,
-                "term": card.get("term", ""),
-                "definition": card.get("definition", ""),
+                "term": term,
+                "definition": definition,
                 "status": status,
                 "starred": starred,
             },
@@ -814,8 +884,7 @@ def reset_flashcard_progress(course_id: str, keys: list, user=None) -> None:
         card_key__in=key_values,
         **_flashcard_user_filter(user),
     )
-    records.filter(starred=True).update(status=None)
-    records.filter(starred=False).delete()
+    records.update(status=None)
 
 
 def read_calendar_sync(course_id: str, user=None) -> list:
@@ -945,6 +1014,59 @@ def write_grades(course_id: str, data: dict, user=None) -> None:
             )
 
 
+def validate_saved_site_url(url: str) -> str:
+    normalized = str(url or "").strip()
+    if not normalized:
+        raise ValueError("url is required")
+    if len(normalized) > 2048:
+        raise ValueError("url is too long")
+
+    parsed = urlparse(normalized)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("url must be an absolute http(s) URL")
+    return normalized
+
+
+def _saved_site_to_dict(site) -> dict:
+    return {
+        "id": site.id,
+        "course_id": site.course_id,
+        "title": site.title,
+        "url": site.url,
+        "created_at": site.created_at.isoformat() if site.created_at else None,
+        "updated_at": site.updated_at.isoformat() if site.updated_at else None,
+    }
+
+
+def list_saved_sites(course_id: str, user=None) -> list:
+    _course_dir(course_id)
+    from agent.models import SavedSite
+
+    records = _scope_user_queryset(SavedSite.objects.filter(course_id=course_id), user).order_by("title", "id")
+    return [_saved_site_to_dict(site) for site in records]
+
+
+def save_site(course_id: str, url: str, title: str = None, user=None) -> dict:
+    _course_dir(course_id)
+    normalized_url = validate_saved_site_url(url)
+    title = str(title or "").strip()
+    if not title:
+        parsed = urlparse(normalized_url)
+        title = parsed.netloc or normalized_url
+    title = title[:255]
+
+    from agent.models import SavedSite
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    site, _created = SavedSite.objects.update_or_create(
+        course_id=course_id,
+        user=user_value,
+        url=normalized_url,
+        defaults={"title": title},
+    )
+    return _saved_site_to_dict(site)
+
+
 def _custom_event_to_dict(event) -> dict:
     return {
         "id": event.event_id,
@@ -1008,6 +1130,24 @@ def write_custom_events(events: list, user=None) -> None:
                 synced_at=event.get("synced_at"),
                 created_at=event.get("created_at", datetime.now(timezone.utc).isoformat()),
             )
+
+
+def claim_custom_event(event_id: str, user) -> None:
+    """Reassigns a legacy (pre-auth, user=NULL) custom event to user, the
+    moment an authenticated caller actually targets it for update, delete,
+    or calendar sync. Legacy events are otherwise shared read-only across
+    every authenticated user (write_custom_events above deliberately never
+    touches one it wasn't given by id) — without this claim step, a mutation
+    aimed at one by id would either silently discard its own change (an
+    update matching a still-legacy id is skipped by write_custom_events) or,
+    for calendar sync specifically, wrongly stamp shared state (a Google
+    Calendar sync is inherently per-user) onto a row every other user still
+    sees. A no-op for anonymous callers or an event_id with no legacy row."""
+    if not getattr(user, "is_authenticated", False):
+        return
+    from agent.models import CustomEvent
+
+    CustomEvent.objects.filter(event_id=event_id, user__isnull=True).update(user=user)
 
 
 def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
@@ -1118,6 +1258,7 @@ def delete_course_state(course_id: str) -> None:
         MasteryScore,
         Notification,
         QuizAttempt,
+        SavedSite,
     )
 
     with transaction.atomic():
@@ -1129,6 +1270,7 @@ def delete_course_state(course_id: str) -> None:
         QuizAttempt.objects.filter(course_id=course_id).delete()
         MasteryScore.objects.filter(course_id=course_id).delete()
         CourseSession.objects.filter(course_id=course_id).delete()
+        SavedSite.objects.filter(course_id=course_id).delete()
 
 
 def rename_course(course_id: str, course_name: str) -> None:

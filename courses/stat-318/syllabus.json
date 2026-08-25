@@ -1,0 +1,41 @@
+{
+  "course_id": "stat-318",
+  "course_name": "Stat 318",
+  "dates": [],
+  "grading": [
+    {
+      "component": "Homework",
+      "weight_pct": 25.0,
+      "total_items": null,
+      "drop_lowest": null
+    },
+    {
+      "component": "Tests",
+      "weight_pct": 25.0,
+      "total_items": null,
+      "drop_lowest": null
+    },
+    {
+      "component": "Projects",
+      "weight_pct": 25.0,
+      "total_items": null,
+      "drop_lowest": null
+    },
+    {
+      "component": "Other",
+      "weight_pct": 25.0,
+      "total_items": null,
+      "drop_lowest": null
+    }
+  ],
+  "topics": [
+    "Basic rules and theorems of probability",
+    "Conditional probability and independence",
+    "Discrete random variables",
+    "Continuous random variables",
+    "Expectations",
+    "Applications and methods of basic probability",
+    "Selected topics in statistical analysis",
+    "Global Statistical Data Analysis Project"
+  ]
+}

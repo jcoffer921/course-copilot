@@ -1,6 +1,6 @@
 import pytest
 
-from agent.services.syllabus_extraction import _parse_model_json, extract_text_from_bytes
+from agent.services.syllabus_extraction import _normalize_extracted_syllabus, _parse_model_json, extract_text_from_bytes
 
 
 def test_parse_model_json_uses_last_valid_object_after_self_correction():
@@ -43,6 +43,22 @@ json
 def test_parse_model_json_raises_when_no_complete_json_object_exists():
     with pytest.raises(ValueError, match="model did not return valid JSON"):
         _parse_model_json("Here is the extraction: {not valid")
+
+
+def test_normalize_extracted_syllabus_maps_legacy_date_types():
+    data = _normalize_extracted_syllabus({
+        "course_id": "cmpsc460",
+        "course_name": "Principles of Programming Languages",
+        "dates": [
+            {"date": "2026-10-01", "title": "Term-1 Exam", "type": "exam"},
+            {"date": "2026-10-08", "title": "Homework", "type": "assignment"},
+            {"date": "2026-10-15", "title": "Reading", "type": "reading"},
+        ],
+        "grading": [],
+        "topics": [],
+    })
+
+    assert [item["type"] for item in data["dates"]] == ["test_quiz", "hw", "class"]
 
 
 def test_extract_text_from_bytes_reads_plain_text_formats():

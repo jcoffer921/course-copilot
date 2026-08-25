@@ -152,7 +152,7 @@ def test_write_grading_config_raises_when_no_syllabus_exists(isolated_courses_di
 
 
 def test_validate_grading_config_rejects_invalid_component_name():
-    grading = [{"component": "Class Participation", "weight_pct": 100}]
+    grading = [{"component": "Attendance", "weight_pct": 100}]
 
     errors = storage.validate_grading_config(grading)
 
@@ -170,6 +170,7 @@ def test_validate_grading_config_accepts_every_fixed_category_name():
 
     blocking = [e for e in errors if not e.startswith("WARNING")]
     assert blocking == []
+    assert {"Lab and Demo", "Final Project", "Class Participation"}.issubset(storage.GRADING_CATEGORY_CHOICES)
 
 
 def test_validate_grading_config_rejects_duplicate_component_names():

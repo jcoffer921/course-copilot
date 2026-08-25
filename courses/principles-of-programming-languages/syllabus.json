@@ -1,0 +1,95 @@
+{
+  "course_id": "principles-of-programming-languages",
+  "course_name": "Principles of Programming Languages",
+  "dates": [
+    {
+      "date": "2026-08-24",
+      "title": "Classes Begin",
+      "type": "other"
+    },
+    {
+      "date": "2026-08-29",
+      "title": "Regular Drop Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-08-30",
+      "title": "Regular Add Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-13",
+      "title": "Late Add/Drop Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-22",
+      "title": "Thanksgiving Holiday Begin (No Classes)",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-28",
+      "title": "Thanksgiving Holiday End",
+      "type": "other"
+    },
+    {
+      "date": "2026-12-11",
+      "title": "Classes End",
+      "type": "other"
+    },
+    {
+      "date": "2026-12-14",
+      "title": "Final Exams Begin",
+      "type": "test_quiz"
+    },
+    {
+      "date": "2026-12-17",
+      "title": "Final Exams End",
+      "type": "test_quiz"
+    }
+  ],
+  "grading": [
+    {
+      "component": "Other",
+      "weight_pct": 35
+    },
+    {
+      "component": "Midterm",
+      "weight_pct": 10
+    },
+    {
+      "component": "Projects",
+      "weight_pct": 20
+    },
+    {
+      "component": "Final Project",
+      "weight_pct": 20
+    },
+    {
+      "component": "Tests",
+      "weight_pct": 15
+    }
+  ],
+  "topics": [
+    "Introduction to Programming Paradigms",
+    "Programming Paradigms and Software Problem Discovery",
+    "Imperative Paradigm: What Is a Programming Language?",
+    "Imperative Paradigm: Run-Time Systems",
+    "Functional Paradigm with DrRacket / Racket",
+    "Introduction to Programming Languages",
+    "Racket Definitions, Data Types",
+    "Functional Paradigm: Functions, Conditions, Custom Types",
+    "Object-Oriented Paradigm",
+    "Declarative Paradigm",
+    "Emerging Software Development Model: AI-Native Software Engineering",
+    "Comparing Programming Paradigms",
+    "Language Structure and Abstract Syntax Trees (AST)",
+    "Programming Language Environments and Evaluation",
+    "Interpreters and Language Implementation",
+    "Domain-Specific Languages (DSL) and Language Design",
+    "Language, Paradigm, Architecture & AI Strategy for Industrial Software Development",
+    "Software Product Demonstration and Technical Defense",
+    "Future of Programming Languages and AI-Native Software Engineering",
+    "Final Project Presentation"
+  ]
+}

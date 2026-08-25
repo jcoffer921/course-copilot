@@ -4,7 +4,7 @@ from datetime import date, timedelta
 import pytest
 from rest_framework.test import APIClient
 
-from agent.models import CalendarSyncRecord, CourseSession, FlashcardProgress, GradeItem, MasteryScore, QuizAttempt
+from agent.models import CalendarSyncRecord, CourseSession, FlashcardProgress, GradeItem, MasteryScore, QuizAttempt, SavedSite
 from agent import views
 from agent.services import ask, storage
 
@@ -90,6 +90,38 @@ def test_references_get_empty_for_new_course(isolated_courses_dir, api_client):
 
     assert response.status_code == 200
     assert response.data["references"] == []
+
+
+def test_saved_sites_post_then_get_stores_url_metadata_only(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.post(
+        "/api/courses/cs101/saved-sites/",
+        {"url": "https://example.edu/book", "title": "Course Book"},
+        format="json",
+    )
+
+    assert response.status_code == 201
+    assert response.data["site"]["title"] == "Course Book"
+    assert response.data["site"]["url"] == "https://example.edu/book"
+    assert SavedSite.objects.get(course_id="cs101").url == "https://example.edu/book"
+
+    list_response = api_client.get("/api/courses/cs101/saved-sites/")
+    assert list_response.status_code == 200
+    assert list_response.data["sites"][0]["title"] == "Course Book"
+    assert "text" not in list_response.data["sites"][0]
+
+
+def test_saved_sites_post_rejects_non_http_url(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101")
+
+    response = api_client.post(
+        "/api/courses/cs101/saved-sites/",
+        {"url": "ftp://example.edu/book", "title": "Course Book"},
+        format="json",
+    )
+
+    assert response.status_code == 400
 
 
 def test_references_post_rejects_unsupported_file_type(isolated_courses_dir, api_client):
@@ -179,6 +211,64 @@ def test_flashcards_generate_annotates_saved_progress(isolated_courses_dir, api_
     assert card["starred"] is True
 
 
+def test_flashcards_generate_reuses_saved_deck(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101")
+    saved = storage.update_flashcard_progress("cs101", {
+        "term": "Closure",
+        "definition": "Captured state.",
+        "status": "in_progress",
+        "starred": False,
+    }, user=api_client.user)
+
+    async def fail_generate_flashcards_async(*args, **kwargs):
+        raise AssertionError("flashcards should not regenerate when saved cards exist")
+
+    monkeypatch.setattr(views.quiz, "generate_flashcards_async", fail_generate_flashcards_async)
+
+    response = api_client.post("/api/courses/cs101/flashcards/generate/", {"count": 1}, format="json")
+
+    assert response.status_code == 200
+    assert response.data["model"] == "saved"
+    assert response.data["flashcards"] == [{
+        "key": saved["key"],
+        "term": "Closure",
+        "definition": "Captured state.",
+        "source": "saved",
+        "url": None,
+        "status": "in_progress",
+        "starred": False,
+    }]
+
+
+def test_flashcards_generate_regenerate_flag_bypasses_saved_deck(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101")
+    storage.update_flashcard_progress("cs101", {
+        "term": "Old",
+        "definition": "Existing card.",
+        "status": "mastered",
+        "starred": False,
+    }, user=api_client.user)
+
+    async def fake_generate_flashcards_async(course_id, topic=None, chunk_id=None, count=8, user=None):
+        return {
+            "course_id": course_id,
+            "model": "fake",
+            "flashcards": [{"term": "New", "definition": "Fresh card.", "source": "course", "url": None}],
+        }
+
+    monkeypatch.setattr(views.quiz, "generate_flashcards_async", fake_generate_flashcards_async)
+
+    response = api_client.post(
+        "/api/courses/cs101/flashcards/generate/",
+        {"count": 1, "regenerate": True},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["model"] == "fake"
+    assert response.data["flashcards"][0]["term"] == "New"
+
+
 def test_quiz_history_rejects_malformed_limit(isolated_courses_dir, api_client):
     _seed_syllabus("cs101")
 
@@ -217,7 +307,10 @@ def test_flashcard_progress_patch_and_reset(isolated_courses_dir, api_client):
     )
 
     assert reset_response.status_code == 200
-    assert storage.read_flashcard_progress("cs101", user=api_client.user)["cards"] == {}
+    card = storage.read_flashcard_progress("cs101", user=api_client.user)["cards"][key]
+    assert card["term"] == "Closure"
+    assert card["definition"] == "Captured state."
+    assert "status" not in card
 
 
 def test_flashcard_progress_patch_rejects_missing_course(isolated_courses_dir, api_client):
@@ -640,7 +733,7 @@ def test_grade_items_post_adds_item(isolated_courses_dir, api_client):
 
     assert response.status_code == 201
     assert response.data["component"] == "Homework"
-    assert len(storage.read_grades("cs101")["items"]) == 1
+    assert len(storage.read_grades("cs101", user=api_client.user)["items"]) == 1
 
 
 def test_grade_items_post_422s_for_unknown_component(isolated_courses_dir, api_client):

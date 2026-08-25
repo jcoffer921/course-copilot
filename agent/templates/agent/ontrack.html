@@ -36,6 +36,28 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
     .course-chip-row:hover .course-chip-actions,.course-chip-row:focus-within .course-chip-actions{opacity:1}
     .course-chip-icon-btn{width:22px;height:22px;border:none;background:transparent;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;cursor:pointer;color:inherit;opacity:.65;flex:none;padding:0}
     .course-chip-icon-btn:hover{opacity:1;background:color-mix(in srgb, var(--color-text) 12%, transparent)}
+    .chat-diagram{margin:4px 0 12px;border:1px solid var(--color-neutral-300);border-radius:8px;background:#fff;overflow:hidden;min-width:260px;max-width:100%}
+    .chat-diagram-label{font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;opacity:.6;padding:8px 10px;border-bottom:1px solid var(--color-neutral-200);background:var(--color-neutral-100)}
+    .chat-diagram-body{padding:12px;display:flex;flex-direction:column;gap:8px;overflow-x:auto}
+    .chat-diagram-row{display:grid;grid-template-columns:minmax(120px,1fr) 28px minmax(120px,1fr);align-items:center;gap:8px;min-width:320px}
+    .chat-diagram-node{border:1px solid var(--color-neutral-300);border-radius:8px;background:var(--color-accent-100);padding:8px 10px;font-size:12.5px;font-weight:700;line-height:1.25;text-align:center;overflow-wrap:anywhere}
+    .chat-diagram-arrow{font-size:18px;font-weight:900;text-align:center;color:var(--color-accent-700)}
+    .chat-code-block{margin:4px 0 12px;border:1px solid var(--color-neutral-300);border-radius:8px;background:color-mix(in srgb,var(--color-text) 5%,#fff);padding:10px 12px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-x:auto}
+    .chat-venn{margin:4px 0 10px;border:1px solid var(--color-neutral-300);border-radius:8px;background:#fff;overflow:hidden;width:340px;max-width:100%}
+    .chat-venn-label{font-size:10px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;opacity:.6;padding:7px 9px;border-bottom:1px solid var(--color-neutral-200);background:var(--color-neutral-100)}
+    .chat-venn-stage{position:relative;height:150px;margin:8px;border:2px solid var(--color-neutral-500);border-radius:8px;background:color-mix(in srgb,var(--color-neutral-100) 70%,#fff)}
+    .chat-venn-stage.highlight-universe{background:color-mix(in srgb,var(--color-accent) 30%,#fff)}
+    .chat-venn-universe{position:absolute;top:7px;left:9px;font-size:11px;font-weight:800;opacity:.6}
+    .chat-venn-circle{position:absolute;top:33px;width:92px;height:92px;border:2px solid var(--color-neutral-700);border-radius:999px;background:transparent}
+    .chat-venn-circle.a{left:62px}.chat-venn-circle.b{right:62px}
+    .chat-venn-circle.highlight{background:color-mix(in srgb,var(--color-accent) 28%,transparent)}
+    .chat-venn-circle.cutout{background:color-mix(in srgb,var(--color-neutral-100) 70%,#fff)}
+    .chat-venn-overlap{position:absolute;left:calc(50% - 20px);top:38px;width:40px;height:82px;border-radius:999px;background:transparent}
+    .chat-venn-overlap.highlight{background:color-mix(in srgb,var(--color-accent) 48%,transparent)}
+    .chat-venn-overlap.mask{background:color-mix(in srgb,var(--color-neutral-100) 70%,#fff)}
+    .chat-venn-label-a,.chat-venn-label-b{position:absolute;top:70px;font-size:13px;font-weight:900;color:var(--color-neutral-900)}
+    .chat-venn-label-a{left:98px}.chat-venn-label-b{right:98px}
+    .chat-venn-caption{font-size:12px;line-height:1.4;margin:0 9px 9px;color:var(--color-neutral-700)}
     .notification-bell-wrap{position:relative;flex:none}
     .notification-bell{width:32px;height:32px;border:1px solid var(--color-neutral-300);border-radius:999px;background:#fff;color:var(--color-neutral-700);display:flex;align-items:center;justify-content:center;cursor:pointer}
     .notification-badge{position:absolute;top:-5px;right:-5px;min-width:17px;height:17px;border-radius:999px;background:var(--color-accent);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;padding:0 4px}
@@ -58,10 +80,10 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
     .mini-cal-day.selected{box-shadow:inset 0 0 0 2px var(--color-neutral-800);background:var(--color-accent-100)}
     .mini-cal-day.today.selected{background:var(--color-accent);box-shadow:inset 0 0 0 2px #fff}
     .mini-cal-day.muted{opacity:.32}
-    .deadline-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .deadline-stat{border:1px solid var(--color-neutral-300);border-radius:10px;background:var(--color-neutral-100);padding:12px}
-    .deadline-stat-value{font-family:var(--font-heading);font-size:28px;line-height:1}
-    .deadline-stat-label{font-size:11px;font-weight:800;text-transform:uppercase;opacity:.62;margin-top:6px}
+    .deadline-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 12px}
+    .deadline-stat{display:flex;align-items:baseline;justify-content:space-between;gap:8px;border-bottom:1px solid color-mix(in srgb,var(--color-neutral-300) 70%,transparent);padding:6px 0}
+    .deadline-stat-value{font-family:var(--font-heading);font-size:20px;line-height:1;order:2}
+    .deadline-stat-label{font-size:10.5px;font-weight:900;text-transform:uppercase;opacity:.62;order:1}
     .deadline-filter{display:flex;align-items:center;gap:10px;border:1px solid transparent;background:transparent;border-radius:10px;padding:8px 9px;cursor:pointer;text-align:left;font-weight:800;color:var(--color-text);width:100%}
     .deadline-filter:hover{background:var(--color-neutral-100);border-color:var(--color-neutral-200)}
     .deadline-dot{width:10px;height:10px;border-radius:999px;flex:none;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 10%,transparent)}
@@ -306,7 +328,7 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
             <h1 style="font-family:var(--font-heading);font-size:30px;margin:0 0 4px">{{ dashboardGreeting }}</h1>
             <p style="margin:0;opacity:.65;font-size:14.5px">Here's what's grounded in your syllabi this week.</p>
           </div>
-          <span class="tag tag-accent">Fall 2026 · CS101 + PSYC201</span>
+          <span class="tag tag-accent">{{ dashboardScopeTag }}</span>
         </div>
 
         <sc-if value="{{ showDashboardLoading }}" hint-placeholder-val="{{ false }}">
@@ -330,6 +352,9 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
                 <button type="button" class="btn btn-ghost" style="font-size:12.5px" onClick="{{ goToDeadlinesTab }}">See all →</button>
               </div>
               <p style="font-size:13px;opacity:.75;margin:0 0 var(--space-4)">For {{ scopeLabel }} in the next two weeks.</p>
+              <sc-if value="{{ showDashboardDeadlinesLimit }}" hint-placeholder-val="{{ false }}">
+                <p style="font-size:12px;opacity:.6;margin:-6px 0 var(--space-3)">{{ dashboardDeadlinesLimitText }}</p>
+              </sc-if>
               <sc-if value="{{ showDashboardSyncError }}" hint-placeholder-val="{{ false }}">
                 <p style="font-size:12.5px;color:var(--color-accent-700);margin:0 0 var(--space-3)">{{ dashboardSyncError }}</p>
               </sc-if>
@@ -987,7 +1012,7 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
               </div>
 
               <sc-if value="{{ flashcardsLoading }}" hint-placeholder-val="{{ false }}">
-                <div style="padding:var(--space-8);text-align:center;opacity:.7">Building low-cost flashcards with Haiku…</div>
+                <div style="padding:var(--space-8);text-align:center;opacity:.7">Loading flashcards...</div>
               </sc-if>
 
               <sc-if value="{{ flashcardsError }}" hint-placeholder-val="{{ false }}">
@@ -1252,6 +1277,9 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
                 </div>
                 <div class="deadline-popover-actions">
                   <button type="button" class="btn btn-secondary" onClick="{{ closeDeadlinePopover }}">Close</button>
+                  <sc-if value="{{ deadlinePopoverCanDelete }}" hint-placeholder-val="{{ true }}">
+                    <button type="button" class="btn btn-secondary" onClick="{{ deleteDeadlineFromPopover }}">Delete</button>
+                  </sc-if>
                   <button type="button" class="btn btn-primary" onClick="{{ editDeadlineFromPopover }}">Edit</button>
                 </div>
               </div>
@@ -1306,7 +1334,7 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
           <div style="padding:var(--space-4) var(--space-6);border-bottom:1px solid var(--color-neutral-200);display:flex;align-items:center;gap:8px">
             <span class="tag tag-accent">{{ courseName }}</span>
           </div>
-          <div style="flex:1;overflow-y:auto;padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)">
+          <div id="chat-scroll-region" style="flex:1;overflow-y:auto;padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-4)" onScroll="{{ handleChatScroll }}">
             <sc-if value="{{ chatIsEmpty }}" hint-placeholder-val="{{ false }}">
               <div style="text-align:center;opacity:.5;font-size:13px;padding:var(--space-8) 0">Ask Cora a question about {{ courseName }} to get started.</div>
             </sc-if>
@@ -1333,6 +1361,44 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
                       </sc-if>
                       <sc-if value="{{ blk.isRule }}" hint-placeholder-val="{{ false }}">
                         <div style="height:1px;background:var(--color-neutral-200);margin:10px 0"></div>
+                      </sc-if>
+                      <sc-if value="{{ blk.isDiagram }}" hint-placeholder-val="{{ false }}">
+                        <div class="chat-diagram">
+                          <div class="chat-diagram-label">{{ blk.title }}</div>
+                          <div class="chat-diagram-body">
+                            <sc-if value="{{ blk.hasRows }}" hint-placeholder-val="{{ true }}">
+                              <sc-for list="{{ blk.rows }}" as="row" hint-placeholder-count="3">
+                                <div class="chat-diagram-row">
+                                  <div class="chat-diagram-node">{{ row.from }}</div>
+                                  <div class="chat-diagram-arrow">→</div>
+                                  <div class="chat-diagram-node">{{ row.to }}</div>
+                                </div>
+                              </sc-for>
+                            </sc-if>
+                            <sc-if value="{{ !blk.hasRows }}" hint-placeholder-val="{{ false }}">
+                              <pre class="chat-code-block" style="margin:0">{{ blk.code }}</pre>
+                            </sc-if>
+                          </div>
+                        </div>
+                      </sc-if>
+                      <sc-if value="{{ blk.isCodeBlock }}" hint-placeholder-val="{{ false }}">
+                        <pre class="chat-code-block">{{ blk.code }}</pre>
+                      </sc-if>
+                      <sc-if value="{{ blk.isVenn }}" hint-placeholder-val="{{ false }}">
+                        <div class="chat-venn">
+                          <div class="chat-venn-label">{{ blk.title }}</div>
+                          <div class="{{ blk.stageClass }}">
+                            <div class="chat-venn-universe">{{ blk.universe }}</div>
+                            <div class="{{ blk.circleAClass }}"></div>
+                            <div class="{{ blk.circleBClass }}"></div>
+                            <div class="{{ blk.overlapClass }}"></div>
+                            <div class="chat-venn-label-a">{{ blk.a }}</div>
+                            <div class="chat-venn-label-b">{{ blk.b }}</div>
+                          </div>
+                          <sc-if value="{{ blk.caption }}" hint-placeholder-val="{{ false }}">
+                            <p class="chat-venn-caption">{{ blk.caption }}</p>
+                          </sc-if>
+                        </div>
                       </sc-if>
                       <sc-if value="{{ blk.isP }}" hint-placeholder-val="{{ true }}">
                         <p style="margin:0 0 8px">
@@ -1396,17 +1462,30 @@ window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
                     </sc-for>
                   </div>
                   <sc-if value="{{ m.hasPendingDeadline }}" hint-placeholder-val="{{ false }}">
-                    <div style="margin-top:8px;border:1px solid var(--color-neutral-300);background:#fff;border-radius:var(--radius-lg);padding:12px 14px;min-width:280px;max-width:420px">
-                      <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:8px">Deadline draft</div>
-                      <div style="font-family:var(--font-heading);font-size:18px;margin-bottom:4px">{{ m.pendingTitle }}</div>
-                      <div style="font-size:12.5px;opacity:.68;line-height:1.5">{{ m.pendingMeta }}</div>
+                    <div style="margin-top:8px;border:1px solid var(--color-neutral-300);background:#fff;border-radius:var(--radius-lg);padding:12px 14px;min-width:280px;max-width:460px">
+                      <div style="font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;opacity:.55;margin-bottom:8px">{{ m.pendingDraftLabel }}</div>
+                      <div style="font-family:var(--font-heading);font-size:18px;line-height:1.2;margin-bottom:10px">{{ m.pendingTitle }}</div>
+                      <div style="display:grid;grid-template-columns:88px minmax(0,1fr);gap:6px 12px;border-top:1px solid var(--color-neutral-200);border-bottom:1px solid var(--color-neutral-200);padding:10px 0">
+                        <sc-for list="{{ m.pendingDetails }}" as="detail" hint-placeholder-count="5">
+                          <div style="font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;opacity:.5">{{ detail.label }}</div>
+                          <div style="font-size:12.5px;font-weight:700;color:var(--color-neutral-800);overflow-wrap:anywhere">{{ detail.value }}</div>
+                        </sc-for>
+                      </div>
                       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-                        <button type="button" class="btn btn-primary" onClick="{{ m.onConfirmPending }}">Add deadline</button>
-                        <button type="button" class="btn btn-secondary" onClick="{{ m.onEditPending }}">Edit details</button>
+                        <button type="button" class="btn btn-primary" onClick="{{ m.onConfirmPending }}">{{ m.pendingAddLabel }}</button>
+                        <sc-if value="{{ m.canEditPending }}" hint-placeholder-val="{{ true }}">
+                          <button type="button" class="btn btn-secondary" onClick="{{ m.onEditPending }}">Edit details</button>
+                        </sc-if>
                         <button type="button" class="btn btn-secondary" onClick="{{ m.onCancelPending }}">Cancel</button>
                       </div>
                     </div>
                   </sc-if>
+                  <div style="margin-top:4px;display:flex;justify-content:flex-end;width:100%">
+                    <button type="button" class="btn btn-secondary btn-icon" title="{{ m.copyTitle }}" aria-label="{{ m.copyTitle }}" onClick="{{ m.onCopy }}" style="width:auto;height:26px;min-width:70px;padding:0 8px;font-size:11px;gap:5px">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                      <span>{{ m.copyLabel }}</span>
+                    </button>
+                  </div>
                   <sc-if value="{{ m.isAssistant }}" hint-placeholder-val="{{ false }}">
                     <div style="font-size:11px;opacity:.5;margin-top:4px;display:flex;flex-wrap:wrap;gap:4px;align-items:center">
                       <sc-if value="{{ m.hasSources }}" hint-placeholder-val="{{ false }}">
@@ -1694,12 +1773,15 @@ function getCookie(name) {
 function readJsonResponse(response) {
   const contentType = response.headers.get('content-type') || '';
   return response.text().then(text => {
+    if (response.ok && !text) {
+      return { ok: true, status: response.status, data: {} };
+    }
     if (contentType.indexOf('application/json') !== -1) {
       return { ok: response.ok, status: response.status, data: text ? JSON.parse(text) : {} };
     }
     const message = response.ok
       ? 'Server returned a non-JSON response.'
-      : 'Server returned an HTML error page. If this happened after updating deadlines, run database migrations and try again.';
+      : 'Server returned an HTML error page. Run database migrations if this started after an update, then try again.';
     return { ok: false, status: response.status, data: { detail: message } };
   });
 }
@@ -1802,6 +1884,58 @@ function tableRowGridStyle(colCount) {
   return 'display:grid;grid-template-columns:repeat(' + colCount + ',minmax(0,1fr));';
 }
 
+function normalizeMermaidLabel(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^["']|["']$/g, '')
+    .replace(/^[A-Za-z0-9_]+\s*(?:\[\s*|\(\s*|\{\s*)/, '')
+    .replace(/(?:\s*\]|\s*\)|\s*\})$/, '')
+    .trim();
+}
+
+function parseMermaidDiagram(code) {
+  const rows = [];
+  String(code || '').split('\n').forEach(line => {
+    const clean = line.trim();
+    if (!clean || /^(flowchart|graph)\b/i.test(clean) || /^%%/.test(clean)) return;
+    const match = clean.match(/^(.+?)\s*-{1,2}(?:>|-)\s*(.+)$/);
+    if (!match) return;
+    const from = normalizeMermaidLabel(match[1]);
+    const to = normalizeMermaidLabel(match[2]);
+    if (from && to) rows.push({ from: from, to: to });
+  });
+  return rows;
+}
+
+function parseVennDiagram(code) {
+  const data = { operation: 'union', a: 'A', b: 'B', universe: 'U', caption: '' };
+  String(code || '').split('\n').forEach(line => {
+    const match = line.match(/^\s*([a-zA-Z_]+)\s*:\s*(.*?)\s*$/);
+    if (!match) return;
+    const key = match[1].toLowerCase();
+    if (Object.prototype.hasOwnProperty.call(data, key) && match[2]) data[key] = match[2];
+  });
+  const operation = String(data.operation || 'union').toLowerCase().replace(/[-\s]+/g, '_');
+  const highlightA = ['union', 'a_minus_b'].indexOf(operation) >= 0;
+  const highlightB = ['union', 'b_minus_a'].indexOf(operation) >= 0;
+  const highlightOverlap = ['union', 'intersection'].indexOf(operation) >= 0;
+  const maskOverlap = ['a_minus_b', 'b_minus_a'].indexOf(operation) >= 0;
+  const complementA = operation === 'complement_a';
+  return {
+    isP: false, isList: false, isTable: false, isHeading: false, isRule: false,
+    isDiagram: false, isCodeBlock: false, isVenn: true,
+    title: 'Venn Diagram',
+    a: data.a || 'A',
+    b: data.b || 'B',
+    universe: data.universe || 'U',
+    caption: data.caption || '',
+    stageClass: 'chat-venn-stage' + (complementA ? ' highlight-universe' : ''),
+    circleAClass: 'chat-venn-circle a' + (highlightA ? ' highlight' : '') + (complementA ? ' cutout' : ''),
+    circleBClass: 'chat-venn-circle b' + (highlightB ? ' highlight' : ''),
+    overlapClass: 'chat-venn-overlap' + (highlightOverlap ? ' highlight' : '') + (maskOverlap ? ' mask' : '')
+  };
+}
+
 function parseMarkdownBlocks(text) {
   const lines = normalizeAssistantMarkdown(text).replace(/\r\n/g, '\n').split('\n');
   const blocks = [];
@@ -1811,8 +1945,37 @@ function parseMarkdownBlocks(text) {
     if (!line.trim()) { i++; continue; }
 
     if (/^\s*-{3,}\s*$/.test(line)) {
-      blocks.push({ isP: false, isList: false, isTable: false, isHeading: false, isRule: true });
+      blocks.push({ isP: false, isList: false, isTable: false, isHeading: false, isRule: true, isDiagram: false, isCodeBlock: false, isVenn: false });
       i++;
+      continue;
+    }
+
+    const fenceMatch = line.match(/^\s*```([A-Za-z0-9_-]*)\s*$/);
+    if (fenceMatch) {
+      const language = (fenceMatch[1] || '').toLowerCase();
+      const codeLines = [];
+      i++;
+      while (i < lines.length && !/^\s*```\s*$/.test(lines[i])) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      if (i < lines.length) i++;
+      const code = codeLines.join('\n').trim();
+      if (language === 'mermaid') {
+        const rows = parseMermaidDiagram(code);
+        blocks.push({
+          isP: false, isList: false, isTable: false, isHeading: false, isRule: false,
+          isDiagram: true, isCodeBlock: false, isVenn: false, title: 'Diagram', code: code, rows: rows,
+          hasRows: rows.length > 0
+        });
+      } else if (language === 'venn') {
+        blocks.push(parseVennDiagram(code));
+      } else {
+        blocks.push({
+          isP: false, isList: false, isTable: false, isHeading: false, isRule: false,
+          isDiagram: false, isCodeBlock: true, isVenn: false, code: code
+        });
+      }
       continue;
     }
 
@@ -1821,7 +1984,7 @@ function parseMarkdownBlocks(text) {
       const level = headingMatch[1].length;
       const size = level === 2 ? '16px' : level === 3 ? '14.5px' : '13.5px';
       blocks.push({
-        isP: false, isList: false, isTable: false, isHeading: true, isRule: false,
+        isP: false, isList: false, isTable: false, isHeading: true, isRule: false, isDiagram: false, isCodeBlock: false, isVenn: false,
         spans: parseInlineSpans(headingMatch[2]),
         style: 'font-family:var(--font-heading);font-size:' + size + ';font-weight:700;line-height:1.25;margin:10px 0 6px'
       });
@@ -1839,7 +2002,7 @@ function parseMarkdownBlocks(text) {
       }
       const gridStyle = tableRowGridStyle(header.length);
       blocks.push({
-        isP: false, isList: false, isTable: true, isHeading: false, isRule: false,
+        isP: false, isList: false, isTable: true, isHeading: false, isRule: false, isDiagram: false, isCodeBlock: false, isVenn: false,
         header: header, rows: rows,
         headerRowStyle: gridStyle + 'background:color-mix(in srgb, var(--color-text) 5%, transparent)',
         dataRowStyle: gridStyle + 'border-top:1px solid var(--color-neutral-200)'
@@ -1855,7 +2018,7 @@ function parseMarkdownBlocks(text) {
         items.push({ spans: parseInlineSpans(lines[i].replace(itemRe, '')) });
         i++;
       }
-      blocks.push({ isP: false, isList: true, isOrdered: ordered, isTable: false, isHeading: false, isRule: false, items: items });
+      blocks.push({ isP: false, isList: true, isOrdered: ordered, isTable: false, isHeading: false, isRule: false, isDiagram: false, isCodeBlock: false, isVenn: false, items: items });
       continue;
     }
 
@@ -1864,6 +2027,7 @@ function parseMarkdownBlocks(text) {
       i < lines.length && lines[i].trim() &&
       !/^\s*-{3,}\s*$/.test(lines[i]) &&
       !/^\s{0,3}#{2,4}\s+/.test(lines[i]) &&
+      !/^\s*```[A-Za-z0-9_-]*\s*$/.test(lines[i]) &&
       !/^\s*[-*]\s+/.test(lines[i]) &&
       !/^\s*\d+\.\s+/.test(lines[i]) &&
       !(lines[i].trim().startsWith('|') && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1]))
@@ -1871,7 +2035,7 @@ function parseMarkdownBlocks(text) {
       paraLines.push(lines[i]);
       i++;
     }
-    blocks.push({ isP: true, isList: false, isTable: false, isHeading: false, isRule: false, spans: parseInlineSpans(paraLines.join(' ')) });
+    blocks.push({ isP: true, isList: false, isTable: false, isHeading: false, isRule: false, isDiagram: false, isCodeBlock: false, isVenn: false, spans: parseInlineSpans(paraLines.join(' ')) });
   }
   return blocks;
 }
@@ -1903,7 +2067,7 @@ class Component extends DCLogic {
     gradingSetupLoading: false, gradingSetupError: null, gradesNotice: null,
     uploadOpenFor: null, uploadLectureId: '', uploadDate: '', uploadFile: null,
     uploadLoading: false, uploadError: null, uploadConflict: null,
-    chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null,
+    chatMessages: [], chatInput: '', chatLoading: false, chatSending: false, chatError: null, chatCopiedIndex: null,
     chatSessionId: null, chatSessions: [], chatSessionsLoading: false, chatSessionsError: null,
     addClassOpen: false, addClassName: '', addClassId: '', addClassIdLocked: false,
     addClassFile: null, addClassLoading: false, addClassError: null,
@@ -1929,6 +2093,7 @@ class Component extends DCLogic {
   _uploadSeq = 0;
   _chatSeq = 0;
   _sessionsSeq = 0;
+  _chatAutoScroll = true;
   _addClassSeq = 0;
   _addGradeSeq = 0;
   _gradesSeq = 0;
@@ -1970,6 +2135,29 @@ class Component extends DCLogic {
     document.addEventListener('mousedown', this.handleDeadlineDocumentMouseDown, true);
     this._deadlineClock = window.setInterval(() => this.setState({ currentMinuteTick: Date.now() }), 60000);
   }
+
+  chatScroller() {
+    return document.getElementById('chat-scroll-region');
+  }
+
+  chatIsNearBottom() {
+    const el = this.chatScroller();
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  }
+
+  scrollChatToBottom(force) {
+    if (!force && !this._chatAutoScroll) return;
+    window.setTimeout(() => {
+      const el = this.chatScroller();
+      if (!el) return;
+      el.scrollTop = el.scrollHeight;
+    }, 0);
+  }
+
+  handleChatScroll = () => {
+    this._chatAutoScroll = this.chatIsNearBottom();
+  };
 
   loadProfile() {
     const seq = ++this._profileSeq;
@@ -2035,6 +2223,7 @@ class Component extends DCLogic {
     window.removeEventListener('keydown', this.handleDeadlineKeyDown);
     document.removeEventListener('mousedown', this.handleDeadlineDocumentMouseDown, true);
     if (this._deadlineClock) window.clearInterval(this._deadlineClock);
+    if (this._chatCopyTimer) window.clearTimeout(this._chatCopyTimer);
   }
 
   handleDeadlineKeyDown = (e) => {
@@ -2182,6 +2371,11 @@ class Component extends DCLogic {
     if (event) this.openEditDeadline(event);
   }
 
+  deleteDeadlineFromPopover() {
+    const event = this.state.deadlinePopoverEvent;
+    if (event && event.id) this.openDeleteDeadline(event);
+  }
+
   prefillDeadlineModal(deadline) {
     this.setState({
       deadlineModalOpen: true,
@@ -2242,30 +2436,44 @@ class Component extends DCLogic {
   }
 
   confirmPendingDeadline(deadline, index) {
-    if (!deadline || !deadline.title || !deadline.date) return;
-    const body = {
-      course_id: deadline.course_id || (this.state.course !== 'all' ? this.state.course : null),
-      date: deadline.date,
-      time: deadline.time || null,
-      end_time: deadline.end_time || null,
-      title: deadline.title,
-      type: normalizeDeadlineType(deadline.type),
-      completed: !!deadline.completed
-    };
-    fetch('/api/deadlines/', {
-      method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
-      body: JSON.stringify(body)
-    })
-      .then(readJsonResponse)
-      .then(({ ok, data }) => {
-        if (!ok) throw new Error(data.detail || 'Could not add that deadline.');
+    const deadlines = Array.isArray(deadline) ? deadline : [deadline];
+    const validDeadlines = deadlines.filter(d => d && d.title && d.date);
+    if (!validDeadlines.length) return;
+    const makeBody = (item) => ({
+      course_id: item.course_id || (this.state.course !== 'all' ? this.state.course : null),
+      date: item.date,
+      time: item.time || null,
+      end_time: item.end_time || null,
+      title: item.title,
+      type: normalizeDeadlineType(item.type),
+      completed: !!item.completed
+    });
+    Promise.all(validDeadlines.map(item =>
+      fetch('/api/deadlines/', {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+        body: JSON.stringify(makeBody(item))
+      })
+        .then(readJsonResponse)
+        .then(({ ok, data }) => {
+          if (!ok) throw new Error(data.detail || 'Could not add that deadline.');
+          return data;
+        })
+    ))
+      .then(() => {
         const messages = this.state.chatMessages.map((m, i) =>
-          i === index ? Object.assign({}, m, { pendingDeadline: null }) : m
+          i === index ? Object.assign({}, m, { pendingDeadline: null, pendingDeadlines: [] }) : m
         );
+        const count = validDeadlines.length;
+        const text = count > 1
+          ? `Added ${count} class meetings to your deadlines calendar.`
+          : 'Added it to your deadlines calendar.';
         this.setState({
-          chatMessages: messages.concat([{ from: 'assistant', text: 'Added the deadline to your calendar.', sources: [], grounded: true }])
+          chatMessages: messages.concat([{ from: 'assistant', text: text, sources: [], grounded: true }])
         });
+        this.scrollChatToBottom();
         this.loadAllDeadlines();
+        this.loadDashboard();
+        this.loadDashboardRecent(this.state.course);
         this.loadNotifications();
       })
       .catch(e => {
@@ -2275,13 +2483,50 @@ class Component extends DCLogic {
 
   dismissPendingDeadline(index) {
     const messages = this.state.chatMessages.map((m, i) =>
-      i === index ? Object.assign({}, m, { pendingDeadline: null }) : m
+      i === index ? Object.assign({}, m, { pendingDeadline: null, pendingDeadlines: [] }) : m
     );
     this.setState({ chatMessages: messages });
   }
 
+  copyChatMessage(text, index) {
+    const value = String(text || '');
+    const markCopied = () => {
+      this.setState({ chatCopiedIndex: index });
+      clearTimeout(this._chatCopyTimer);
+      this._chatCopyTimer = setTimeout(() => {
+        if (this.state.chatCopiedIndex === index) this.setState({ chatCopiedIndex: null });
+      }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(value).then(markCopied).catch(() => this.copyChatMessageFallback(value, markCopied));
+      return;
+    }
+    this.copyChatMessageFallback(value, markCopied);
+  }
+
+  copyChatMessageFallback(text, onDone) {
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.setAttribute('readonly', '');
+    area.style.position = 'fixed';
+    area.style.left = '-9999px';
+    document.body.appendChild(area);
+    area.select();
+    try { document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(area);
+    onDone();
+  }
+
   openDeleteDeadline(event) {
-    this.setState({ deleteDeadlineOpen: true, deleteDeadlineId: event.id, deleteDeadlineTitle: event.title, deleteDeadlineError: null, deleteDeadlineLoading: false });
+    this.setState({
+      deadlinePopoverEvent: null,
+      deadlinePopoverStyle: 'display:none',
+      deleteDeadlineOpen: true,
+      deleteDeadlineId: event.id,
+      deleteDeadlineTitle: event.title,
+      deleteDeadlineError: null,
+      deleteDeadlineLoading: false
+    });
   }
 
   closeDeleteDeadline() {
@@ -2290,13 +2535,17 @@ class Component extends DCLogic {
 
   confirmDeleteDeadline() {
     const id = this.state.deleteDeadlineId;
+    if (!id || this.state.deleteDeadlineLoading) return;
     this.setState({ deleteDeadlineLoading: true, deleteDeadlineError: null });
     fetch(`/api/deadlines/${id}/`, { method: 'DELETE', headers: { 'X-CSRFToken': getCookie('csrftoken') } })
       .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (!ok) throw new Error(data.detail || 'Could not delete this deadline.');
         this.closeDeleteDeadline();
+        this.setState({ deadlinePopoverEvent: null, deadlinePopoverStyle: 'display:none' });
         this.loadAllDeadlines();
+        this.loadDashboard();
+        this.loadDashboardRecent(this.state.course);
         this.loadNotifications();
       })
       .catch(e => {
@@ -2369,7 +2618,7 @@ class Component extends DCLogic {
     const seq = ++this._sessionsSeq;
     this.setState({ chatSessionsLoading: true, chatSessionsError: null });
     fetch(`/api/courses/${courseId}/sessions/`)
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._sessionsSeq) return;
         if (!ok) { this.setState({ chatSessionsLoading: false, chatSessionsError: data.detail || 'Could not load past chats.' }); return; }
@@ -2383,16 +2632,18 @@ class Component extends DCLogic {
 
   openChatSession(courseId, sessionId) {
     const seq = ++this._chatSeq;
-    this.setState({ chatLoading: true, chatError: null });
+    this.setState({ chatLoading: true, chatError: null, chatCopiedIndex: null });
     fetch(`/api/courses/${courseId}/sessions/${sessionId}/`)
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._chatSeq) return;
         if (!ok) { this.setState({ chatLoading: false, chatError: data.detail || 'Could not load that chat.' }); return; }
         const messages = (data.messages || []).map(m => ({
           from: m.role, text: m.content, sources: m.sources || [], grounded: !!m.grounded
         }));
-        this.setState({ chatLoading: false, chatSessionId: sessionId, chatMessages: messages, chatInput: '' });
+        this._chatAutoScroll = true;
+        this.setState({ chatLoading: false, chatSessionId: sessionId, chatMessages: messages, chatInput: '', chatCopiedIndex: null });
+        this.scrollChatToBottom(true);
       })
       .catch(e => {
         if (seq !== this._chatSeq) return;
@@ -2402,17 +2653,20 @@ class Component extends DCLogic {
 
   sendChatMessage(courseId, question) {
     const seq = ++this._chatSeq;
+    const shouldFollow = this.chatIsNearBottom();
+    this._chatAutoScroll = shouldFollow;
     this.setState({
       chatMessages: this.state.chatMessages.concat([{ from: 'user', text: question }]),
-      chatInput: '', chatSending: true, chatError: null
+      chatInput: '', chatSending: true, chatError: null, chatCopiedIndex: null
     });
+    this.scrollChatToBottom();
 
     const ask = (sessionId) => {
       fetch(`/api/courses/${courseId}/ask/`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
         body: JSON.stringify({ question: question, session_id: sessionId })
       })
-        .then(r => r.json().then(data => ({ ok: r.ok, data })))
+        .then(readJsonResponse)
         .then(({ ok, data }) => {
           if (seq !== this._chatSeq) return;
           if (!ok) { this.setState({ chatSending: false, chatError: data.detail || 'Could not get an answer.' }); return; }
@@ -2421,9 +2675,11 @@ class Component extends DCLogic {
             chatSessionId: sessionId,
             chatMessages: this.state.chatMessages.concat([{
               from: 'assistant', text: data.answer, sources: data.sources || [], grounded: !!data.grounded,
-              pendingDeadline: data.pending_deadline || null
+              pendingDeadline: data.pending_deadline || null,
+              pendingDeadlines: data.pending_deadlines || []
             }])
           });
+          this.scrollChatToBottom();
           this.loadChatSessions(courseId);
         })
         .catch(e => {
@@ -2440,7 +2696,7 @@ class Component extends DCLogic {
     fetch(`/api/courses/${courseId}/sessions/`, {
       method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken') }
     })
-      .then(r => r.json().then(data => ({ ok: r.ok, data })))
+      .then(readJsonResponse)
       .then(({ ok, data }) => {
         if (seq !== this._chatSeq) return;
         if (!ok) { this.setState({ chatSending: false, chatError: data.detail || 'Could not start a new chat.' }); return; }
@@ -2958,14 +3214,26 @@ class Component extends DCLogic {
       Tests: ['test'],
       Quizzes: ['quiz'],
       Projects: ['project', 'presentation', 'capstone'],
+      'Lab and Demo': ['lab', 'demo'],
+      'Final Project': ['final project'],
+      'Class Participation': ['class participation', 'participation'],
       Midterm: ['midterm'],
       Final: ['final'],
     };
     // Fixed precedence order, independent of `choices`' own ordering: more-specific
-    // keywords (e.g. "project") must be checked before the generic "midterm"/"final"
-    // keywords, so a legacy name like "Final Project" routes to Projects rather than
-    // Final just because 'final' happens to appear earlier in `choices`.
-    const precedence = ['Homework', 'Tests', 'Quizzes', 'Projects', 'Midterm', 'Final'];
+    // keywords (e.g. "final project") must be checked before the generic
+    // "final" keyword.
+    const precedence = [
+      'Final Project',
+      'Lab and Demo',
+      'Class Participation',
+      'Homework',
+      'Tests',
+      'Quizzes',
+      'Projects',
+      'Midterm',
+      'Final',
+    ];
     for (const category of precedence) {
       if (!choices.includes(category)) continue;
       const keywords = synonyms[category];
@@ -3569,10 +3837,11 @@ class Component extends DCLogic {
       } else if (t === 'flashcards') {
         goToFlashcards(targetCourse);
       } else if (t === 'chat') {
+        this._chatAutoScroll = true;
         if (targetCourse !== s.course) {
-          this.setState({ tab: t, course: targetCourse, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null });
+          this.setState({ tab: t, course: targetCourse, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatCopiedIndex: null });
         } else {
-          this.setState({ tab: t });
+          this.setState({ tab: t, chatCopiedIndex: null });
         }
         this.loadChatSessions(targetCourse);
       } else if (t === 'progress') {
@@ -3608,7 +3877,8 @@ class Component extends DCLogic {
         this.loadDashboardRecent(courseId);
       } else if (s.tab === 'chat') {
         if (courseId !== s.course) {
-          this.setState({ course: courseId, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null });
+          this._chatAutoScroll = true;
+          this.setState({ course: courseId, chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatCopiedIndex: null });
           this.loadChatSessions(courseId);
         }
       } else if (s.tab === 'progress') {
@@ -3631,7 +3901,9 @@ class Component extends DCLogic {
       return { monthAbbrUpper: MONTH_LABELS[bits[1] - 1].toUpperCase(), monthLabel: MONTH_LABELS[bits[1] - 1], day: String(bits[2]) };
     };
 
-    const deadlines = s.dashboardDeadlines.filter(d => s.course === 'all' || d.course_id === s.course).map(d => {
+    const DASHBOARD_DEADLINE_LIMIT = 6;
+    const dashboardDeadlineSource = s.dashboardDeadlines.filter(d => s.course === 'all' || d.course_id === s.course);
+    const deadlines = dashboardDeadlineSource.slice(0, DASHBOARD_DEADLINE_LIMIT).map(d => {
       const dp = dateParts(d.date);
       const key = d.course_id + '|' + d.date + '|' + d.title;
       return {
@@ -3643,6 +3915,11 @@ class Component extends DCLogic {
         onAddToCalendar: () => this.addToCalendar(d.course_id, d.date, d.title, d.type, key)
       };
     });
+    const dashboardDeadlinesHiddenCount = Math.max(0, dashboardDeadlineSource.length - deadlines.length);
+    const showDashboardDeadlinesLimit = dashboardDeadlinesHiddenCount > 0;
+    const dashboardDeadlinesLimitText = showDashboardDeadlinesLimit
+      ? ('Showing first ' + deadlines.length + ' of ' + dashboardDeadlineSource.length + '.')
+      : '';
     const courseLabel = (id) => id ? id.toUpperCase() : 'General';
     const formatDateShort = (isoDate) => {
       if (!isoDate) return 'No date';
@@ -3696,16 +3973,6 @@ class Component extends DCLogic {
       : 'Add one manually or switch courses to review the full schedule.';
     const deadlinesEmptyTitle = s.course === 'all' ? 'No upcoming deadlines' : 'No deadlines here';
     const visibleDeadlinesCount = enrichedDeadlines.length + (enrichedDeadlines.length === 1 ? ' event' : ' events');
-    const overdueCount = enrichedDeadlines.filter(isDeadlineOverdue).length;
-    const todayCount = enrichedDeadlines.filter(d => d.date === todayIso).length;
-    const weekEndIso = isoDateLocal(addDays(new Date(), 7));
-    const weekCount = enrichedDeadlines.filter(d => d.date >= todayIso && d.date <= weekEndIso).length;
-    const deadlineStats = [
-      { value: String(enrichedDeadlines.length), label: 'Visible' },
-      { value: String(todayCount), label: 'Today' },
-      { value: String(weekCount), label: 'Next 7 days' },
-      { value: String(overdueCount), label: 'Overdue' }
-    ];
     const miniWeekdays = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
     const monthAnchor = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
     const miniStart = addDays(monthAnchor, -monthAnchor.getDay());
@@ -3730,6 +3997,23 @@ class Component extends DCLogic {
         ? MONTH_LABELS[viewStart.getMonth()] + ' ' + viewStart.getFullYear()
         : MONTH_LABELS[viewStart.getMonth()] + ' ' + viewStart.getDate() + ' - ' + MONTH_LABELS[viewEnd.getMonth()] + ' ' + viewEnd.getDate();
     }
+    const periodStartIso = s.calendarView === 'month'
+      ? isoDateLocal(monthAnchor)
+      : isoDateLocal(viewStart);
+    const periodEndIso = s.calendarView === 'month'
+      ? isoDateLocal(new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0))
+      : isoDateLocal(viewDays[viewDays.length - 1]);
+    const periodEvents = enrichedDeadlines.filter(d => d.date >= periodStartIso && d.date <= periodEndIso);
+    const selectedDayEvents = enrichedDeadlines.filter(d => d.date === s.calendarSelectedDate);
+    const periodAllDayCount = periodEvents.filter(d => d.startMinutes === null).length;
+    const periodTimedCount = periodEvents.length - periodAllDayCount;
+    const periodLabel = s.calendarView === 'month' ? 'This month' : s.calendarView === 'week' ? 'This week' : 'This day';
+    const deadlineStats = [
+      { value: String(periodEvents.length), label: periodLabel },
+      { value: String(selectedDayEvents.length), label: 'Selected day' },
+      { value: String(periodAllDayCount), label: 'All day' },
+      { value: String(periodTimedCount), label: 'Timed' }
+    ];
     const calendarDayHeaders = viewDays.map(d => {
       const iso = isoDateLocal(d);
       return {
@@ -3881,6 +4165,7 @@ class Component extends DCLogic {
     const deadlinePopoverDotStyle = 'background:' + popoverInfo.dot;
     const deadlinePopoverDate = popoverEvent ? popoverEvent.dateLabel : '';
     const deadlinePopoverTime = popoverEvent ? popoverEvent.timeRange : '';
+    const deadlinePopoverCanDelete = !!(popoverEvent && popoverEvent.source === 'custom' && popoverEvent.id);
     const weakTopicsForCourse = (id) => ((courseMetaFor(id) && courseMetaFor(id).weak_topics) || []).map(t => Object.assign({}, t, { course_id: id }));
     const rawWeakTopics = s.course === 'all'
       ? realCourseIds.map(weakTopicsForCourse).reduce((a, b) => a.concat(b), []).sort((a, b) => a.score - b.score)
@@ -3943,22 +4228,31 @@ class Component extends DCLogic {
       question: a.question, correct: a.correct, incorrect: !a.correct,
       iconColor: a.correct ? 'var(--color-accent-2-700)' : 'var(--color-accent-700)'
     }));
+    const dashboardScopeTag = s.course === 'all'
+      ? (realCourseIds.length > 0 ? (realCourseIds.length + (realCourseIds.length === 1 ? ' course' : ' courses')) : 'No courses')
+      : courseDisplayName;
     const progressMeta = courseMetaFor(s.course);
-    const syllabusCoveredPct = (progressMeta && progressMeta.topics_count > 0)
-      ? Math.round(100 * progressMeta.quizzed_count / progressMeta.topics_count) + '%'
+    const aggregateTopicsCount = realCourseIds.reduce((sum, id) => sum + (((courseMetaFor(id) || {}).topics_count) || 0), 0);
+    const aggregateQuizzedCount = realCourseIds.reduce((sum, id) => sum + (((courseMetaFor(id) || {}).quizzed_count) || 0), 0);
+    const aggregateQuizAttempts = realCourseIds.reduce((sum, id) => sum + (((courseMetaFor(id) || {}).quiz_attempts_count) || 0), 0);
+    const aggregateQuizCorrect = realCourseIds.reduce((sum, id) => sum + (((courseMetaFor(id) || {}).quiz_correct_count) || 0), 0);
+    const glanceTopicsCount = s.course === 'all' ? aggregateTopicsCount : ((progressMeta && progressMeta.topics_count) || 0);
+    const glanceQuizzedCount = s.course === 'all' ? aggregateQuizzedCount : ((progressMeta && progressMeta.quizzed_count) || 0);
+    const glanceQuizAttempts = s.course === 'all' ? aggregateQuizAttempts : ((progressMeta && progressMeta.quiz_attempts_count) || 0);
+    const glanceQuizCorrect = s.course === 'all' ? aggregateQuizCorrect : ((progressMeta && progressMeta.quiz_correct_count) || 0);
+    const syllabusCoveredPct = glanceTopicsCount > 0
+      ? Math.round(100 * glanceQuizzedCount / glanceTopicsCount) + '%'
       : '—';
-    const syllabusCoveredLabel = progressMeta
-      ? (progressMeta.quizzed_count + ' of ' + progressMeta.topics_count + ' topics quizzed')
-      : 'Loading…';
+    const syllabusCoveredLabel = courseMetaLoaded
+      ? (glanceQuizzedCount + ' of ' + glanceTopicsCount + ' topics quizzed')
+      : 'Loading...';
     const streakLabel = s.dashboardStreak + (s.dashboardStreak === 1 ? ' day' : ' days');
     const streakSubLabel = s.dashboardStreak > 0 ? 'Keep it going' : 'Start today';
-    const quizAccuracyTotal = s.dashboardRecentAttempts.length;
-    const quizAccuracyCorrect = s.dashboardRecentAttempts.filter(a => a.correct).length;
-    const quizAccuracyPct = quizAccuracyTotal > 0
-      ? Math.round(100 * quizAccuracyCorrect / quizAccuracyTotal) + '%'
+    const quizAccuracyPct = glanceQuizAttempts > 0
+      ? Math.round(100 * glanceQuizCorrect / glanceQuizAttempts) + '%'
       : '—';
-    const quizAccuracyLabel = quizAccuracyTotal > 0
-      ? (quizAccuracyCorrect + ' of ' + quizAccuracyTotal + ' answers correct')
+    const quizAccuracyLabel = glanceQuizAttempts > 0
+      ? (glanceQuizCorrect + ' of ' + glanceQuizAttempts + ' answers correct')
       : 'No attempts yet';
     const retryDashboard = () => this.loadDashboard();
     const retryDashboardRecent = () => this.loadDashboardRecent(s.course);
@@ -4093,23 +4387,59 @@ class Component extends DCLogic {
       : 'background:var(--color-neutral-100);padding:11px 15px;border-radius:var(--radius-lg);font-size:14px;line-height:1.45';
 
     const hasSources = (m) => m.from === 'assistant' && !!(m.grounded && m.sources && m.sources.length);
-    const formatPendingDeadlineMeta = (deadline) => {
-      if (!deadline) return '';
+    const formatPendingDeadlineDetails = (deadline) => {
+      if (!deadline) return [];
       const info = deadlineCategoryInfo[normalizeDeadlineType(deadline.type)] || deadlineCategoryInfo.other;
-      const course = deadline.course_id ? deadline.course_id.toUpperCase() : 'General';
-      const time = deadline.time ? (' · ' + deadline.time + (deadline.end_time ? ('-' + deadline.end_time) : '')) : ' · All day';
-      return course + ' · ' + info.label + ' · ' + (deadline.date || 'No date') + time;
+      const courseMeta = deadline.course_id ? courseMetaFor(deadline.course_id) : null;
+      const course = courseMeta ? courseMeta.name : (deadline.course_id ? deadline.course_id.toUpperCase() : 'General');
+      const time = deadline.time ? (deadline.time + (deadline.end_time ? ('-' + deadline.end_time) : '')) : 'All day';
+      return [
+        { label: 'Course', value: course },
+        { label: 'Type', value: info.label },
+        { label: 'Date', value: deadline.date || 'No date' },
+        { label: 'Time', value: time },
+      ];
     };
-    const chatMessages = s.chatMessages.map((m, index) => ({
+    const formatPendingDeadlinesDetails = (deadlines) => {
+      if (!deadlines.length) return [];
+      if (deadlines.length === 1) return formatPendingDeadlineDetails(deadlines[0]);
+      const first = deadlines[0] || {};
+      const info = deadlineCategoryInfo[normalizeDeadlineType(first.type)] || deadlineCategoryInfo.other;
+      const courseMeta = first.course_id ? courseMetaFor(first.course_id) : null;
+      const course = courseMeta ? courseMeta.name : (first.course_id ? first.course_id.toUpperCase() : 'General');
+      const dates = deadlines.map(d => d.date).filter(Boolean).sort();
+      const dateLabel = dates.length > 6
+        ? (dates[0] + ' to ' + dates[dates.length - 1])
+        : dates.join(', ');
+      const times = Array.from(new Set(deadlines.map(d => d.time ? (d.time + (d.end_time ? ('-' + d.end_time) : '')) : 'All day')));
+      return [
+        { label: 'Course', value: course },
+        { label: 'Type', value: info.label },
+        { label: 'Meetings', value: String(deadlines.length) },
+        { label: dates.length > 6 ? 'Range' : 'Dates', value: dateLabel || 'No dates' },
+        { label: 'Time', value: times.join(', ') || 'All day' },
+      ];
+    };
+    const chatMessages = s.chatMessages.map((m, index) => {
+      const pendingDeadlines = (m.pendingDeadlines && m.pendingDeadlines.length)
+        ? m.pendingDeadlines
+        : (m.pendingDeadline ? [m.pendingDeadline] : []);
+      return {
       blocks: parseMarkdownBlocks(m.text), rowStyle: msgStyle(m.from), wrapStyle: wrapStyle(m.from), bubbleStyle: bubbleStyle(m.from),
       isAssistant: m.from === 'assistant',
+      copyLabel: s.chatCopiedIndex === index ? 'Copied' : 'Copy',
+      copyTitle: s.chatCopiedIndex === index ? 'Copied message' : 'Copy message',
+      onCopy: () => this.copyChatMessage(m.text, index),
       hasSources: hasSources(m),
       notGroundedText: !hasSources(m) && m.from === 'assistant' ? 'Not grounded in your course material' : '',
-      hasPendingDeadline: !!m.pendingDeadline,
-      pendingTitle: m.pendingDeadline ? m.pendingDeadline.title : '',
-      pendingMeta: formatPendingDeadlineMeta(m.pendingDeadline),
-      onConfirmPending: () => this.confirmPendingDeadline(m.pendingDeadline, index),
-      onEditPending: () => this.prefillDeadlineModal(m.pendingDeadline),
+      hasPendingDeadline: pendingDeadlines.length > 0,
+      pendingDraftLabel: pendingDeadlines.length > 1 ? 'Schedule draft' : 'Deadline draft',
+      pendingTitle: pendingDeadlines.length > 1 ? (pendingDeadlines.length + ' class meetings') : (pendingDeadlines[0] ? pendingDeadlines[0].title : ''),
+      pendingDetails: formatPendingDeadlinesDetails(pendingDeadlines),
+      pendingAddLabel: pendingDeadlines.length > 1 ? 'Add events' : 'Add deadline',
+      canEditPending: pendingDeadlines.length === 1,
+      onConfirmPending: () => this.confirmPendingDeadline(pendingDeadlines, index),
+      onEditPending: () => this.prefillDeadlineModal(pendingDeadlines[0]),
       onCancelPending: () => this.dismissPendingDeadline(index),
       sourceItems: hasSources(m)
         ? m.sources.map(src => ({
@@ -4119,7 +4449,8 @@ class Component extends DCLogic {
             href: src
           }))
         : []
-    }));
+      };
+    });
     const chatCourseMeta = courseMetaFor(s.course);
     const chatNotesCount = (chatCourseMeta && chatCourseMeta.notes_count) || 0;
     const chatReferencesCount = (chatCourseMeta && chatCourseMeta.references_count) || 0;
@@ -4144,7 +4475,8 @@ class Component extends DCLogic {
     };
     const startNewChat = () => {
       this._chatSeq++;
-      this.setState({ chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatLoading: false });
+      this._chatAutoScroll = true;
+      this.setState({ chatMessages: [], chatInput: '', chatError: null, chatSessionId: null, chatLoading: false, chatCopiedIndex: null });
     };
     const sessionItemStyle = (active) => 'padding:8px;border-radius:var(--radius-lg);cursor:pointer;font-size:12.5px;' +
       (active ? 'background:var(--color-neutral-200)' : '');
@@ -4177,6 +4509,7 @@ class Component extends DCLogic {
       currentUsername: s.currentUsername,
       userInitial: displayName ? displayName[0].toUpperCase() : '?',
       dashboardGreeting: greetingPrefix + ', ' + displayName,
+      dashboardScopeTag: dashboardScopeTag,
       openSettings: () => this.openSettings(),
       closeSettings: () => this.closeSettings(),
       saveSettings: () => this.saveSettings(),
@@ -4290,7 +4623,9 @@ class Component extends DCLogic {
       courseIsDraft: courseIsDraft,
       yourCoursesGridStyle: 'display:grid;grid-template-columns:' + (s.course === 'all' ? '1fr 1fr' : '1fr') + ';gap:var(--space-4);margin-bottom:var(--space-6)',
       yourCoursesCards: yourCoursesCards,
-      deadlines: deadlines, weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
+      deadlines: deadlines, showDashboardDeadlinesLimit: showDashboardDeadlinesLimit,
+      dashboardDeadlinesLimitText: dashboardDeadlinesLimitText,
+      weakTopics: weakTopics, allTopics: allTopics, recentAttempts: dashboardRecentActivity, mcOptions: mcOptions, quizDots: quizDots,
       miniCalendarTitle: miniCalendarTitle, miniWeekdays: miniWeekdays, miniCalendarDays: miniCalendarDays,
       fullWeekdays: fullWeekdays, deadlineStats: deadlineStats,
       calendarMainTitle: calendarMainTitle, calendarDayHeaders: calendarDayHeaders, calendarTimeRows: calendarTimeRows,
@@ -4319,7 +4654,9 @@ class Component extends DCLogic {
       deadlinePopoverTitle: deadlinePopoverTitle, deadlinePopoverCourse: deadlinePopoverCourse,
       deadlinePopoverCategory: deadlinePopoverCategory, deadlinePopoverDotStyle: deadlinePopoverDotStyle,
       deadlinePopoverDate: deadlinePopoverDate, deadlinePopoverTime: deadlinePopoverTime,
+      deadlinePopoverCanDelete: deadlinePopoverCanDelete,
       closeDeadlinePopover: () => this.closeDeadlinePopover(), editDeadlineFromPopover: () => this.editDeadlineFromPopover(),
+      deleteDeadlineFromPopover: () => this.deleteDeadlineFromPopover(),
       deadlineModalOpen: s.deadlineModalOpen, deadlineModalTitle: deadlineModalTitle, deadlineSubmitLabel: deadlineSubmitLabel,
       deadlineModalSubtitle: deadlineModalSubtitle, deadlineTypeOptions: deadlineTypeOptions,
       deadlineCourseId: s.deadlineCourseId, deadlineCourseOptions: deadlineCourseOptions, onDeadlineCourseChange: onDeadlineCourseChange,
@@ -4433,6 +4770,7 @@ class Component extends DCLogic {
       chatError: s.chatError,
       chatGroundingText: chatGroundingText,
       chatNotesCountLabel: chatNotesCountLabel,
+      handleChatScroll: this.handleChatScroll,
       onChatInputChange: onChatInputChange,
       onChatInputKeyDown: onChatInputKeyDown,
       submitChat: submitChat,

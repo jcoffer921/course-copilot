@@ -64,6 +64,14 @@ def _note_topics(course_id: str) -> list:
     return topics
 
 
+def _quiz_accuracy_counts(course_id: str, user=None) -> dict:
+    attempts = storage.read_quiz_history(course_id, user=user).get("attempts", [])
+    return {
+        "quiz_attempts_count": len(attempts),
+        "quiz_correct_count": len([a for a in attempts if a.get("correct")]),
+    }
+
+
 def _annotate_synced(deadlines: list, user=None) -> list:
     """Marks each deadline with whether it's already been pushed to Google
     Calendar, by cross-referencing that course's calendar_sync.json (read
@@ -95,6 +103,7 @@ def _annotate_synced(deadlines: list, user=None) -> list:
 def _course_summary(course_id: str, user=None) -> dict:
     syllabus = storage.read_syllabus(course_id)
     weak_topics = mastery.weak_topics(course_id, user=user)
+    quiz_counts = _quiz_accuracy_counts(course_id, user=user)
     upcoming = reminders.upcoming_deadlines(within_days=None, course_ids=[course_id])
     syllabus_topics = syllabus.get("topics", [])
     note_topics = _note_topics(course_id)
@@ -104,6 +113,7 @@ def _course_summary(course_id: str, user=None) -> dict:
         "course_name": syllabus.get("course_name", course_id),
         "notes_count": len(storage.read_notes(course_id)),
         "topics_count": len(syllabus_topics),
+        **quiz_counts,
         # Only counts syllabus topics that have been quizzed — an
         # off-syllabus scored topic (see _merge_topics) must not inflate
         # this past topics_count, since "X of Y topics quizzed" and the

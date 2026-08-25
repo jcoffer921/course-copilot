@@ -49,6 +49,8 @@ def test_build_dashboard_composes_course_data(isolated_courses_dir):
     assert course["notes_count"] == 1
     assert course["topics_count"] == 3
     assert course["quizzed_count"] == 1
+    assert course["quiz_attempts_count"] == 1
+    assert course["quiz_correct_count"] == 1
     assert course["grading"] == [{"component": "HW", "weight_pct": 100}]
     assert [t["topic"] for t in course["weak_topics"]] == ["A"]
     assert course["topics"] == [
@@ -106,8 +108,22 @@ def test_build_dashboard_course_without_notes_or_mastery(isolated_courses_dir):
     course = data["courses"]["psyc201"]
     assert course["notes_count"] == 0
     assert course["quizzed_count"] == 0
+    assert course["quiz_attempts_count"] == 0
+    assert course["quiz_correct_count"] == 0
     assert course["weak_topics"] == []
     assert course["next_deadline"] is None
+
+
+def test_build_dashboard_quiz_accuracy_counts_all_attempts(isolated_courses_dir):
+    _seed_course("cs101", topics=["A"], grading=[], dates=[])
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-01T00:00:00"})
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": False, "timestamp": "2026-01-02T00:00:00"})
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-03T00:00:00"})
+
+    data = dashboard.build_dashboard()
+
+    assert data["courses"]["cs101"]["quiz_attempts_count"] == 3
+    assert data["courses"]["cs101"]["quiz_correct_count"] == 2
 
 
 def test_build_dashboard_next_deadline_uncapped_but_top_level_deadlines_windowed(isolated_courses_dir):
@@ -122,7 +138,11 @@ def test_build_dashboard_next_deadline_uncapped_but_top_level_deadlines_windowed
     data = dashboard.build_dashboard()
 
     assert data["courses"]["cs101"]["next_deadline"] == {
-        "course_id": "cs101", "date": far_date, "title": "Midterm", "type": "exam",
+        # reminders.upcoming_deadlines() normalizes syllabus date types through
+        # storage.normalize_date_type() — "exam" is a legacy alias for "test_quiz" —
+        # and tags each deadline with its replaces_syllabus_key-matching "key".
+        "course_id": "cs101", "date": far_date, "title": "Midterm", "type": "test_quiz",
+        "key": f"cs101|{far_date}|Midterm|test_quiz",
     }
     assert data["deadlines"] == []
 

@@ -1,0 +1,70 @@
+{
+  "lecture_id": "ComputationTheory_Lecture01",
+  "source": "notes",
+  "date": "8/24/26",
+  "topics": [
+    "Introduction to Computational Theory"
+  ],
+  "chunks": [
+    {
+      "id": "computation-theory-overview",
+      "topic": "Introduction to Computational Theory",
+      "text": "Computation Theory covers: mathematical formalization of computation, computation models of increasing difficulty/power, and the question of what can and cannot be computed. The field is divided into three main branches:\n- Automata Theory: mathematical modeling of computation\n- Computability Theory: knowing what is computable\n- Complexity Theory: distinguishing computationally hard vs. easy problems"
+    },
+    {
+      "id": "computation-theory-motivation",
+      "topic": "Introduction to Computational Theory",
+      "text": "Why study this theoretical framework?\n- Potential use: develop problem-solving computational skills independently of specific technologies (current programming languages, etc.); develop the ability to formulate computational ideas clearly, succinctly, and precisely.\n- Practical use: abstract programming language grammars; understanding finite automata and regular expressions for string pattern matching; understanding NP-completeness to determine time complexity of algorithms for different computational tasks."
+    },
+    {
+      "id": "discrete-math-framework",
+      "topic": "Introduction to Computational Theory",
+      "text": "The discrete mathematics framework underlying Computation Theory consists of three core areas: Sets, Relations, and Proofs."
+    },
+    {
+      "id": "sets-definition-and-notation",
+      "topic": "Introduction to Computational Theory",
+      "text": "A set is any collection of elements. Ways of defining a set:\n- Enumeration: listing all elements, e.g., A = {1, 3, 5, 6, 9}\n- Description by common properties: e.g., B = {x | x is an odd integer and x < 10}\nThe notation B = {x | P(x)} is read 'B is the set of all x such that P(x) holds.'\n\nTypes of sets:\n- Finite set: has a finite number of elements, e.g., A = {2, 4, 6, 8, 10}\n- Infinite set: has infinitely many elements, e.g., B = {x | x is an even integer}\n- Null (Empty) set: has no elements, denoted \u2205"
+    },
+    {
+      "id": "sets-membership-subsets-powerset",
+      "topic": "Introduction to Computational Theory",
+      "text": "Essential set concepts:\n- Membership: x \u2208 A means x is a member of A; x \u2209 A means x is not a member.\n- Subsets: A \u2286 B if every element of A is also in B (i.e., x \u2208 A implies x \u2208 B). A = B means A \u2286 B and B \u2286 A.\n- Power Set: P(A) is the set of all subsets of A. If |A| = N, then |P(A)| = 2^N."
+    },
+    {
+      "id": "sets-cardinality",
+      "topic": "Introduction to Computational Theory",
+      "text": "For set A, |A| denotes its cardinality \u2014 the number of elements in A.\nExamples:\n- If A = {1, 3, 5, 6, 9}, then |A| = 5\n- If |B| = 0, then B = \u2205\n- If |A| = N, then |P(A)| = 2^N"
+    },
+    {
+      "id": "sets-universal-set",
+      "topic": "Introduction to Computational Theory",
+      "text": "A universal set U is a set that contains elements of all related sets, without repetition. For example, if A = {1,2,3} and B = {1,a,b,c}, then the universal set is U = {1,2,3,a,b,c}."
+    },
+    {
+      "id": "sets-operations",
+      "topic": "Introduction to Computational Theory",
+      "text": "Set operations:\n- Union: A \u222a B = elements in A or B or both\n- Intersection: A \u2229 B = elements in both A and B; if A \u2229 B = \u2205, the sets are disjoint\n- Difference: A \u2013 B = elements in A that are not in B (equivalently, A \u2229 B')\n- Complement: A' = U \u2013 A (all elements in the universal set U not in A)\n\nFor finite sets: |A \u222a B| = |A| + |B| \u2013 |A \u2229 B|. If |A \u222a B| = |A| + |B|, then A and B are disjoint (A \u2229 B = \u2205).\n\nExample: A = {1,3,5,6,9}, B = {x | x is an odd integer}\n- A \u222a B = {x | x = 6 or x is odd}\n- A \u2229 B = {1,3,5,9}\n- A \u2013 B = {6}\n- B' = {x | x is an even integer}"
+    },
+    {
+      "id": "sets-operation-laws",
+      "topic": "Introduction to Computational Theory",
+      "text": "Set operation laws:\n- Commutative: A \u222a B = B \u222a A; A \u2229 B = B \u2229 A\n- Associative: A \u222a (B \u222a C) = (A \u222a B) \u222a C; A \u2229 (B \u2229 C) = (A \u2229 B) \u2229 C\n- Distributive: A \u222a (B \u2229 C) = (A \u222a B) \u2229 (A \u222a C); A \u2229 (B \u222a C) = (A \u2229 B) \u222a (A \u2229 C)\n- DeMorgan: (A \u222a B)' = A' \u2229 B'; (A \u2229 B)' = A' \u222a B'\n- Other: (A')' = A; A \u2229 A' = \u2205; A \u222a A' = U; A \u222a \u2205 = A; A \u2229 \u2205 = \u2205"
+    },
+    {
+      "id": "cartesian-product",
+      "topic": "Introduction to Computational Theory",
+      "text": "Cartesian Product:\n- A \u00d7 B = the set of ordered pairs (a, b) such that a \u2208 A and b \u2208 B.\n- A \u00d7 B \u00d7 C = the set of ordered triplets (a, b, c) such that a \u2208 A, b \u2208 B, c \u2208 C.\n- In general, A1 \u00d7 A2 \u00d7 \u2026 \u00d7 An = the set of all n-tuples (a1, a2, \u2026, an) such that ai \u2208 Ai for all i."
+    },
+    {
+      "id": "relations-definition",
+      "topic": "Introduction to Computational Theory",
+      "text": "A relation means to relate or associate a member of one set with a member of another. A relation from A to B is a subset of A \u00d7 B. If a \u2208 A is related to b \u2208 B, then (a, b) \u2208 R, also written aRb or 'R(a) contains b.' A binary relation from A to B involves exactly two sets. A relation can also be expressed as a function: f : A \u00d7 B \u2192 {TRUE, FALSE}, where f(a,b) = TRUE is equivalent to aRb."
+    },
+    {
+      "id": "equivalence-relation",
+      "topic": "Introduction to Computational Theory",
+      "text": "A binary relation R on a set A (a subset of A \u00d7 A) is an equivalence relation if it satisfies all three properties:\n- Reflexive: for all a in A, (a, a) \u2208 R\n- Symmetric: for all a, b in A, if (a, b) \u2208 R then (b, a) \u2208 R\n- Transitive: for all a, b, c in A, if (a, b) \u2208 R and (b, c) \u2208 R then (a, c) \u2208 R\n\nExamples on the integers \u2014 which are equivalence relations?\n- aRb if a < b (not reflexive, not symmetric)\n- aRb if a \u2264 b (not symmetric)\n- aRb if a = b (yes \u2014 equivalence relation)\n- aRb if |a \u2013 b| < 5 (reflexive, symmetric, but not transitive)\n- aRb if |a| = |b| (yes \u2014 equivalence relation)\n- aRb if a = |b| (not symmetric)\n- aRb if a and b are relatively prime (not reflexive)"
+    }
+  ]
+}

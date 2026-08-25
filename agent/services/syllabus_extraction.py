@@ -9,6 +9,7 @@ import json
 import re
 from pathlib import Path
 
+from . import storage
 from .client import MODEL_DEFAULT as MODEL, get_client
 
 EXTRACTION_SYSTEM_PROMPT = """You extract structured data from a course syllabus.
@@ -30,8 +31,8 @@ Schema:
 {
   "course_id": "string",
   "course_name": "string",
-  "dates": [{"date": "YYYY-MM-DD", "title": "string", "type": "exam|assignment|reading|other"}],
-  "grading": [{"component": "Homework|Tests|Quizzes|Midterm|Final|Projects|Other", "weight_pct": 0}],
+  "dates": [{"date": "YYYY-MM-DD", "title": "string", "type": "hw|project|test_quiz|class|other"}],
+  "grading": [{"component": "Homework|Tests|Quizzes|Midterm|Final|Projects|Lab and Demo|Final Project|Class Participation|Other", "weight_pct": 0}],
   "topics": ["string"]
 }
 
@@ -47,23 +48,34 @@ license to guess one — guessing a plausible-looking year (e.g. defaulting to t
 current year) is fabrication and is exactly what this rule exists to prevent. \
 Only extract a date when the year is either stated directly on it or unambiguous \
 from an explicit year stated elsewhere in the same document.
-- "type" must be exactly one of: exam, assignment, reading, other.
+- "type" must be exactly one of: hw, project, test_quiz, class, other. Map the \
+syllabus's own wording onto these:
+    - hw: homework, assignments, problem sets, exercises
+    - project: projects, presentations, capstone work, project deliverables
+    - test_quiz: quizzes, tests, exams, midterms, finals
+    - class: lectures, readings, class meetings, labs, demos
+    - other: anything real that doesn't fit the categories above
 - "weight_pct" is a number (e.g. 20 for 20%). If weights aren't given, drop that \
 whole grading[] entry — never emit {"component": ...} with no "weight_pct".
 - "component" MUST be exactly one of: Homework, Tests, Quizzes, Midterm, Final, \
-Projects, Other. Map the syllabus's own wording onto these:
+Projects, Lab and Demo, Final Project, Class Participation, Other. Map the \
+syllabus's own wording onto these:
     - Homework: homework, assignments, problem sets, exercises
     - Tests: recurring or unlabeled tests/exams not specifically called out as \
 "the midterm" or "the final"
     - Quizzes: quizzes
     - Midterm: an exam explicitly labeled as the midterm
     - Final: an exam explicitly labeled as the final
-    - Projects: projects, presentations, capstone work
-    - Other: anything real that doesn't fit the six above (participation, \
-attendance, lab reports, etc.) — use Other rather than dropping the entry or \
-forcing it into the wrong bucket.
+    - Projects: projects, presentations, capstone work that is not explicitly \
+the final project
+    - Lab and Demo: lab work, labs, demos, lab demonstrations
+    - Final Project: an explicitly labeled final project
+    - Class Participation: class participation, participation
+    - Other: anything real that doesn't fit the categories above (attendance, \
+miscellaneous course requirements, etc.) — use Other rather than dropping the \
+entry or forcing it into the wrong bucket.
   If two or more syllabus lines map to the same bucket (e.g. "Problem Sets" 15% \
-and "Lab Assignments" 10%, both Homework), merge them into ONE grading[] entry \
+and "Weekly Exercises" 10%, both Homework), merge them into ONE grading[] entry \
 with the summed weight_pct — never emit two entries with the same component.
 - "topics" is a flat list of topic/unit names as they appear in the syllabus.
 """
@@ -189,7 +201,28 @@ async def extract_syllabus_async(source_text: str, course_id: str, course_name_h
     )
 
     raw = "".join(block.text for block in response.content if block.type == "text").strip()
-    return _parse_model_json(raw)
+    return _normalize_extracted_syllabus(_parse_model_json(raw))
+
+
+def _normalize_extracted_syllabus(data: dict) -> dict:
+    """Bring model output forward to the app's current schema.
+
+    Older prompts and occasional model responses may use legacy calendar
+    types such as "exam" or "assignment"; the rest of the app now stores
+    hw/project/test_quiz/class/other.
+    """
+    if not isinstance(data, dict):
+        return data
+    dates = data.get("dates")
+    if isinstance(dates, list):
+        normalized_dates = []
+        for item in dates:
+            if isinstance(item, dict):
+                normalized_dates.append(dict(item, type=storage.normalize_date_type(item.get("type"))))
+            else:
+                normalized_dates.append(item)
+        data = dict(data, dates=normalized_dates)
+    return data
 
 
 def _parse_model_json(raw: str) -> dict:

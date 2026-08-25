@@ -26,6 +26,7 @@ from .serializers import (
     IngestReferenceRequestSerializer,
     NotificationReadSerializer,
     RecordAttemptRequestSerializer,
+    SavedSiteRequestSerializer,
     UpdateCustomEventRequestSerializer,
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
@@ -435,6 +436,53 @@ class DomainsView(APIView):
         return Response({"course_id": course_id, "domains": domains}, status=status.HTTP_200_OK)
 
 
+class SavedSitesView(APIView):
+    """
+    GET /api/courses/<course_id>/saved-sites/ — saved URL metadata only.
+    POST /api/courses/<course_id>/saved-sites/
+    body: {"url": "https://...", "title": "optional"}
+    """
+
+    async def get(self, request, course_id):
+        try:
+            sites = await sync_to_async(storage.list_saved_sites)(course_id, user=request.user)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except DatabaseError:
+            logger.exception("Database error listing saved sites")
+            return Response(
+                {"detail": "The saved sites database is not ready. Run database migrations, then try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"sites": sites}, status=status.HTTP_200_OK)
+
+    async def post(self, request, course_id):
+        serializer = SavedSiteRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            site = await sync_to_async(storage.save_site)(
+                course_id,
+                serializer.validated_data["url"],
+                title=serializer.validated_data.get("title") or None,
+                user=request.user,
+            )
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        except DatabaseError:
+            logger.exception("Database error saving site")
+            return Response(
+                {"detail": "The saved sites database is not ready. Run database migrations, then try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response({"course_id": course_id, "site": site}, status=status.HTTP_201_CREATED)
+
+
 class GradingConfigView(APIView):
     """
     GET /api/courses/<course_id>/grading/ — the grading array plus the
@@ -659,10 +707,12 @@ class QuizGenerateView(APIView):
 class FlashcardsGenerateView(APIView):
     """
     POST /api/courses/<course_id>/flashcards/generate/
-    body: {"topic": "<optional>", "chunk_id": "<optional>", "count": 1..12}
+    body: {"topic": "<optional>", "chunk_id": "<optional>", "count": 1..12, "regenerate": false}
 
-    Uses Haiku as the cheap gatherer/flashcard maker. If the course has approved
-    trusted domains, Haiku can use scoped web search for compact definitions.
+    Returns saved flashcards by default for an unscoped request (no topic or
+    chunk_id). Uses Haiku when no saved deck exists, when regenerate=true is
+    explicitly requested, or whenever topic/chunk_id narrows the request —
+    the saved deck isn't scoped by topic/chunk, so it can't answer those.
     """
 
     async def post(self, request, course_id):
@@ -673,17 +723,28 @@ class FlashcardsGenerateView(APIView):
         topic = serializer.validated_data.get("topic")
         chunk_id = serializer.validated_data.get("chunk_id")
         count = serializer.validated_data.get("count", 8)
+        regenerate = serializer.validated_data.get("regenerate", False)
 
         try:
-            deck = await quiz.generate_flashcards_async(
-                course_id, topic=topic, chunk_id=chunk_id, count=count, user=request.user
-            )
-            deck["flashcards"] = await sync_to_async(storage.annotate_flashcards_with_progress)(
-                course_id, deck.get("flashcards", []), user=request.user
-            )
-            await sync_to_async(storage.remember_generated_flashcards)(
-                course_id, deck.get("flashcards", []), user=request.user
-            )
+            saved_flashcards = []
+            if not regenerate and not topic and not chunk_id:
+                saved_flashcards = await sync_to_async(storage.read_saved_flashcards)(course_id, user=request.user)
+            if saved_flashcards:
+                deck = {
+                    "course_id": course_id,
+                    "model": "saved",
+                    "flashcards": saved_flashcards,
+                }
+            else:
+                deck = await quiz.generate_flashcards_async(
+                    course_id, topic=topic, chunk_id=chunk_id, count=count, user=request.user
+                )
+                deck["flashcards"] = await sync_to_async(storage.annotate_flashcards_with_progress)(
+                    course_id, deck.get("flashcards", []), user=request.user
+                )
+                await sync_to_async(storage.remember_generated_flashcards)(
+                    course_id, deck.get("flashcards", []), user=request.user
+                )
         except CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.InvalidCourseIdError as e:
@@ -1080,6 +1141,12 @@ class AskView(APIView):
         except (storage.SyllabusStorageError, storage.NotesStorageError,
                 storage.ReferencesStorageError, storage.TrustedDomainsStorageError) as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError:
+            logger.exception("Database error in ask endpoint")
+            return Response(
+                {"detail": "The chat database is not ready. Run database migrations, then try Cora again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except ValueError as e:
             return Response({"detail": f"ask failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
 
@@ -1102,6 +1169,12 @@ class SessionsView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except storage.CourseNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except DatabaseError:
+            logger.exception("Database error creating chat session")
+            return Response(
+                {"detail": "The chat database is not ready. Run database migrations, then try Cora again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {"session_id": session["session_id"], "created_at": session["created_at"]},
@@ -1115,6 +1188,12 @@ class SessionsView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except sessions.SessionStorageError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError:
+            logger.exception("Database error listing chat sessions")
+            return Response(
+                {"detail": "The chat database is not ready. Run database migrations, then try Cora again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(summaries, status=status.HTTP_200_OK)
 
@@ -1129,6 +1208,12 @@ class SessionDetailView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except sessions.SessionStorageError as e:
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError:
+            logger.exception("Database error loading chat session")
+            return Response(
+                {"detail": "The chat database is not ready. Run database migrations, then try Cora again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         if session is None:
             return Response(

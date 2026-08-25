@@ -11,6 +11,12 @@ from . import storage
 SESSION_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
 VALID_ROLES = {"user", "assistant"}
+MEMORY_STOPWORDS = {
+    "about", "after", "again", "also", "because", "before", "being", "between",
+    "could", "does", "from", "have", "into", "just", "like", "more", "need",
+    "should", "that", "their", "there", "these", "they", "this", "through",
+    "what", "when", "where", "which", "with", "would", "your",
+}
 
 
 class SessionStorageError(Exception):
@@ -39,6 +45,11 @@ def _user_filter(user=None) -> dict:
     if getattr(user, "is_authenticated", False):
         return {"user": user}
     return {"user__isnull": True}
+
+
+def _memory_terms(text: str) -> set:
+    words = re.findall(r"[a-zA-Z0-9_]{3,}", text or "")
+    return {word.lower() for word in words if word.lower() not in MEMORY_STOPWORDS}
 
 
 def _session_to_dict(session) -> dict:
@@ -211,3 +222,64 @@ def list_sessions(course_id: str, user=None) -> list:
         .annotate(message_count=Count("messages"))
         .order_by("session_id")
     ]
+
+
+def relevant_messages(
+    course_id: str, query: str, session_id: str = None, user=None, limit: int = 8,
+) -> list:
+    """Returns small excerpts from prior saved sessions that overlap query.
+
+    This is deliberately lexical and bounded. It gives Cora useful continuity
+    without stuffing every previous conversation into every prompt.
+    """
+    storage._course_dir(course_id)
+    terms = _memory_terms(query)
+    if not terms:
+        return []
+
+    from django.db.models import Q
+    from agent.models import CourseSession, SessionMessage
+
+    sessions_qs = CourseSession.objects.filter(course_id=course_id, **_user_filter(user))
+    if session_id:
+        sessions_qs = sessions_qs.exclude(session_id=session_id)
+
+    # Coarse DB-side substring pre-filter on the extracted terms, so a course
+    # with a lot of session history doesn't pull and score every message on
+    # every question — only rows that could plausibly overlap are fetched.
+    # The exact word-boundary scoring below still runs on this smaller set.
+    term_filter = Q()
+    for term in terms:
+        term_filter |= Q(content__icontains=term)
+
+    messages = (
+        SessionMessage.objects
+        .filter(session__in=sessions_qs)
+        .filter(term_filter)
+        .select_related("session")
+        .order_by("-session__updated_at", "position")[:200]
+    )
+
+    scored = []
+    for message in messages:
+        content = message.content or ""
+        message_terms = _memory_terms(content)
+        overlap = terms & message_terms
+        if not overlap:
+            continue
+        scored.append((
+            len(overlap),
+            message.session.updated_at or "",
+            {
+                "session_id": message.session.session_id,
+                "role": message.role,
+                "content": content[:800],
+                "timestamp": message.timestamp,
+                "sources": message.sources or [],
+                "grounded": bool(message.grounded) if message.role == "assistant" else None,
+                "matched_terms": sorted(overlap),
+            },
+        ))
+
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [item[2] for item in scored[:limit]]

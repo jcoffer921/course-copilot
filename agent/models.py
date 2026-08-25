@@ -178,6 +178,38 @@ class Notification(models.Model):
         ]
 
 
+class SavedSite(models.Model):
+    course_id = models.CharField(max_length=64, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="saved_sites",
+    )
+    title = models.CharField(max_length=255)
+    url = models.URLField(max_length=2048)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["course_id", "user", "url"],
+                condition=models.Q(user__isnull=False),
+                name="unique_saved_site_per_user",
+            ),
+            models.UniqueConstraint(
+                fields=["course_id", "url"],
+                condition=models.Q(user__isnull=True),
+                name="unique_saved_site_anonymous",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["course_id", "user"], name="agent_saveds_crs_usr_idx"),
+        ]
+
+
 class QuizAttempt(models.Model):
     course_id = models.CharField(max_length=64, db_index=True)
     user = models.ForeignKey(
