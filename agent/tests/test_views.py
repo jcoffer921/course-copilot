@@ -495,7 +495,7 @@ def test_delete_draft_course(isolated_courses_dir, api_client):
     response = api_client.delete("/api/courses/newclass/")
 
     assert response.status_code == 204
-    assert not (isolated_courses_dir / "newclass").exists()
+    assert not (isolated_courses_dir / str(api_client.user.pk) / "newclass").exists()
 
 
 def test_delete_real_course(isolated_courses_dir, api_client):
@@ -504,7 +504,7 @@ def test_delete_real_course(isolated_courses_dir, api_client):
     response = api_client.delete("/api/courses/cs101/")
 
     assert response.status_code == 204
-    assert not (isolated_courses_dir / "cs101").exists()
+    assert not (isolated_courses_dir / str(api_client.user.pk) / "cs101").exists()
 
 
 def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
@@ -516,17 +516,36 @@ def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
 def test_delete_course_also_removes_its_custom_events(isolated_courses_dir, api_client):
     from agent.services import custom_events
 
-    _seed_syllabus("cs101", api_client.user)
-    _seed_syllabus("cs102", api_client.user)
-    custom_events.create_event("cs101", "2026-09-01", None, "Delete me", "other")
-    custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other")
-    custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other")
+    user = api_client.user
+    _seed_syllabus("cs101", user)
+    _seed_syllabus("cs102", user)
+    custom_events.create_event("cs101", "2026-09-01", None, "Delete me", "other", user=user)
+    custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other", user=user)
+    custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other", user=user)
 
     response = api_client.delete("/api/courses/cs101/")
 
     assert response.status_code == 204
-    remaining_titles = {e["title"] for e in custom_events.list_events()}
+    remaining_titles = {e["title"] for e in custom_events.list_events(user=user)}
     assert remaining_titles == {"Keep me (other course)", "Keep me (general)"}
+
+
+def test_delete_course_only_removes_the_owning_users_custom_events(isolated_courses_dir, api_client, django_user_model):
+    from agent.services import custom_events
+
+    owner = api_client.user
+    other = django_user_model.objects.create_user(username="other-user")
+
+    _seed_syllabus("cs101", owner)
+    _seed_syllabus("cs101", other)
+    custom_events.create_event("cs101", "2026-09-01", None, "Owner's deadline", "other", user=owner)
+    custom_events.create_event("cs101", "2026-09-01", None, "Other user's deadline", "other", user=other)
+
+    response = api_client.delete("/api/courses/cs101/")
+
+    assert response.status_code == 204
+    assert {e["title"] for e in custom_events.list_events(user=owner)} == set()
+    assert {e["title"] for e in custom_events.list_events(user=other)} == {"Other user's deadline"}
 
 
 def test_delete_course_removes_db_backed_course_state(isolated_courses_dir, api_client):

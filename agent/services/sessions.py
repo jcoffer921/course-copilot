@@ -36,7 +36,7 @@ def _now() -> str:
 
 
 def _validate_session_id(course_id: str, session_id: str, user=None) -> None:
-    storage._course_dir(course_id, user)
+    storage._validate_course_id(course_id)
     if not SESSION_ID_RE.fullmatch(session_id):
         raise InvalidSessionIdError(f"invalid session_id: {session_id!r}")
 
@@ -207,7 +207,7 @@ def list_sessions(course_id: str, user=None) -> list:
     every session under courses/<course_id>/sessions/, sorted by filename.
     Does not include message bodies — use get_session() for that. Returns []
     if sessions/ doesn't exist yet."""
-    storage._course_dir(course_id, user)
+    storage._validate_course_id(course_id)
     from django.db.models import Count
     from agent.models import CourseSession
 
@@ -232,7 +232,7 @@ def relevant_messages(
     This is deliberately lexical and bounded. It gives Cora useful continuity
     without stuffing every previous conversation into every prompt.
     """
-    storage._course_dir(course_id, user)
+    storage._validate_course_id(course_id)
     terms = _memory_terms(query)
     if not terms:
         return []

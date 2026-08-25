@@ -137,14 +137,17 @@ def _validate_course_id(course_id: str) -> None:
 def _course_dir(course_id: str, user) -> Path:
     """Resolves courses/<user.pk>/<course_id>, guarding against path
     traversal. `user` is required — course content has no valid unowned
-    state now that storage is per-user; a missing user is a caller bug, not
-    a runtime condition to handle gracefully (fails loudly per CLAUDE.md)."""
-    if user is None:
-        raise ValueError("_course_dir requires a user — course content is always user-scoped")
+    state now that storage is per-user; a missing or anonymous user is a
+    caller bug, not a runtime condition to handle gracefully (fails loudly
+    per CLAUDE.md). Checking is_authenticated rather than `user is None`
+    matters here: an AnonymousUser has pk=None, and pk=None would otherwise
+    resolve to a shared courses/None/<course_id> bucket instead of failing."""
+    if not getattr(user, "is_authenticated", False):
+        raise ValueError("_course_dir requires an authenticated user — course content is always user-scoped")
     _validate_course_id(course_id)
-    resolved_courses_dir = COURSES_DIR.resolve()
+    resolved_user_dir = (COURSES_DIR / str(user.pk)).resolve()
     course_dir = (COURSES_DIR / str(user.pk) / course_id).resolve()
-    if not course_dir.is_relative_to(resolved_courses_dir):
+    if not course_dir.is_relative_to(resolved_user_dir):
         raise InvalidCourseIdError(f"invalid course_id: {course_id!r}")
     return course_dir
 

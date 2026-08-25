@@ -247,7 +247,7 @@ class CourseView(APIView):
         # in the top-level custom_events.json), so deleting the course
         # directory above doesn't touch them — without this they'd linger
         # as orphaned rows labeled with a course_id that no longer exists.
-        await sync_to_async(custom_events.delete_events_for_course)(course_id, all_users=True)
+        await sync_to_async(custom_events.delete_events_for_course)(course_id, user=request.user)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
 

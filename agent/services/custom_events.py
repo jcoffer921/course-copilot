@@ -115,10 +115,26 @@ def delete_events_for_course(course_id: str, user=None, all_users: bool = False)
     (course_id=None) and other courses' events are untouched. A no-op if
     none match, unlike delete_event, since this is cleanup triggered by an
     unrelated action (course deletion), not a direct user request to delete
-    a specific event that must exist."""
+    a specific event that must exist.
+
+    `all_users=True` sweeps every user's rows for course_id, regardless of
+    owner — dangerous in a multi-tenant world where course_id is just a
+    string two different users' courses can share, so it must never be
+    driven by a single user's own course deletion. Prefer passing an
+    authenticated `user` instead: that scopes the delete to that user's own
+    rows plus legacy (pre-auth, user=NULL) rows for course_id — the
+    legacy-sweep half of what `all_users=True` used to do, without also
+    reaching into other users' data."""
+    from agent.models import CustomEvent
+
     if all_users:
-        from agent.models import CustomEvent
         CustomEvent.objects.filter(course_id=course_id).delete()
+        return
+    if getattr(user, "is_authenticated", False):
+        from django.db.models import Q
+        CustomEvent.objects.filter(course_id=course_id).filter(
+            Q(user=user) | Q(user__isnull=True)
+        ).delete()
         return
     events = storage.read_custom_events(user=user)
     remaining = [e for e in events if e["course_id"] != course_id]

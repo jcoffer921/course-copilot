@@ -48,3 +48,21 @@ def test_validate_course_id_has_no_user_requirement():
     storage._validate_course_id("cs101")
     with pytest.raises(storage.InvalidCourseIdError):
         storage._validate_course_id("../../etc")
+
+
+@pytest.mark.django_db
+def test_two_users_same_course_id_have_fully_isolated_syllabi(isolated_courses_dir, django_user_model):
+    user_a = django_user_model.objects.create_user(username="iso-user-a", email="iso-user-a@example.com")
+    user_b = django_user_model.objects.create_user(username="iso-user-b", email="iso-user-b@example.com")
+
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "A's CS101", "dates": [], "grading": [], "topics": ["Recursion"],
+    }, user_a)
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "B's CS101", "dates": [], "grading": [], "topics": ["Sorting"],
+    }, user_b)
+
+    assert storage.read_syllabus("cs101", user_a)["topics"] == ["Recursion"]
+    assert storage.read_syllabus("cs101", user_b)["topics"] == ["Sorting"]
+    assert (isolated_courses_dir / str(user_a.pk) / "cs101" / "syllabus.json").exists()
+    assert (isolated_courses_dir / str(user_b.pk) / "cs101" / "syllabus.json").exists()

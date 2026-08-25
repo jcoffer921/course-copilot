@@ -11,10 +11,25 @@ loop stays free to handle other requests while waiting on the API. Views use
 methods can be `async def` directly.
 
 Course data (`syllabus.json`, notes, quiz history) stays on **flat JSON
-files** under `courses/<course_id>/` — no database for course content. This
-is a single-user project, so a DB layer would add complexity without adding
-value. Django's own `db.sqlite3` exists only for its built-in auth/session/
-admin tables and is never touched by course data.
+files** under `courses/<user.pk>/<course_id>/` — no database for course
+content. Content is genuinely per-user: two students can each have their own
+`cs101` without colliding or seeing each other's data, which is what makes
+piloting OnTrack to a department of students possible. Django's own
+`db.sqlite3` exists only for its built-in auth/session/admin tables (plus
+mutable per-user state like grades and quiz history, already scoped by a
+`user` FK) and is never used to store extracted/generated course content.
+
+If you have pre-existing course data from before this per-user layout (a flat
+`courses/<course_id>/` directory), run the one-time migration once you've
+signed in at least once so your `User` row exists:
+```bash
+python manage.py migrate_course_ownership --apply
+```
+
+The 9 CLI dev-tool commands (`extract_syllabus`, `chunk_notes`, `ask`, etc.)
+aren't used by real students — they operate as a single designated owner
+account, resolved by email via `CLI_OWNER_EMAIL` (see Setup below), consistent
+with the `ALLOWED_GOOGLE_EMAILS` email-based identity convention.
 
 Both a CLI (`manage.py extract_syllabus`) and an HTTP API
 (`POST /api/courses/<id>/syllabus/extract/`) are available — they call the
@@ -39,6 +54,12 @@ export GOOGLE_OAUTH_CLIENT_SECRET=your-client-secret
 # Fails closed by design: leaving this empty/unset blocks everyone — that's
 # a deliberate security property, not a bug to work around.
 export ALLOWED_GOOGLE_EMAILS=you@example.com,teammate@example.com
+
+# Required only to run the 9 CLI dev-tool commands (extract_syllabus, ask,
+# quiz, etc.) — they're dev/debug tools, never used by real students, and
+# operate as this one designated owner account rather than taking a --user
+# flag. Must match the email of a User who has signed in at least once.
+export CLI_OWNER_EMAIL=you@example.com
 
 python manage.py migrate        # sets up Django's own tables (sqlite) — one-time
 ```
