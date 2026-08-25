@@ -45,8 +45,10 @@ def test_write_course_draft_rejects_invalid_course_id(isolated_courses_dir, djan
         storage.write_course_draft("../escape", "Bad", user)
 
 
-def test_list_draft_courses_empty_when_none_exist(isolated_courses_dir):
-    assert reminders.list_draft_courses() == []
+@pytest.mark.django_db
+def test_list_draft_courses_empty_when_none_exist(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="owner", email="owner@example.com")
+    assert reminders.list_draft_courses(user) == []
 
 
 @pytest.mark.django_db
@@ -54,7 +56,7 @@ def test_list_draft_courses_returns_name_only_classes(isolated_courses_dir, djan
     user = django_user_model.objects.create_user(username="owner", email="owner@example.com")
     storage.write_course_draft("newclass", "New Class", user)
 
-    drafts = reminders.list_draft_courses()
+    drafts = reminders.list_draft_courses(user)
 
     assert len(drafts) == 1
     assert drafts[0]["course_id"] == "newclass"
@@ -69,21 +71,21 @@ def test_list_draft_courses_excludes_real_courses(isolated_courses_dir, django_u
         "course_id": "cs101", "course_name": "CS101", "dates": [], "grading": [], "topics": [],
     }, user)
 
-    assert reminders.list_draft_courses() == []
+    assert reminders.list_draft_courses(user) == []
 
 
 @pytest.mark.django_db
 def test_list_draft_courses_excludes_course_once_syllabus_written(isolated_courses_dir, django_user_model):
     user = django_user_model.objects.create_user(username="owner", email="owner@example.com")
     storage.write_course_draft("newclass", "New Class", user)
-    assert len(reminders.list_draft_courses()) == 1
+    assert len(reminders.list_draft_courses(user)) == 1
 
     storage.write_syllabus("newclass", {
         "course_id": "newclass", "course_name": "New Class", "dates": [], "grading": [], "topics": [],
     }, user)
 
-    assert reminders.list_draft_courses() == []
-    assert "newclass" in reminders.list_courses()
+    assert reminders.list_draft_courses(user) == []
+    assert "newclass" in reminders.list_courses(user)
 
 
 @pytest.mark.django_db
@@ -94,7 +96,7 @@ def test_list_draft_courses_skips_corrupt_course_json(isolated_courses_dir, djan
     (bad_dir / "course.json").write_text("{not valid json", encoding="utf-8")
     storage.write_course_draft("goodclass", "Good Class", user)
 
-    drafts = reminders.list_draft_courses()
+    drafts = reminders.list_draft_courses(user)
 
     assert [d["course_id"] for d in drafts] == ["goodclass"]
 

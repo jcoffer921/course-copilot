@@ -40,7 +40,7 @@ def current_streak(user=None) -> int:
     than resetting the instant today has no entry yet. 0 if neither today
     nor yesterday has any activity, including a brand-new install."""
     all_dates = set()
-    for course_id in reminders.list_courses():
+    for course_id in reminders.list_courses(user):
         all_dates |= _attempt_dates(course_id, user=user)
 
     today = datetime.now(timezone.utc).date()

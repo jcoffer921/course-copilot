@@ -16,26 +16,29 @@ from . import custom_events, storage
 OVERDUE_CATEGORIES = {"hw", "project", "test_quiz"}
 
 
-def list_courses() -> list:
-    """Returns every course_id that has a syllabus.json, sorted."""
-    if not storage.COURSES_DIR.exists():
+def list_courses(user) -> list:
+    """Returns every course_id that has a syllabus.json for this user, sorted."""
+    user_dir = storage.COURSES_DIR / str(user.pk)
+    if not user_dir.exists():
         return []
     return sorted(
-        p.name for p in storage.COURSES_DIR.iterdir()
+        p.name for p in user_dir.iterdir()
         if p.is_dir() and (p / "syllabus.json").exists()
     )
 
 
-def list_draft_courses() -> list:
+def list_draft_courses(user) -> list:
     """Returns every course as {"course_id", "course_name", "created_at"}
-    that has course.json but not syllabus.json — a class with a name but no
-    syllabus uploaded yet — sorted by course_id. A course.json that fails to
-    parse is skipped rather than raising, matching list_courses()'s "never
-    fail the whole scan over one bad entry" shape."""
-    if not storage.COURSES_DIR.exists():
+    for this user that has course.json but not syllabus.json — a class
+    with a name but no syllabus uploaded yet — sorted by course_id. A
+    course.json that fails to parse is skipped rather than raising,
+    matching list_courses()'s "never fail the whole scan over one bad
+    entry" shape."""
+    user_dir = storage.COURSES_DIR / str(user.pk)
+    if not user_dir.exists():
         return []
     drafts = []
-    for p in sorted(storage.COURSES_DIR.iterdir(), key=lambda p: p.name):
+    for p in sorted(user_dir.iterdir(), key=lambda p: p.name):
         if not p.is_dir():
             continue
         if (p / "syllabus.json").exists():
@@ -62,18 +65,19 @@ def _syllabus_deadline_key(deadline: dict) -> str:
     ])
 
 
-def upcoming_deadlines(within_days: int = None, course_ids: list = None) -> list:
+def upcoming_deadlines(user, within_days: int = None, course_ids: list = None) -> list:
     """Returns [{"course_id", "date", "title", "type"}, ...] across all (or
-    the given) courses, sorted by date. Only today-or-later dates are
-    included; within_days caps how far into the future, or None for no cap."""
+    the given) of this user's courses, sorted by date. Only today-or-later
+    dates are included; within_days caps how far into the future, or None
+    for no cap."""
     today = date.today()
     cutoff = today + timedelta(days=within_days) if within_days is not None else None
 
-    courses = course_ids if course_ids is not None else list_courses()
+    courses = course_ids if course_ids is not None else list_courses(user)
 
     deadlines = []
     for course_id in courses:
-        syllabus = storage.read_syllabus(course_id)
+        syllabus = storage.read_syllabus(course_id, user)
         if syllabus is None:
             continue
         for d in syllabus.get("dates", []):
@@ -112,7 +116,7 @@ def list_all_deadlines(user=None, course_id: str = None) -> list:
     today = date.today()
 
     course_ids = [course_id] if course_id else None
-    syllabus_deadlines = upcoming_deadlines(within_days=None, course_ids=course_ids)
+    syllabus_deadlines = upcoming_deadlines(user, within_days=None, course_ids=course_ids)
     try:
         all_custom = [
             dict(e, source="custom")
