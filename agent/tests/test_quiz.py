@@ -1,4 +1,5 @@
 import pytest
+from asgiref.sync import sync_to_async
 
 from agent.services import mastery, quiz, storage
 
@@ -64,30 +65,30 @@ class _FakeClient:
         self.messages = _FakeMessages(response)
 
 
-def _seed_quizzable_course(course_id="cs101"):
+def _seed_quizzable_course(user, course_id="cs101"):
     storage.write_syllabus(course_id, {
         "course_id": course_id,
         "course_name": "Test Course",
         "dates": [],
         "grading": [],
         "topics": ["A"],
-    })
+    }, user)
     storage.write_notes(course_id, "lecture01", {
         "lecture_id": "lecture01",
         "source": "notes",
         "topics": ["A"],
         "chunks": [{"id": "chunk1", "topic": "A", "text": "A closure captures variables from an outer scope."}],
-    })
+    }, user)
 
 
-def _seed_multi_topic_course(course_id="cs101"):
+def _seed_multi_topic_course(user, course_id="cs101"):
     storage.write_syllabus(course_id, {
         "course_id": course_id,
         "course_name": "Test Course",
         "dates": [],
         "grading": [],
         "topics": ["Weak", "Developing", "Strong", "Fresh"],
-    })
+    }, user)
     storage.write_notes(course_id, "lecture01", {
         "lecture_id": "lecture01",
         "source": "notes",
@@ -98,7 +99,7 @@ def _seed_multi_topic_course(course_id="cs101"):
             {"id": "strong-chunk", "topic": "Strong", "text": "Strong topic notes."},
             {"id": "fresh-chunk", "topic": "Fresh", "text": "Unassessed topic notes."},
         ],
-    })
+    }, user)
 
 
 def test_topic_quiz_weight_drops_as_mastery_improves():
@@ -107,8 +108,9 @@ def test_topic_quiz_weight_drops_as_mastery_improves():
     assert quiz._topic_quiz_weight(1.0) > 0
 
 
-def test_pick_chunk_weights_weak_topics_above_strong_topics(isolated_courses_dir, monkeypatch):
-    _seed_multi_topic_course()
+def test_pick_chunk_weights_weak_topics_above_strong_topics(isolated_courses_dir, monkeypatch, django_user_model):
+    user = django_user_model.objects.create_user(username="pick-chunk-weights", email="pick-chunk-weights@example.com")
+    _seed_multi_topic_course(user)
     for index in range(2):
         storage.append_quiz_attempt("cs101", {
             "topic": "Weak",
@@ -139,7 +141,7 @@ def test_pick_chunk_weights_weak_topics_above_strong_topics(isolated_courses_dir
         return ["Weak"]
 
     monkeypatch.setattr(quiz.random, "choices", fake_choices)
-    chunk = quiz.pick_chunk("cs101")
+    chunk = quiz.pick_chunk("cs101", user=user)
 
     assert chunk["topic"] == "Weak"
     assert captured["weights"]["Weak"] > captured["weights"]["Developing"]
@@ -147,16 +149,19 @@ def test_pick_chunk_weights_weak_topics_above_strong_topics(isolated_courses_dir
     assert captured["weights"]["Fresh"] > captured["weights"]["Strong"]
 
 
-async def test_generate_flashcards_uses_haiku_and_scoped_web_search(isolated_courses_dir, monkeypatch):
-    _seed_quizzable_course()
-    storage.write_trusted_domains("cs101", ["docs.python.org"])
+async def test_generate_flashcards_uses_haiku_and_scoped_web_search(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="flashcards-haiku-web-search", email="flashcards-haiku-web-search@example.com",
+    )
+    await sync_to_async(_seed_quizzable_course)(user)
+    await sync_to_async(storage.write_trusted_domains)("cs101", ["docs.python.org"], user)
     response = _FakeResponse(
         '{"flashcards":[{"term":"Closure","definition":"A function value with captured state.","source":"course","url":null}]}'
     )
     fake_client = _FakeClient(response)
     monkeypatch.setattr(quiz, "get_client", lambda: fake_client)
 
-    deck = await quiz.generate_flashcards_async("cs101", chunk_id="chunk1")
+    deck = await quiz.generate_flashcards_async("cs101", chunk_id="chunk1", user=user)
 
     assert deck["model"] == quiz.MODEL_HAIKU
     assert deck["flashcards"][0]["term"] == "Closure"
@@ -169,8 +174,11 @@ async def test_generate_flashcards_uses_haiku_and_scoped_web_search(isolated_cou
     }]
 
 
-async def test_generate_flashcards_strips_citation_markup(isolated_courses_dir, monkeypatch):
-    _seed_quizzable_course()
+async def test_generate_flashcards_strips_citation_markup(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="flashcards-strip-citations", email="flashcards-strip-citations@example.com",
+    )
+    await sync_to_async(_seed_quizzable_course)(user)
     response = _FakeResponse(
         '{"flashcards":[{"term":"&lt;cite index=\\"1-1\\"&gt;WebGL&lt;/cite&gt;",'
         '"definition":"<cite index=\\"1-1\\">JavaScript API for 3D graphics.</cite>",'
@@ -178,14 +186,17 @@ async def test_generate_flashcards_strips_citation_markup(isolated_courses_dir, 
     )
     monkeypatch.setattr(quiz, "get_client", lambda: _FakeClient(response))
 
-    deck = await quiz.generate_flashcards_async("cs101", chunk_id="chunk1")
+    deck = await quiz.generate_flashcards_async("cs101", chunk_id="chunk1", user=user)
 
     assert deck["flashcards"][0]["term"] == "WebGL"
     assert deck["flashcards"][0]["definition"] == "JavaScript API for 3D graphics."
 
 
-async def test_generate_flashcards_extracts_json_from_preamble_and_markdown_url(isolated_courses_dir, monkeypatch):
-    _seed_quizzable_course()
+async def test_generate_flashcards_extracts_json_from_preamble_and_markdown_url(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="flashcards-preamble-markdown", email="flashcards-preamble-markdown@example.com",
+    )
+    await sync_to_async(_seed_quizzable_course)(user)
     response = _FakeResponse(
         'Based on the course material, here are cards:\n'
         '```json\n'
@@ -195,14 +206,17 @@ async def test_generate_flashcards_extracts_json_from_preamble_and_markdown_url(
     )
     monkeypatch.setattr(quiz, "get_client", lambda: _FakeClient(response))
 
-    deck = await quiz.generate_flashcards_async("cs101", chunk_id="chunk1")
+    deck = await quiz.generate_flashcards_async("cs101", chunk_id="chunk1", user=user)
 
     assert deck["flashcards"][0]["term"] == "WebGL"
     assert deck["flashcards"][0]["url"] == "https://www.khronos.org/webgl/"
 
 
-async def test_generate_assessment_question_uses_sonnet_with_flashcard_context(isolated_courses_dir, monkeypatch):
-    _seed_quizzable_course()
+async def test_generate_assessment_question_uses_sonnet_with_flashcard_context(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="assessment-sonnet-flashcards", email="assessment-sonnet-flashcards@example.com",
+    )
+    await sync_to_async(_seed_quizzable_course)(user)
     response = _FakeResponse(
         '{"question":"Which statement best describes a closure?","choices":["Captured state","A loop","A class","A file"],"correct_answer":"Captured state"}'
     )
@@ -210,7 +224,9 @@ async def test_generate_assessment_question_uses_sonnet_with_flashcard_context(i
     monkeypatch.setattr(quiz, "get_client", lambda: fake_client)
     flashcards = [{"term": "Closure", "definition": "A function value with captured state."}]
 
-    question = await quiz.generate_assessment_question_async("cs101", chunk_id="chunk1", flashcards=flashcards)
+    question = await quiz.generate_assessment_question_async(
+        "cs101", chunk_id="chunk1", flashcards=flashcards, user=user,
+    )
 
     call = fake_client.messages.calls[0]
     assert question["model"] == quiz.MODEL_ASSESSMENT

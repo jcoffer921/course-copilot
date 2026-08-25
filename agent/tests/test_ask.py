@@ -15,26 +15,31 @@ import pytest
 from agent.services import storage
 from agent.services.ask import ask_async
 
-pytestmark = pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"),
-    reason="requires a live ANTHROPIC_API_KEY",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not os.environ.get("ANTHROPIC_API_KEY"),
+        reason="requires a live ANTHROPIC_API_KEY",
+    ),
+    pytest.mark.django_db,
+]
 
 COURSE_ID = "cs101"
 
 
-@pytest.fixture(autouse=True, scope="module")
-def _require_fixture_data():
-    if storage.read_syllabus(COURSE_ID) is None:
+@pytest.fixture
+def _course_user(django_user_model):
+    user = django_user_model.objects.create_user(username="ask-live-user", email="ask-live-user@example.com")
+    if storage.read_syllabus(COURSE_ID, user) is None:
         pytest.skip(f"courses/{COURSE_ID}/syllabus.json not found — run extract_syllabus first")
-    if not storage.read_notes(COURSE_ID):
+    if not storage.read_notes(COURSE_ID, user):
         pytest.skip(f"courses/{COURSE_ID}/notes/ is empty — run chunk_notes first")
+    return user
 
 
-async def test_answerable_question_is_grounded():
+async def test_answerable_question_is_grounded(_course_user):
     """A question directly answerable from the chunked lecture notes should
     get a correct, grounded answer citing the lecture as its source."""
-    result = await ask_async(COURSE_ID, "What are the two required parts of a recursive function?")
+    result = await ask_async(COURSE_ID, "What are the two required parts of a recursive function?", user=_course_user)
 
     assert result["grounded"] is True
     assert "lecture05" in result["sources"]
@@ -43,20 +48,21 @@ async def test_answerable_question_is_grounded():
     assert "recursive case" in answer_lower
 
 
-async def test_uncovered_question_is_not_fabricated():
+async def test_uncovered_question_is_not_fabricated(_course_user):
     """A question about something this course never covers at all (this is
     an intro Python course; C/pointers never comes up anywhere) must be
     flagged as not grounded, not answered from general knowledge."""
     result = await ask_async(
         COURSE_ID,
         "What textbook chapter covers pointers and manual memory management in C?",
+        user=_course_user,
     )
 
     assert result["grounded"] is False
     assert result["sources"] == []
 
 
-async def test_adjacent_topic_is_not_blurred_with_covered_topic():
+async def test_adjacent_topic_is_not_blurred_with_covered_topic(_course_user):
     """The lecture 5 notes mention memoization BY NAME, but explicitly as
     something NOT covered in this course, while discussing recursion and
     Fibonacci. A model that blurs "the notes mention this word" with "the
@@ -67,30 +73,31 @@ async def test_adjacent_topic_is_not_blurred_with_covered_topic():
         COURSE_ID,
         "Explain how memoization works and show me how to add it to the "
         "fibonacci function from lecture 5.",
+        user=_course_user,
     )
 
     assert result["grounded"] is False
 
 
-async def test_reference_grounds_when_syllabus_and_notes_dont_cover_it():
+async def test_reference_grounds_when_syllabus_and_notes_dont_cover_it(_course_user):
     """A question only a course's uploaded reference doc answers (not
     covered by syllabus/notes) should come back grounded, citing the
     reference_id — not 'syllabus' or a lecture_id."""
-    references = storage.read_references(COURSE_ID)
+    references = storage.read_references(COURSE_ID, _course_user)
     if not references:
         pytest.skip(f"courses/{COURSE_ID}/references/ is empty — upload a reference doc first")
 
-    result = await ask_async(COURSE_ID, "What does the uploaded reference document cover?")
+    result = await ask_async(COURSE_ID, "What does the uploaded reference document cover?", user=_course_user)
 
     assert result["grounded"] is True
     assert any(r["reference_id"] in result["sources"] for r in references)
 
 
-async def test_web_search_grounds_when_domain_approved_and_course_material_silent():
+async def test_web_search_grounds_when_domain_approved_and_course_material_silent(_course_user):
     """A question genuinely outside cs101's notes/syllabus, but inside an
     approved domain's real coverage, should come back grounded with a real
     cited URL from the approved list."""
-    approved = storage.read_trusted_domains(COURSE_ID)
+    approved = storage.read_trusted_domains(COURSE_ID, _course_user)
     if not approved:
         pytest.skip(
             f"no trusted_domains.json approved for {COURSE_ID} — run "
@@ -100,6 +107,7 @@ async def test_web_search_grounds_when_domain_approved_and_course_material_silen
     result = await ask_async(
         COURSE_ID,
         "According to the official Python documentation, what does the walrus operator (:=) do?",
+        user=_course_user,
     )
 
     assert result["grounded"] is True
@@ -108,12 +116,12 @@ async def test_web_search_grounds_when_domain_approved_and_course_material_silen
     assert any(domain in src for domain in approved for src in web_sources)
 
 
-async def test_identity_question_answers_as_cora():
+async def test_identity_question_answers_as_cora(_course_user):
     """Asking who the assistant is should be answered in character as Cora,
     still inside the required JSON envelope — proving the identity clause
     doesn't leak outside the JSON contract or corrupt grounded/sources
     semantics for a question that isn't about course material."""
-    result = await ask_async(COURSE_ID, "Who are you and what do you do?")
+    result = await ask_async(COURSE_ID, "Who are you and what do you do?", user=_course_user)
 
     assert "cora" in result["answer"].lower()
     assert result["grounded"] is False

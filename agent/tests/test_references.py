@@ -1,4 +1,5 @@
 import pytest
+from asgiref.sync import sync_to_async
 
 from agent.services import storage
 
@@ -78,9 +79,13 @@ def test_invalid_reference_id_rejected(isolated_courses_dir, django_user_model):
 from agent.services import references
 
 
-async def test_ingest_reference_extracts_txt_and_generates_id(isolated_courses_dir):
+@pytest.mark.django_db
+async def test_ingest_reference_extracts_txt_and_generates_id(isolated_courses_dir, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="refs-ingest-1", email="refs-ingest-1@example.com",
+    )
     data = await references.ingest_reference(
-        "cs101", b"Some textbook content about recursion.", "chapter1.txt", title="Chapter 1: Recursion",
+        "cs101", b"Some textbook content about recursion.", "chapter1.txt", user, title="Chapter 1: Recursion",
     )
 
     assert data["reference_id"] == "chapter-1-recursion"
@@ -89,33 +94,49 @@ async def test_ingest_reference_extracts_txt_and_generates_id(isolated_courses_d
     assert data["text"] == "Some textbook content about recursion."
 
 
-async def test_ingest_reference_defaults_title_to_filename_stem(isolated_courses_dir):
-    data = await references.ingest_reference("cs101", b"content", "notes.md")
+@pytest.mark.django_db
+async def test_ingest_reference_defaults_title_to_filename_stem(isolated_courses_dir, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="refs-ingest-2", email="refs-ingest-2@example.com",
+    )
+    data = await references.ingest_reference("cs101", b"content", "notes.md", user)
 
     assert data["title"] == "notes"
     assert data["reference_id"] == "notes"
 
 
-async def test_ingest_reference_dedupes_id_on_collision(isolated_courses_dir):
-    storage.write_reference("cs101", "notes", {
+@pytest.mark.django_db
+async def test_ingest_reference_dedupes_id_on_collision(isolated_courses_dir, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="refs-ingest-3", email="refs-ingest-3@example.com",
+    )
+    await sync_to_async(storage.write_reference)("cs101", "notes", {
         "reference_id": "notes", "title": "notes", "source_filename": "notes.md", "text": "existing",
-    })
+    }, user)
 
-    data = await references.ingest_reference("cs101", b"content", "notes.md")
+    data = await references.ingest_reference("cs101", b"content", "notes.md", user)
 
     assert data["reference_id"] == "notes-2"
 
 
-async def test_ingest_reference_rejects_unsupported_file_type(isolated_courses_dir):
+@pytest.mark.django_db
+async def test_ingest_reference_rejects_unsupported_file_type(isolated_courses_dir, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="refs-ingest-4", email="refs-ingest-4@example.com",
+    )
     with pytest.raises(ValueError):
-        await references.ingest_reference("cs101", b"content", "slides.pptx")
+        await references.ingest_reference("cs101", b"content", "slides.pptx", user)
 
 
-async def test_ingest_reference_truncates_long_title_to_fit_within_64_char_limit(isolated_courses_dir):
+@pytest.mark.django_db
+async def test_ingest_reference_truncates_long_title_to_fit_within_64_char_limit(isolated_courses_dir, django_user_model):
     """Verify that a title longer than 64 chars doesn't crash due to InvalidReferenceIdError
     and produces a reference_id within the 64-char storage limit."""
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="refs-ingest-5", email="refs-ingest-5@example.com",
+    )
     long_title = "Chapter 12: Advanced Recursion, Memoization and Dynamic Programming with real examples"
-    data = await references.ingest_reference("cs101", b"content", "chapter12.txt", title=long_title)
+    data = await references.ingest_reference("cs101", b"content", "chapter12.txt", user, title=long_title)
 
     assert len(data["reference_id"]) <= 64
     assert data["title"] == long_title

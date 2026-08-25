@@ -373,7 +373,7 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
 
 
 async def ask_async(course_id: str, question: str, session_id: str = None, user=None) -> dict:
-    syllabus = await sync_to_async(storage.read_syllabus)(course_id)
+    syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 
@@ -412,13 +412,13 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
             )
         return result
 
-    notes = await sync_to_async(storage.read_notes)(course_id)
-    references = await sync_to_async(storage.read_references)(course_id)
+    notes = await sync_to_async(storage.read_notes)(course_id, user)
+    references = await sync_to_async(storage.read_references)(course_id, user)
     saved_sites = await sync_to_async(storage.list_saved_sites)(course_id, user=user)
     recalled_conversations = await sync_to_async(sessions.relevant_messages)(
         course_id, question, session_id=session_id, user=user,
     )
-    approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id)
+    approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id, user)
     allowed_domains = _merge_allowed_domains(approved_domains, _domains_from_saved_sites(saved_sites))
     learning_tools = await sync_to_async(_learning_tools_context)(course_id, user=user)
 

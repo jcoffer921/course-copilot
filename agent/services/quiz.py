@@ -129,11 +129,11 @@ def _build_web_search_tool(approved_domains: list[str]) -> dict | None:
     }
 
 
-def _all_chunks(course_id: str) -> list:
+def _all_chunks(course_id: str, user) -> list:
     """Returns [{"lecture_id", "chunk_id", "topic", "text"}, ...] flattened
     across every lecture's chunked notes for this course."""
     chunks = []
-    for lecture in storage.read_notes(course_id):
+    for lecture in storage.read_notes(course_id, user):
         for c in lecture.get("chunks", []):
             chunks.append({
                 "lecture_id": lecture.get("lecture_id"),
@@ -163,7 +163,7 @@ def pick_chunk(course_id: str, topic: str = None, user=None) -> dict:
     for that topic. Otherwise samples by topic mastery: weak topics get much
     higher weight, developing topics moderate weight, and strong topics low
     but nonzero weight."""
-    chunks = _all_chunks(course_id)
+    chunks = _all_chunks(course_id, user)
     if not chunks:
         raise NoChunksAvailableError(f"no chunked notes found for course '{course_id}' — run chunk_notes first")
 
@@ -205,19 +205,19 @@ async def generate_flashcards_async(
 ) -> dict:
     client = get_client()
 
-    syllabus = await sync_to_async(storage.read_syllabus)(course_id)
+    syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 
     if chunk_id:
-        chunks = await sync_to_async(_all_chunks)(course_id)
+        chunks = await sync_to_async(_all_chunks)(course_id, user)
         chunk = next((c for c in chunks if c["chunk_id"] == chunk_id), None)
         if chunk is None:
             raise NoChunksAvailableError(f"no chunk '{chunk_id}' found for course '{course_id}'")
     else:
         chunk = await sync_to_async(pick_chunk)(course_id, topic, user=user)
 
-    approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id)
+    approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id, user)
     user_prompt = (
         f"Course: {syllabus.get('course_name', course_id)}\n"
         f"Topic: {chunk['topic']}\n"
@@ -279,13 +279,13 @@ async def generate_assessment_question_async(
 ) -> dict:
     client = get_client()
 
-    syllabus = await sync_to_async(storage.read_syllabus)(course_id)
+    syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 
     chunks = None
     if chunk_id:
-        chunks = await sync_to_async(_all_chunks)(course_id)
+        chunks = await sync_to_async(_all_chunks)(course_id, user)
         chunk = next((c for c in chunks if c["chunk_id"] == chunk_id), None)
         if chunk is None:
             raise NoChunksAvailableError(f"no chunk '{chunk_id}' found for course '{course_id}'")
