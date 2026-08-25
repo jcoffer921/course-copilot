@@ -108,17 +108,26 @@ def delete_event(event_id: str, user=None) -> None:
     storage.write_custom_events(remaining, user=user)
 
 
-def delete_events_for_course(course_id: str, user=None, all_users: bool = False) -> None:
+def delete_events_for_course(course_id: str, user=None) -> None:
     """Removes every custom event tied to course_id — called when a course
     itself is deleted, so its custom events don't linger as orphaned rows
     labeled with a course_id that no longer exists. General events
     (course_id=None) and other courses' events are untouched. A no-op if
     none match, unlike delete_event, since this is cleanup triggered by an
     unrelated action (course deletion), not a direct user request to delete
-    a specific event that must exist."""
-    if all_users:
-        from agent.models import CustomEvent
-        CustomEvent.objects.filter(course_id=course_id).delete()
+    a specific event that must exist.
+
+    An authenticated `user` scopes the delete to that user's own rows plus
+    legacy (pre-auth, user=NULL) rows for course_id — never every user's
+    rows regardless of owner, since course_id is just a string two
+    different users' courses can share in a multi-tenant world. There is
+    deliberately no all-users escape hatch here: this function is always
+    driven by a single user's own course deletion, and an unscoped sweep
+    would let one student's delete destroy another's events."""
+    from agent.models import CustomEvent
+
+    if getattr(user, "is_authenticated", False):
+        storage._scope_user_queryset(CustomEvent.objects.filter(course_id=course_id), user).delete()
         return
     events = storage.read_custom_events(user=user)
     remaining = [e for e in events if e["course_id"] != course_id]

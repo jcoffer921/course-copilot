@@ -22,25 +22,25 @@ def _slugify(value: str) -> str:
     return slug or "reference"
 
 
-def _unique_reference_id(course_id: str, base_id: str) -> str:
+def _unique_reference_id(course_id: str, base_id: str, user) -> str:
     """Appends -2, -3, ... on collision so two references with the same
     title/filename don't clobber each other — reference_id is generated
     here, not supplied by the caller, so there's no user-facing overwrite
     decision to make."""
     candidate = base_id
     n = 1
-    while storage.read_reference(course_id, candidate) is not None:
+    while storage.read_reference(course_id, candidate, user) is not None:
         n += 1
         candidate = f"{base_id}-{n}"
     return candidate
 
 
-async def ingest_reference(course_id: str, file_bytes: bytes, filename: str, title: str = None) -> dict:
+async def ingest_reference(course_id: str, file_bytes: bytes, filename: str, user, title: str = None) -> dict:
     text = extract_text_from_bytes(file_bytes, filename)
 
     resolved_title = (title or "").strip() or Path(filename).stem
     base_id = _slugify(resolved_title)
-    reference_id = await sync_to_async(_unique_reference_id)(course_id, base_id)
+    reference_id = await sync_to_async(_unique_reference_id)(course_id, base_id, user)
 
     return {
         "reference_id": reference_id,

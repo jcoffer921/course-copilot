@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from agent.services import sessions
 from agent.services.ask import CourseNotFoundError, ask_async
+from agent.services.cli_owner import resolve_owner_user
 
 
 class Command(BaseCommand):
@@ -19,9 +20,10 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        owner = resolve_owner_user()
         try:
             result = asyncio.run(
-                ask_async(options["course_id"], options["question"], session_id=options["session_id"])
+                ask_async(options["course_id"], options["question"], session_id=options["session_id"], user=owner)
             )
         except CourseNotFoundError as e:
             raise CommandError(str(e))

@@ -52,10 +52,10 @@ def _merge_topics(syllabus_topics: list, weak_topics: list, note_topics: list = 
     return merged
 
 
-def _note_topics(course_id: str) -> list:
+def _note_topics(course_id: str, user) -> list:
     seen = set()
     topics = []
-    for lecture in storage.read_notes(course_id):
+    for lecture in storage.read_notes(course_id, user):
         for chunk in lecture.get("chunks", []):
             topic = str(chunk.get("topic") or "").strip()
             if topic and topic not in seen:
@@ -101,17 +101,17 @@ def _annotate_synced(deadlines: list, user=None) -> list:
 
 
 def _course_summary(course_id: str, user=None) -> dict:
-    syllabus = storage.read_syllabus(course_id)
+    syllabus = storage.read_syllabus(course_id, user)
     weak_topics = mastery.weak_topics(course_id, user=user)
     quiz_counts = _quiz_accuracy_counts(course_id, user=user)
-    upcoming = reminders.upcoming_deadlines(within_days=None, course_ids=[course_id])
+    upcoming = reminders.upcoming_deadlines(user, within_days=None, course_ids=[course_id])
     syllabus_topics = syllabus.get("topics", [])
-    note_topics = _note_topics(course_id)
+    note_topics = _note_topics(course_id, user)
     syllabus_topic_set = set(syllabus_topics)
 
     return {
         "course_name": syllabus.get("course_name", course_id),
-        "notes_count": len(storage.read_notes(course_id)),
+        "notes_count": len(storage.read_notes(course_id, user)),
         "topics_count": len(syllabus_topics),
         **quiz_counts,
         # Only counts syllabus topics that have been quizzed — an
@@ -133,7 +133,7 @@ def build_dashboard(user=None) -> dict:
     course's dashboard data along with it."""
     courses = {}
     good_course_ids = []
-    for course_id in reminders.list_courses():
+    for course_id in reminders.list_courses(user):
         try:
             courses[course_id] = _course_summary(course_id, user=user)
             good_course_ids.append(course_id)
@@ -146,10 +146,10 @@ def build_dashboard(user=None) -> dict:
         # (via its own list_courses() call) including any corrupt one,
         # raising past the per-course isolation this function promises.
         "deadlines": _annotate_synced(
-            reminders.upcoming_deadlines(within_days=14, course_ids=good_course_ids),
+            reminders.upcoming_deadlines(user, within_days=14, course_ids=good_course_ids),
             user=user,
         ),
         "streak": streak.current_streak(user=user),
         "courses": courses,
-        "drafts": reminders.list_draft_courses(),
+        "drafts": reminders.list_draft_courses(user),
     }

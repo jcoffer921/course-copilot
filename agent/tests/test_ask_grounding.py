@@ -72,10 +72,10 @@ class _FakeClient:
         self.messages = _FakeMessages(response)
 
 
-def _seed_course(course_id):
+def _seed_course(course_id, user):
     storage.write_syllabus(course_id, {
         "course_id": course_id, "course_name": "Test", "dates": [], "grading": [], "topics": ["A"],
-    })
+    }, user)
 
 
 def test_build_web_search_tool_requires_approved_domains():
@@ -113,8 +113,9 @@ def test_deadline_intent_does_not_catch_plain_course_questions():
 
 
 @pytest.mark.django_db
-async def test_class_schedule_request_can_return_multiple_pending_events(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
+async def test_class_schedule_request_can_return_multiple_pending_events(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="class-schedule-multiple-events")
+    _seed_course("testcourse", user)
     canned = json.dumps({
         "is_deadline_request": True,
         "missing": [],
@@ -141,7 +142,7 @@ async def test_class_schedule_request_can_return_multiple_pending_events(isolate
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "my class meets Monday and Wednesday at 10")
+    result = await ask.ask_async("testcourse", "my class meets Monday and Wednesday at 10", user=user)
 
     assert result["pending_deadline"] is None
     assert [event["date"] for event in result["pending_deadlines"]] == ["2026-08-24", "2026-08-26"]
@@ -153,13 +154,14 @@ async def test_class_schedule_request_can_return_multiple_pending_events(isolate
 
 
 @pytest.mark.django_db
-async def test_no_web_search_tool_when_no_domains_approved(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
+async def test_no_web_search_tool_when_no_domains_approved(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="no-web-search-tool")
+    _seed_course("testcourse", user)
     canned = json.dumps({"answer": "not covered", "grounded": False, "sources": []})
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "some question")
+    result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["grounded"] is False
     assert "tools" not in fake_client.messages.calls[0]
@@ -167,8 +169,8 @@ async def test_no_web_search_tool_when_no_domains_approved(isolated_courses_dir,
 
 @pytest.mark.django_db
 async def test_save_site_request_stores_url_without_model_call(isolated_courses_dir, monkeypatch, django_user_model):
-    _seed_course("testcourse")
     user = await sync_to_async(django_user_model.objects.create_user)(username="site-user-stores-url")
+    _seed_course("testcourse", user)
 
     def fail_get_client():
         raise AssertionError("saving a site address should not call the model")
@@ -190,8 +192,8 @@ async def test_save_site_request_stores_url_without_model_call(isolated_courses_
 
 @pytest.mark.django_db
 async def test_saved_sites_reach_ask_context(isolated_courses_dir, monkeypatch, django_user_model):
-    _seed_course("testcourse")
     user = await sync_to_async(django_user_model.objects.create_user)(username="site-user-reach-context")
+    _seed_course("testcourse", user)
     await sync_to_async(storage.save_site)(
         "testcourse", "https://example.edu/large-course-book", title="Course Book", user=user,
     )
@@ -213,8 +215,8 @@ async def test_saved_sites_reach_ask_context(isolated_courses_dir, monkeypatch, 
 
 @pytest.mark.django_db
 async def test_saved_site_domain_is_available_to_web_search(isolated_courses_dir, monkeypatch, django_user_model):
-    _seed_course("testcourse")
     user = await sync_to_async(django_user_model.objects.create_user)(username="site-user-domain")
+    _seed_course("testcourse", user)
     await sync_to_async(storage.save_site)(
         "testcourse", "https://sites.google.com/site/webglbook/home/chapter-2", title="WebGL Book", user=user,
     )
@@ -238,8 +240,8 @@ async def test_saved_site_domain_is_available_to_web_search(isolated_courses_dir
 
 @pytest.mark.django_db
 async def test_relevant_prior_sessions_reach_ask_context(isolated_courses_dir, monkeypatch, django_user_model):
-    _seed_course("testcourse")
     user = await sync_to_async(django_user_model.objects.create_user)(username="memory-user-reach-context")
+    _seed_course("testcourse", user)
     relevant = await sync_to_async(sessions.create_session)("testcourse", user=user)
     await sync_to_async(sessions.append_message)(
         "testcourse", relevant["session_id"], "user", "I want shader examples in plain language.", user=user,
@@ -267,8 +269,8 @@ async def test_relevant_prior_sessions_reach_ask_context(isolated_courses_dir, m
 
 @pytest.mark.django_db
 async def test_relevant_memory_excludes_active_session(isolated_courses_dir, django_user_model):
-    _seed_course("testcourse")
     user = await sync_to_async(django_user_model.objects.create_user)(username="memory-user-excludes-active")
+    _seed_course("testcourse", user)
     active = await sync_to_async(sessions.create_session)("testcourse", user=user)
     await sync_to_async(sessions.append_message)(
         "testcourse", active["session_id"], "user", "shader notes in active chat", user=user,
@@ -288,16 +290,17 @@ async def test_relevant_memory_excludes_active_session(isolated_courses_dir, dja
 
 
 @pytest.mark.django_db
-async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
-    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="web-search-tool-added")
+    _seed_course("testcourse", user)
+    storage.write_trusted_domains("testcourse", ["docs.python.org"], user)
     canned = json.dumps({
         "answer": "from the web", "grounded": True, "sources": ["https://docs.python.org/3/"],
     })
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "some question")
+    result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["grounded"] is True
     call = fake_client.messages.calls[0]
@@ -310,9 +313,10 @@ async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir,
 
 
 @pytest.mark.django_db
-async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
-    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="pause-turn-resubmits")
+    _seed_course("testcourse", user)
+    storage.write_trusted_domains("testcourse", ["docs.python.org"], user)
     final = json.dumps({"answer": "done", "grounded": True, "sources": ["https://docs.python.org/3/"]})
     paused_response = _FakeResponse("mid-search", stop_reason="pause_turn")
     fake_client = _FakeClient(paused_response)
@@ -331,7 +335,7 @@ async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_di
 
     fake_client.messages.create = create
 
-    result = await ask.ask_async("testcourse", "some question")
+    result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["answer"] == "done"
     assert call_count == 2
@@ -344,9 +348,10 @@ async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_di
 
 
 @pytest.mark.django_db
-async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
-    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="pause-turn-stops")
+    _seed_course("testcourse", user)
+    storage.write_trusted_domains("testcourse", ["docs.python.org"], user)
     # Always pauses — never resolves to end_turn — to prove the loop is
     # actually capped rather than unbounded (an unbounded `while` would also
     # pass the test above, since its second response is end_turn).
@@ -354,7 +359,7 @@ async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, mo
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
     with pytest.raises(ValueError):
-        await ask.ask_async("testcourse", "some question")
+        await ask.ask_async("testcourse", "some question", user=user)
 
     # First call plus the capped number of continuations.
     assert len(fake_client.messages.calls) == ask.MAX_PAUSE_TURN_CONTINUATIONS + 1
@@ -362,15 +367,16 @@ async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, mo
 
 @pytest.mark.django_db
 async def test_citation_split_text_blocks_after_tool_use_are_reassembled(
-    isolated_courses_dir, monkeypatch,
+    isolated_courses_dir, monkeypatch, django_user_model,
 ):
     # Simulates a post-search response where the API attaches citations to a
     # span of the answer, splitting the final JSON text across multiple
     # trailing `text` blocks (each carrying its own citations array in
     # reality, though the fake doesn't need to model that field). Only the
     # last text block used to be read, which truncated the JSON.
-    _seed_course("testcourse")
-    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+    user = await sync_to_async(django_user_model.objects.create_user)(username="citation-split-blocks")
+    _seed_course("testcourse", user)
+    storage.write_trusted_domains("testcourse", ["docs.python.org"], user)
     content = [
         _FakeNonTextBlock("server_tool_use"),
         _FakeNonTextBlock("web_search_tool_result"),
@@ -381,7 +387,7 @@ async def test_citation_split_text_blocks_after_tool_use_are_reassembled(
     fake_client = _FakeClient(_FakeResponseWithContent(content))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "what does := do?")
+    result = await ask.ask_async("testcourse", "what does := do?", user=user)
 
     assert result["answer"] == "Per the docs, the walrus operator assigns inline"
     assert result["grounded"] is True
@@ -389,34 +395,36 @@ async def test_citation_split_text_blocks_after_tool_use_are_reassembled(
 
 
 @pytest.mark.django_db
-async def test_reference_text_reaches_prompt(isolated_courses_dir, monkeypatch):
+async def test_reference_text_reaches_prompt(isolated_courses_dir, monkeypatch, django_user_model):
     # Structural check that reference content actually gets stuffed into the
     # prompt sent to the API — closes the gap where deleting the
     # reference-context wiring from ask_async would leave the whole
     # non-live suite green.
-    _seed_course("testcourse")
+    user = await sync_to_async(django_user_model.objects.create_user)(username="reference-text-reaches-prompt")
+    _seed_course("testcourse", user)
     storage.write_reference("testcourse", "ref1", {
         "reference_id": "ref1",
         "title": "Some Reference",
         "source_filename": "ref1.txt",
         "text": "UNIQUE_MARKER_TEXT_12345",
-    })
+    }, user)
     canned = json.dumps({"answer": "not covered", "grounded": False, "sources": []})
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    await ask.ask_async("testcourse", "some question")
+    await ask.ask_async("testcourse", "some question", user=user)
 
     call = fake_client.messages.calls[0]
     assert "UNIQUE_MARKER_TEXT_12345" in _content_text(call["messages"][0]["content"])
 
 
 @pytest.mark.django_db
-async def test_preamble_text_block_before_tool_use_is_dropped(isolated_courses_dir, monkeypatch):
+async def test_preamble_text_block_before_tool_use_is_dropped(isolated_courses_dir, monkeypatch, django_user_model):
     # A text block emitted before tool use (e.g. the model narrating what
     # it's about to do) must not be concatenated into the final JSON.
-    _seed_course("testcourse")
-    storage.write_trusted_domains("testcourse", ["docs.python.org"])
+    user = await sync_to_async(django_user_model.objects.create_user)(username="preamble-before-tool-use")
+    _seed_course("testcourse", user)
+    storage.write_trusted_domains("testcourse", ["docs.python.org"], user)
     content = [
         _FakeTextBlock("I'll check the docs."),
         _FakeNonTextBlock("server_tool_use"),
@@ -425,7 +433,7 @@ async def test_preamble_text_block_before_tool_use_is_dropped(isolated_courses_d
     fake_client = _FakeClient(_FakeResponseWithContent(content))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "some question")
+    result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["answer"] == "ok"
     assert result["grounded"] is True
@@ -433,12 +441,13 @@ async def test_preamble_text_block_before_tool_use_is_dropped(isolated_courses_d
 
 
 @pytest.mark.django_db
-async def test_preamble_text_without_tool_use_is_still_parsed(isolated_courses_dir, monkeypatch):
+async def test_preamble_text_without_tool_use_is_still_parsed(isolated_courses_dir, monkeypatch, django_user_model):
     # No tool use happens here, so the last-non-text-block trim in ask_async
     # never kicks in — reproduces a live failure where the model ignored the
     # "no preamble" instruction and prefixed the JSON with prose explaining
     # a limitation. _parse_json_response must still find and parse the JSON.
-    _seed_course("testcourse")
+    user = await sync_to_async(django_user_model.objects.create_user)(username="preamble-without-tool-use")
+    _seed_course("testcourse", user)
     canned = (
         "I can't actually read the contents of your saved sites — only the URL "
         "and title are stored.\n\n"
@@ -447,7 +456,7 @@ async def test_preamble_text_without_tool_use_is_still_parsed(isolated_courses_d
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "what does chapter 2 say?")
+    result = await ask.ask_async("testcourse", "what does chapter 2 say?", user=user)
 
     assert result["answer"] == "I can't read saved site contents."
     assert result["grounded"] is False
@@ -455,8 +464,9 @@ async def test_preamble_text_without_tool_use_is_still_parsed(isolated_courses_d
 
 
 @pytest.mark.django_db
-async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
+async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="preamble-set-braces")
+    _seed_course("testcourse", user)
     canned = (
         "The notes define a universal set with an example: "
         "`A = {1, 2, 3}`, `B = {1, a, b, c}`.\n\n"
@@ -466,7 +476,7 @@ async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_cou
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "what is a universal set?")
+    result = await ask.ask_async("testcourse", "what is a universal set?", user=user)
 
     assert result["answer"] == "Universal set example parsed."
     assert result["grounded"] is True
@@ -474,8 +484,9 @@ async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_cou
 
 
 @pytest.mark.django_db
-async def test_answer_with_unescaped_inner_quotes_is_still_parsed(isolated_courses_dir, monkeypatch):
-    _seed_course("testcourse")
+async def test_answer_with_unescaped_inner_quotes_is_still_parsed(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="unescaped-inner-quotes")
+    _seed_course("testcourse", user)
     canned = (
         '{ "answer": "DeMorgan intuition: "Not (A or B)" means outside both.\\n\\n'
         '```venn\\noperation: union\\na: A\\nb: B\\nuniverse: U\\ncaption: A union B\\n```", '
@@ -484,7 +495,7 @@ async def test_answer_with_unescaped_inner_quotes_is_still_parsed(isolated_cours
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "talk about morgan's law")
+    result = await ask.ask_async("testcourse", "talk about morgan's law", user=user)
 
     assert '"Not (A or B)"' in result["answer"]
     assert "```venn\noperation: union" in result["answer"]

@@ -124,36 +124,54 @@ class CourseNotFoundError(Exception):
     """
 
 
-def _course_dir(course_id: str) -> Path:
-    """Resolves courses/<course_id>, guarding against path traversal."""
+def _validate_course_id(course_id: str) -> None:
+    """Raises InvalidCourseIdError if course_id isn't a safe slug. Shared by
+    _course_dir (which also resolves a per-user filesystem path) and every
+    DB-scoped function below that only ever needed course_id validated, not
+    a directory resolved — they called _course_dir(course_id) purely for
+    this check and discarded its return value."""
     if not COURSE_ID_RE.fullmatch(course_id):
         raise InvalidCourseIdError(f"invalid course_id: {course_id!r}")
-    resolved_courses_dir = COURSES_DIR.resolve()
-    course_dir = (COURSES_DIR / course_id).resolve()
-    if not course_dir.is_relative_to(resolved_courses_dir):
+
+
+def _course_dir(course_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>, guarding against path
+    traversal. `user` is required — course content has no valid unowned
+    state now that storage is per-user; a missing or anonymous user is a
+    caller bug, not a runtime condition to handle gracefully (fails loudly
+    per CLAUDE.md). Checking is_authenticated rather than `user is None`
+    matters here: an AnonymousUser has pk=None, and pk=None would otherwise
+    resolve to a shared courses/None/<course_id> bucket instead of failing."""
+    if not getattr(user, "is_authenticated", False):
+        raise ValueError("_course_dir requires an authenticated user — course content is always user-scoped")
+    _validate_course_id(course_id)
+    resolved_user_dir = (COURSES_DIR / str(user.pk)).resolve()
+    course_dir = (COURSES_DIR / str(user.pk) / course_id).resolve()
+    if not course_dir.is_relative_to(resolved_user_dir):
         raise InvalidCourseIdError(f"invalid course_id: {course_id!r}")
     return course_dir
 
 
-def _lecture_path(course_id: str, lecture_id: str) -> Path:
-    """Resolves courses/<course_id>/notes/<lecture_id>.json, guarding against
-    path traversal via lecture_id the same way _course_dir does for course_id."""
+def _lecture_path(course_id: str, lecture_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>/notes/<lecture_id>.json,
+    guarding against path traversal via lecture_id the same way _course_dir
+    does for course_id."""
     if not LECTURE_ID_RE.fullmatch(lecture_id):
         raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
-    notes_dir = _course_dir(course_id) / "notes"
+    notes_dir = _course_dir(course_id, user) / "notes"
     path = (notes_dir / f"{lecture_id}.json").resolve()
     if path.parent != notes_dir.resolve():
         raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
     return path
 
 
-def _reference_path(course_id: str, reference_id: str) -> Path:
-    """Resolves courses/<course_id>/references/<reference_id>.json, guarding
-    against path traversal via reference_id the same way _lecture_path does
-    for lecture_id."""
+def _reference_path(course_id: str, reference_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>/references/<reference_id>.json,
+    guarding against path traversal via reference_id the same way
+    _lecture_path does for lecture_id."""
     if not REFERENCE_ID_RE.fullmatch(reference_id):
         raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
-    references_dir = _course_dir(course_id) / "references"
+    references_dir = _course_dir(course_id, user) / "references"
     path = (references_dir / f"{reference_id}.json").resolve()
     if path.parent != references_dir.resolve():
         raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
@@ -456,9 +474,9 @@ def validate_grading_config(grading: list, grade_scale: dict = None) -> list:
 # Read / write — plain sync I/O, wrapped with sync_to_async at the call site
 # --------------------------------------------------------------------------
 
-def read_syllabus(course_id: str):
+def read_syllabus(course_id: str, user):
     """Returns the parsed syllabus dict, or None if it doesn't exist."""
-    path = _course_dir(course_id) / "syllabus.json"
+    path = _course_dir(course_id, user) / "syllabus.json"
     if not path.exists():
         return None
     try:
@@ -467,11 +485,11 @@ def read_syllabus(course_id: str):
         raise SyllabusStorageError(f"existing syllabus.json for '{course_id}' is corrupt: {e}")
 
 
-def read_notes(course_id: str) -> list:
+def read_notes(course_id: str, user) -> list:
     """Returns a list of parsed note dicts for every file under
     courses/<course_id>/notes/*.json, sorted by filename. Returns [] if
     notes/ doesn't exist yet — that's a normal state, not an error."""
-    notes_dir = _course_dir(course_id) / "notes"
+    notes_dir = _course_dir(course_id, user) / "notes"
     if not notes_dir.exists():
         return []
 
@@ -484,9 +502,9 @@ def read_notes(course_id: str) -> list:
     return notes
 
 
-def read_lecture(course_id: str, lecture_id: str):
+def read_lecture(course_id: str, lecture_id: str, user):
     """Returns the parsed notes/<lecture_id>.json dict, or None if it doesn't exist."""
-    path = _lecture_path(course_id, lecture_id)
+    path = _lecture_path(course_id, lecture_id, user)
     if not path.exists():
         return None
     try:
@@ -495,12 +513,12 @@ def read_lecture(course_id: str, lecture_id: str):
         raise NotesStorageError(f"notes file '{lecture_id}' for '{course_id}' is corrupt: {e}")
 
 
-def write_notes(course_id: str, lecture_id: str, data: dict, overwrite: bool = False) -> Path:
+def write_notes(course_id: str, lecture_id: str, data: dict, user, overwrite: bool = False) -> Path:
     """Writes notes/<lecture_id>.json. Raises FileExistsError if it already
     exists and overwrite=False — same plan-then-pause contract as
     write_syllabus (interactive prompt for CLI, explicit flag for API)."""
-    notes_dir = _course_dir(course_id) / "notes"
-    out_path = _lecture_path(course_id, lecture_id)
+    notes_dir = _course_dir(course_id, user) / "notes"
+    out_path = _lecture_path(course_id, lecture_id, user)
 
     if out_path.exists() and not overwrite:
         raise FileExistsError(str(out_path))
@@ -510,11 +528,11 @@ def write_notes(course_id: str, lecture_id: str, data: dict, overwrite: bool = F
     return out_path
 
 
-def read_references(course_id: str) -> list:
+def read_references(course_id: str, user) -> list:
     """Returns a list of parsed reference dicts for every file under
     courses/<course_id>/references/*.json, sorted by filename. Returns [] if
     references/ doesn't exist yet — that's a normal state, not an error."""
-    references_dir = _course_dir(course_id) / "references"
+    references_dir = _course_dir(course_id, user) / "references"
     if not references_dir.exists():
         return []
 
@@ -527,10 +545,10 @@ def read_references(course_id: str) -> list:
     return references
 
 
-def read_reference(course_id: str, reference_id: str):
+def read_reference(course_id: str, reference_id: str, user):
     """Returns the parsed references/<reference_id>.json dict, or None if it
     doesn't exist."""
-    path = _reference_path(course_id, reference_id)
+    path = _reference_path(course_id, reference_id, user)
     if not path.exists():
         return None
     try:
@@ -539,13 +557,13 @@ def read_reference(course_id: str, reference_id: str):
         raise ReferencesStorageError(f"reference file '{reference_id}' for '{course_id}' is corrupt: {e}")
 
 
-def write_reference(course_id: str, reference_id: str, data: dict, overwrite: bool = False) -> Path:
+def write_reference(course_id: str, reference_id: str, data: dict, user, overwrite: bool = False) -> Path:
     """Writes references/<reference_id>.json. Raises FileExistsError if it
     already exists and overwrite=False — same plan-then-pause contract as
     write_notes, even though in practice references.ingest_reference()
     generates reference_id fresh on every call and this path is rarely hit."""
-    references_dir = _course_dir(course_id) / "references"
-    out_path = _reference_path(course_id, reference_id)
+    references_dir = _course_dir(course_id, user) / "references"
+    out_path = _reference_path(course_id, reference_id, user)
 
     if out_path.exists() and not overwrite:
         raise FileExistsError(str(out_path))
@@ -555,12 +573,12 @@ def write_reference(course_id: str, reference_id: str, data: dict, overwrite: bo
     return out_path
 
 
-def read_trusted_domains(course_id: str) -> list:
+def read_trusted_domains(course_id: str, user) -> list:
     """Returns the approved domains list, or [] if trusted_domains.json
     doesn't exist yet — no domains approved is the normal starting state,
     same "doesn't exist yet = normal state" convention as
     mastery_scores.json before any quiz attempt."""
-    path = _course_dir(course_id) / "trusted_domains.json"
+    path = _course_dir(course_id, user) / "trusted_domains.json"
     if not path.exists():
         return []
     try:
@@ -577,12 +595,12 @@ def read_trusted_domains(course_id: str) -> list:
     return domains
 
 
-def write_trusted_domains(course_id: str, domains: list) -> Path:
+def write_trusted_domains(course_id: str, domains: list, user) -> Path:
     """Writes trusted_domains.json. Always overwrites — this is a
     user-controlled config list (the human approval step), not append-only
     data, so there's no destructive-conflict case to guard against the way
     write_syllabus/write_notes do."""
-    out_dir = _course_dir(course_id)
+    out_dir = _course_dir(course_id, user)
     out_path = out_dir / "trusted_domains.json"
 
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -594,7 +612,7 @@ def write_trusted_domains(course_id: str, domains: list) -> Path:
 
 def read_quiz_history(course_id: str, user=None) -> dict:
     """Returns quiz attempts from SQLite in the historical JSON shape."""
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import QuizAttempt
 
     attempts = []
@@ -615,7 +633,7 @@ def read_quiz_history(course_id: str, user=None) -> dict:
 
 def append_quiz_attempt(course_id: str, attempt: dict, user=None) -> None:
     """Appends one quiz attempt to SQLite."""
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import QuizAttempt
 
     QuizAttempt.objects.create(
@@ -677,7 +695,7 @@ def read_flashcard_progress(course_id: str, user=None) -> dict:
 
     Missing rows mean no saved progress yet, which is a normal state.
     """
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import FlashcardProgress
 
     records = FlashcardProgress.objects.filter(course_id=course_id, **_flashcard_user_filter(user))
@@ -692,7 +710,7 @@ def write_flashcard_progress(course_id: str, data: dict, user=None) -> None:
 
     Kept for compatibility with tests and callers that need a bulk replace.
     """
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     cards = data.get("cards", {})
     if not isinstance(cards, dict):
         raise FlashcardProgressStorageError("flashcard progress has invalid cards shape")
@@ -740,7 +758,7 @@ def annotate_flashcards_with_progress(course_id: str, flashcards: list, user=Non
 
 def read_saved_flashcards(course_id: str, user=None) -> list:
     """Returns previously generated flashcards for a course/user."""
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import FlashcardProgress
 
     records = (
@@ -770,7 +788,7 @@ FLASHCARD_CACHE_LIMIT = 200
 def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -> None:
     """Stores generated card text so course Q&A can reference the full deck,
     even before the learner marks progress or stars cards."""
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import FlashcardProgress
 
     user_value = user if getattr(user, "is_authenticated", False) else None
@@ -831,7 +849,7 @@ def update_flashcard_progress(course_id: str, card: dict, user=None) -> dict:
     status = card.get("status")
     if status not in {"mastered", "in_progress", "not_started"}:
         raise ValueError("status must be mastered, in_progress, or not_started")
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     key = card.get("key") or flashcard_key(card.get("term", ""), card.get("definition", ""))
     starred = bool(card.get("starred", False))
 
@@ -875,7 +893,7 @@ def update_flashcard_progress(course_id: str, card: dict, user=None) -> dict:
 
 
 def reset_flashcard_progress(course_id: str, keys: list, user=None) -> None:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import FlashcardProgress
 
     key_values = [str(key) for key in keys]
@@ -888,7 +906,7 @@ def reset_flashcard_progress(course_id: str, keys: list, user=None) -> None:
 
 
 def read_calendar_sync(course_id: str, user=None) -> list:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import CalendarSyncRecord
 
     records = _scope_user_queryset(CalendarSyncRecord.objects.filter(course_id=course_id), user).order_by("id")
@@ -905,7 +923,7 @@ def read_calendar_sync(course_id: str, user=None) -> list:
 
 
 def append_calendar_sync_record(course_id: str, record: dict, user=None) -> None:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import CalendarSyncRecord
 
     CalendarSyncRecord.objects.create(
@@ -920,7 +938,7 @@ def append_calendar_sync_record(course_id: str, record: dict, user=None) -> None
 
 
 def read_mastery_scores(course_id: str, user=None):
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import MasteryScore
 
     records = list(_scope_user_queryset(MasteryScore.objects.filter(course_id=course_id), user).order_by("score", "topic"))
@@ -944,7 +962,7 @@ def read_mastery_scores(course_id: str, user=None):
 
 
 def write_mastery_scores(course_id: str, data: dict, user=None) -> None:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     scores = data.get("scores", [])
     if not isinstance(scores, list):
         raise QuizStorageError("mastery scores has invalid scores shape")
@@ -969,7 +987,7 @@ def write_mastery_scores(course_id: str, data: dict, user=None) -> None:
 
 
 def read_grades(course_id: str, user=None) -> dict:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import GradeItem
 
     records = _scope_user_queryset(GradeItem.objects.filter(course_id=course_id), user).order_by("created_at", "id")
@@ -990,7 +1008,7 @@ def read_grades(course_id: str, user=None) -> dict:
 
 
 def write_grades(course_id: str, data: dict, user=None) -> None:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     items = data.get("items", [])
     if not isinstance(items, list):
         raise GradesStorageError("grades has invalid items shape")
@@ -1039,7 +1057,7 @@ def _saved_site_to_dict(site) -> dict:
 
 
 def list_saved_sites(course_id: str, user=None) -> list:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     from agent.models import SavedSite
 
     records = _scope_user_queryset(SavedSite.objects.filter(course_id=course_id), user).order_by("title", "id")
@@ -1047,7 +1065,7 @@ def list_saved_sites(course_id: str, user=None) -> list:
 
 
 def save_site(course_id: str, url: str, title: str = None, user=None) -> dict:
-    _course_dir(course_id)
+    _validate_course_id(course_id)
     normalized_url = validate_saved_site_url(url)
     title = str(title or "").strip()
     if not title:
@@ -1150,11 +1168,11 @@ def claim_custom_event(event_id: str, user) -> None:
     CustomEvent.objects.filter(event_id=event_id, user__isnull=True).update(user=user)
 
 
-def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
+def write_syllabus(course_id: str, data: dict, user, overwrite: bool = False) -> Path:
     """Writes syllabus.json. Raises FileExistsError if it already exists and
     overwrite=False — callers are responsible for the plan-then-pause
     confirmation step (interactive prompt for CLI, explicit flag for API)."""
-    out_dir = _course_dir(course_id)
+    out_dir = _course_dir(course_id, user)
     out_path = out_dir / "syllabus.json"
 
     if out_path.exists() and not overwrite:
@@ -1165,31 +1183,32 @@ def write_syllabus(course_id: str, data: dict, overwrite: bool = False) -> Path:
     return out_path
 
 
-def write_grading_config(course_id: str, grading: list, grade_scale: dict = None) -> Path:
+def write_grading_config(course_id: str, grading: list, user, grade_scale: dict = None) -> Path:
     """Merges 'grading' and (if provided) 'grade_scale' into the course's
     existing syllabus.json. Raises CourseNotFoundError if no syllabus exists
     yet — grading categories can only be edited on a real course, not a
     draft. grade_scale is left untouched when omitted from the call, so
     editing categories doesn't require re-specifying the scale every time."""
-    syllabus = read_syllabus(course_id)
+    syllabus = read_syllabus(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus found for '{course_id}'")
     syllabus["grading"] = grading
     if grade_scale is not None:
         syllabus["grade_scale"] = grade_scale
-    return write_syllabus(course_id, syllabus, overwrite=True)
+    return write_syllabus(course_id, syllabus, user, overwrite=True)
 
 
 class CourseAlreadyExistsError(Exception):
     """Raised when a course_id already has either course.json or syllabus.json."""
 
 
-def write_course_draft(course_id: str, course_name: str) -> Path:
+def write_course_draft(course_id: str, course_name: str, user) -> Path:
     """Writes course.json — a class that has a name but no syllabus yet.
     Raises InvalidCourseIdError (via _course_dir) for a bad slug, and
     CourseAlreadyExistsError if course_id already has course.json or
-    syllabus.json — a draft can't collide with itself or a real course."""
-    out_dir = _course_dir(course_id)
+    syllabus.json for this user — a draft can't collide with itself or a
+    real course belonging to the same user."""
+    out_dir = _course_dir(course_id, user)
     course_path = out_dir / "course.json"
     syllabus_path = out_dir / "syllabus.json"
 
@@ -1210,44 +1229,46 @@ def write_course_draft(course_id: str, course_name: str) -> Path:
     return course_path
 
 
-def course_exists(course_id: str) -> bool:
-    """True if course_id is a real (syllabus'd) course — the same
-    definition reminders.list_courses() uses, so this matches exactly what
-    the UI already offers as a selectable course. False (never raises) for
-    a draft-only course, a missing course, or an unsafe/invalid course_id —
-    callers doing input validation want a plain reject, not an exception
-    for the common case of a client-supplied string."""
+def course_exists(course_id: str, user) -> bool:
+    """True if course_id is a real (syllabus'd) course for this user — the
+    same definition reminders.list_courses() uses, so this matches exactly
+    what the UI already offers as a selectable course. False (never raises)
+    for a draft-only course, a missing course, or an unsafe/invalid
+    course_id — callers doing input validation want a plain reject, not an
+    exception for the common case of a client-supplied string."""
     try:
-        course_dir = _course_dir(course_id)
+        course_dir = _course_dir(course_id, user)
     except InvalidCourseIdError:
         return False
     return (course_dir / "syllabus.json").exists()
 
 
-def course_or_draft_exists(course_id: str) -> bool:
-    """True if course_id exists as either a real course or a draft class."""
+def course_or_draft_exists(course_id: str, user) -> bool:
+    """True if course_id exists as either a real course or a draft class for
+    this user."""
     try:
-        course_dir = _course_dir(course_id)
+        course_dir = _course_dir(course_id, user)
     except InvalidCourseIdError:
         return False
     return (course_dir / "syllabus.json").exists() or (course_dir / "course.json").exists()
 
 
-def delete_course(course_id: str) -> None:
-    """Deletes courses/<course_id>/ entirely — syllabus, notes, references,
-    sessions, quiz history, mastery scores, grades, calendar sync records,
-    flashcard progress, custom events, and notifications. Raises
-    CourseNotFoundError if course_id exists as neither a draft nor a real
-    course. Irreversible; callers are responsible for confirming with the
-    user before calling this (plan-then-pause per CLAUDE.md)."""
-    course_dir = _course_dir(course_id)
+def delete_course(course_id: str, user) -> None:
+    """Deletes courses/<user.pk>/<course_id>/ entirely — syllabus, notes,
+    references, sessions, quiz history, mastery scores, grades, calendar
+    sync records, flashcard progress, custom events, and notifications, all
+    scoped to this user. Raises CourseNotFoundError if course_id exists as
+    neither a draft nor a real course for this user. Irreversible; callers
+    are responsible for confirming with the user before calling this
+    (plan-then-pause per CLAUDE.md)."""
+    course_dir = _course_dir(course_id, user)
     if not (course_dir / "course.json").exists() and not (course_dir / "syllabus.json").exists():
         raise CourseNotFoundError(f"no course '{course_id}' found")
     shutil.rmtree(course_dir)
-    delete_course_state(course_id)
+    delete_course_state(course_id, user)
 
 
-def delete_course_state(course_id: str) -> None:
+def delete_course_state(course_id: str, user) -> None:
     from django.db import transaction
     from agent.models import (
         CalendarSyncRecord,
@@ -1261,23 +1282,24 @@ def delete_course_state(course_id: str) -> None:
         SavedSite,
     )
 
+    user_filter = _flashcard_user_filter(user)
     with transaction.atomic():
-        FlashcardProgress.objects.filter(course_id=course_id).delete()
-        GradeItem.objects.filter(course_id=course_id).delete()
-        CalendarSyncRecord.objects.filter(course_id=course_id).delete()
-        CustomEvent.objects.filter(course_id=course_id).delete()
-        Notification.objects.filter(course_id=course_id).delete()
-        QuizAttempt.objects.filter(course_id=course_id).delete()
-        MasteryScore.objects.filter(course_id=course_id).delete()
-        CourseSession.objects.filter(course_id=course_id).delete()
-        SavedSite.objects.filter(course_id=course_id).delete()
+        FlashcardProgress.objects.filter(course_id=course_id, **user_filter).delete()
+        GradeItem.objects.filter(course_id=course_id, **user_filter).delete()
+        CalendarSyncRecord.objects.filter(course_id=course_id, **user_filter).delete()
+        CustomEvent.objects.filter(course_id=course_id, **user_filter).delete()
+        Notification.objects.filter(course_id=course_id, **user_filter).delete()
+        QuizAttempt.objects.filter(course_id=course_id, **user_filter).delete()
+        MasteryScore.objects.filter(course_id=course_id, **user_filter).delete()
+        CourseSession.objects.filter(course_id=course_id, **user_filter).delete()
+        SavedSite.objects.filter(course_id=course_id, **user_filter).delete()
 
 
-def rename_course(course_id: str, course_name: str) -> None:
+def rename_course(course_id: str, course_name: str, user) -> None:
     """Updates course_name in place — course.json for a draft, syllabus.json
-    for a real course, whichever exists. Raises CourseNotFoundError if
-    neither exists."""
-    course_dir = _course_dir(course_id)
+    for a real course, whichever exists for this user. Raises
+    CourseNotFoundError if neither exists."""
+    course_dir = _course_dir(course_id, user)
     course_path = course_dir / "course.json"
     syllabus_path = course_dir / "syllabus.json"
 

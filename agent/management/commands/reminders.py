@@ -1,6 +1,7 @@
 from django.core.management.base import BaseCommand
 
 from agent.services import reminders
+from agent.services.cli_owner import resolve_owner_user
 
 
 class Command(BaseCommand):
@@ -14,8 +15,9 @@ class Command(BaseCommand):
         parser.add_argument("--course-id", dest="course_id", default=None, help="Limit to one course")
 
     def handle(self, *args, **options):
+        owner = resolve_owner_user()
         course_ids = [options["course_id"]] if options["course_id"] else None
-        deadlines = reminders.upcoming_deadlines(within_days=options["within_days"], course_ids=course_ids)
+        deadlines = reminders.upcoming_deadlines(owner, within_days=options["within_days"], course_ids=course_ids)
 
         if not deadlines:
             self.stdout.write("No upcoming deadlines found.")

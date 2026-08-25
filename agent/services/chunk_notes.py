@@ -177,13 +177,14 @@ def _dedupe_chunk_ids(chunks: list) -> list:
 
 async def chunk_notes_async(
     course_id: str, lecture_id: str, source_text: str, source_type: str, lecture_date: str = None,
+    user=None,
 ) -> dict:
     if not source_text.strip():
         raise MalformedSourceError("source has no extractable text to chunk")
 
     client = get_client()
 
-    syllabus = await sync_to_async(storage.read_syllabus)(course_id)
+    syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 

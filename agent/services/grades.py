@@ -23,8 +23,8 @@ class ItemNotFoundError(Exception):
     """Raised when item_id doesn't match any entry in a course's grades.json."""
 
 
-def _require_syllabus(course_id: str) -> dict:
-    syllabus = storage.read_syllabus(course_id)
+def _require_syllabus(course_id: str, user) -> dict:
+    syllabus = storage.read_syllabus(course_id, user)
     if syllabus is None:
         raise storage.CourseNotFoundError(f"no syllabus found for '{course_id}'")
     return syllabus
@@ -47,7 +47,7 @@ def current_grade(course_id: str, user=None) -> dict:
     excluded entirely (not treated as 0%), and the overall percentage is a
     weighted average renormalized across only the categories that have
     data, so an ungraded Final Exam doesn't crater today's number."""
-    syllabus = _require_syllabus(course_id)
+    syllabus = _require_syllabus(course_id, user)
     grading = syllabus.get("grading", [])
     items = storage.read_grades(course_id, user=user)["items"]
     grade_scale = syllabus.get("grade_scale") or DEFAULT_GRADE_SCALE
@@ -86,7 +86,7 @@ def current_grade(course_id: str, user=None) -> dict:
 
 
 def add_item(course_id: str, component: str, title: str, score: float, max_points: float, date: str = None, user=None) -> dict:
-    syllabus = _require_syllabus(course_id)
+    syllabus = _require_syllabus(course_id, user)
     valid_components = {g["component"] for g in syllabus.get("grading", [])}
     if component not in valid_components:
         raise ValueError(f"'{component}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
@@ -106,7 +106,7 @@ def add_item(course_id: str, component: str, title: str, score: float, max_point
 
 def update_item(course_id: str, item_id: str, user=None, **fields) -> dict:
     if "component" in fields:
-        syllabus = _require_syllabus(course_id)
+        syllabus = _require_syllabus(course_id, user)
         valid_components = {g["component"] for g in syllabus.get("grading", [])}
         if fields["component"] not in valid_components:
             raise ValueError(f"'{fields['component']}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
@@ -151,7 +151,7 @@ def grade_needed(course_id: str, target_pct: float, user=None) -> dict:
     current average (or 0 with no entries at all) is locked in as final,
     and that's flagged in 'notes' since it silently caps the achievable
     grade."""
-    syllabus = _require_syllabus(course_id)
+    syllabus = _require_syllabus(course_id, user)
     grading = syllabus.get("grading", [])
     items = storage.read_grades(course_id, user=user)["items"]
 
@@ -214,7 +214,7 @@ def missable_by_category(course_id: str, target_pct: float, user=None) -> list:
     remaining item in this category scores 100%, the largest number of
     remaining items that can score 0% while this category's own average
     still meets target_pct."""
-    syllabus = _require_syllabus(course_id)
+    syllabus = _require_syllabus(course_id, user)
     grading = syllabus.get("grading", [])
     items = storage.read_grades(course_id, user=user)["items"]
 
@@ -276,10 +276,10 @@ def all_courses_summary(user=None) -> dict:
     grades_total = 0.0
     graded_count = 0
 
-    for course_id in reminders.list_courses():
+    for course_id in reminders.list_courses(user):
         try:
             g = current_grade(course_id, user=user)
-            syllabus = storage.read_syllabus(course_id)
+            syllabus = storage.read_syllabus(course_id, user)
             entry = {
                 "course_id": course_id, "course_name": syllabus.get("course_name", course_id),
                 "current_pct": g["overall_pct"], "letter": g["letter"],

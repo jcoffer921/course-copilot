@@ -48,8 +48,8 @@ wildcards, no protocol prefix, no path.
 """
 
 
-async def suggest_domains(course_id: str) -> list[str]:
-    syllabus = await sync_to_async(storage.read_syllabus)(course_id)
+async def suggest_domains(course_id: str, user) -> list[str]:
+    syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 

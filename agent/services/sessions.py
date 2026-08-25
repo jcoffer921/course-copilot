@@ -35,8 +35,8 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _validate_session_id(course_id: str, session_id: str) -> None:
-    storage._course_dir(course_id)
+def _validate_session_id(course_id: str, session_id: str, user=None) -> None:
+    storage._validate_course_id(course_id)
     if not SESSION_ID_RE.fullmatch(session_id):
         raise InvalidSessionIdError(f"invalid session_id: {session_id!r}")
 
@@ -128,7 +128,7 @@ def create_session(course_id: str, user=None) -> dict:
     """Creates a new empty session for course_id and writes it to disk.
     Raises storage.CourseNotFoundError if no syllabus.json exists yet — a
     session can't be grounded in a course that doesn't exist."""
-    syllabus = storage.read_syllabus(course_id)
+    syllabus = storage.read_syllabus(course_id, user)
     if syllabus is None:
         raise storage.CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
 
@@ -156,7 +156,7 @@ def create_session(course_id: str, user=None) -> dict:
 
 def get_session(course_id: str, session_id: str, user=None):
     """Returns the parsed session dict, or None if it doesn't exist."""
-    _validate_session_id(course_id, session_id)
+    _validate_session_id(course_id, session_id, user)
     from agent.models import CourseSession
 
     session = CourseSession.objects.prefetch_related("messages").filter(
@@ -179,7 +179,7 @@ def append_message(
     if role not in VALID_ROLES:
         raise ValueError(f"invalid role: {role!r} (must be one of {VALID_ROLES})")
 
-    _validate_session_id(course_id, session_id)
+    _validate_session_id(course_id, session_id, user)
     from agent.models import CourseSession, SessionMessage
 
     session = CourseSession.objects.filter(course_id=course_id, session_id=session_id, **_user_filter(user)).first()
@@ -207,7 +207,7 @@ def list_sessions(course_id: str, user=None) -> list:
     every session under courses/<course_id>/sessions/, sorted by filename.
     Does not include message bodies — use get_session() for that. Returns []
     if sessions/ doesn't exist yet."""
-    storage._course_dir(course_id)
+    storage._validate_course_id(course_id)
     from django.db.models import Count
     from agent.models import CourseSession
 
@@ -232,7 +232,7 @@ def relevant_messages(
     This is deliberately lexical and bounded. It gives Cora useful continuity
     without stuffing every previous conversation into every prompt.
     """
-    storage._course_dir(course_id)
+    storage._validate_course_id(course_id)
     terms = _memory_terms(query)
     if not terms:
         return []

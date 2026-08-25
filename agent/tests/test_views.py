@@ -24,10 +24,10 @@ def api_client(django_user_model):
     return client
 
 
-def _seed_syllabus(course_id):
+def _seed_syllabus(course_id, user):
     storage.write_syllabus(course_id, {
         "course_id": course_id, "course_name": "Test", "dates": [], "grading": [], "topics": ["A"],
-    })
+    }, user)
 
 
 def test_profile_get_uses_display_name_and_settings(api_client):
@@ -93,7 +93,7 @@ def test_references_get_empty_for_new_course(isolated_courses_dir, api_client):
 
 
 def test_saved_sites_post_then_get_stores_url_metadata_only(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.post(
         "/api/courses/cs101/saved-sites/",
@@ -113,7 +113,7 @@ def test_saved_sites_post_then_get_stores_url_metadata_only(isolated_courses_dir
 
 
 def test_saved_sites_post_rejects_non_http_url(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.post(
         "/api/courses/cs101/saved-sites/",
@@ -134,7 +134,7 @@ def test_references_post_rejects_unsupported_file_type(isolated_courses_dir, api
 
 
 def test_domains_get_empty_before_approval(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.get("/api/courses/cs101/domains/")
 
@@ -143,18 +143,18 @@ def test_domains_get_empty_before_approval(isolated_courses_dir, api_client):
 
 
 def test_domains_put_replaces_approved_list(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.put(
         "/api/courses/cs101/domains/", {"domains": ["docs.python.org"]}, format="json",
     )
 
     assert response.status_code == 200
-    assert storage.read_trusted_domains("cs101") == ["docs.python.org"]
+    assert storage.read_trusted_domains("cs101", api_client.user) == ["docs.python.org"]
 
 
 def test_domains_put_rejects_empty_domain_string(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.put(
         "/api/courses/cs101/domains/", {"domains": ["good.com", ""]}, format="json",
@@ -164,9 +164,9 @@ def test_domains_put_rejects_empty_domain_string(isolated_courses_dir, api_clien
 
 
 def test_domain_suggestions_view_never_writes(isolated_courses_dir, api_client, monkeypatch):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
-    async def fake_suggest_domains(course_id):
+    async def fake_suggest_domains(course_id, user):
         return ["docs.python.org", "nist.gov"]
 
     monkeypatch.setattr(views.domain_suggestions, "suggest_domains", fake_suggest_domains)
@@ -175,7 +175,7 @@ def test_domain_suggestions_view_never_writes(isolated_courses_dir, api_client, 
 
     assert response.status_code == 200
     assert response.data == {"suggested": ["docs.python.org", "nist.gov"]}
-    assert storage.read_trusted_domains("cs101") == []
+    assert storage.read_trusted_domains("cs101", api_client.user) == []
 
 
 def test_domain_suggestions_view_404s_without_syllabus(isolated_courses_dir, api_client):
@@ -185,7 +185,7 @@ def test_domain_suggestions_view_404s_without_syllabus(isolated_courses_dir, api
 
 
 def test_flashcards_generate_annotates_saved_progress(isolated_courses_dir, api_client, monkeypatch):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     async def fake_generate_flashcards_async(course_id, topic=None, chunk_id=None, count=8, user=None):
         return {
@@ -212,7 +212,7 @@ def test_flashcards_generate_annotates_saved_progress(isolated_courses_dir, api_
 
 
 def test_flashcards_generate_reuses_saved_deck(isolated_courses_dir, api_client, monkeypatch):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
     saved = storage.update_flashcard_progress("cs101", {
         "term": "Closure",
         "definition": "Captured state.",
@@ -241,7 +241,7 @@ def test_flashcards_generate_reuses_saved_deck(isolated_courses_dir, api_client,
 
 
 def test_flashcards_generate_regenerate_flag_bypasses_saved_deck(isolated_courses_dir, api_client, monkeypatch):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
     storage.update_flashcard_progress("cs101", {
         "term": "Old",
         "definition": "Existing card.",
@@ -270,7 +270,7 @@ def test_flashcards_generate_regenerate_flag_bypasses_saved_deck(isolated_course
 
 
 def test_quiz_history_rejects_malformed_limit(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.get("/api/courses/cs101/quiz/history/?limit=abc")
 
@@ -286,7 +286,7 @@ def test_reminders_rejects_malformed_within_days(api_client):
 
 
 def test_flashcard_progress_patch_and_reset(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.patch(
         "/api/courses/cs101/flashcards/progress/",
@@ -336,7 +336,7 @@ def test_flashcard_progress_patch_rejects_invalid_course_id(isolated_courses_dir
 
 
 def test_flashcard_progress_patch_rejects_bad_status(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.patch(
         "/api/courses/cs101/flashcards/progress/",
@@ -348,7 +348,7 @@ def test_flashcard_progress_patch_rejects_bad_status(isolated_courses_dir, api_c
 
 
 def test_deadline_post_accepts_duration_completion_and_legacy_category(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.post(
         "/api/deadlines/",
@@ -371,7 +371,7 @@ def test_deadline_post_accepts_duration_completion_and_legacy_category(isolated_
 
 
 def test_deadline_post_rejects_bad_duration_and_category(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     bad_duration = api_client.post(
         "/api/deadlines/",
@@ -401,7 +401,7 @@ def test_deadline_post_rejects_bad_duration_and_category(isolated_courses_dir, a
 
 
 def test_notifications_endpoint_generates_overdue_deadline_once(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
     overdue = (date.today() - timedelta(days=1)).isoformat()
     create_response = api_client.post(
         "/api/deadlines/",
@@ -439,7 +439,7 @@ def test_create_course_draft_returns_201(isolated_courses_dir, api_client):
 
     assert response.status_code == 201
     assert response.data == {"course_id": "newclass", "course_name": "New Class"}
-    assert (isolated_courses_dir / "newclass" / "course.json").exists()
+    assert (isolated_courses_dir / str(api_client.user.pk) / "newclass" / "course.json").exists()
 
 
 def test_create_course_draft_rejects_blank_name(isolated_courses_dir, api_client):
@@ -457,7 +457,7 @@ def test_create_course_draft_conflicts_with_existing_draft(isolated_courses_dir,
 
 
 def test_create_course_draft_conflicts_with_existing_real_course(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.post("/api/courses/cs101/", {"course_name": "Intro to CS"}, format="json")
 
@@ -471,16 +471,16 @@ def test_rename_draft_course(isolated_courses_dir, api_client):
 
     assert response.status_code == 200
     assert response.data == {"course_id": "newclass", "course_name": "Renamed Class"}
-    assert storage.read_syllabus("newclass") is None  # still a draft, not promoted
+    assert storage.read_syllabus("newclass", api_client.user) is None  # still a draft, not promoted
 
 
 def test_rename_real_course(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.patch("/api/courses/cs101/", {"course_name": "Renamed"}, format="json")
 
     assert response.status_code == 200
-    assert storage.read_syllabus("cs101")["course_name"] == "Renamed"
+    assert storage.read_syllabus("cs101", api_client.user)["course_name"] == "Renamed"
 
 
 def test_rename_nonexistent_course_404s(isolated_courses_dir, api_client):
@@ -495,16 +495,16 @@ def test_delete_draft_course(isolated_courses_dir, api_client):
     response = api_client.delete("/api/courses/newclass/")
 
     assert response.status_code == 204
-    assert not (isolated_courses_dir / "newclass").exists()
+    assert not (isolated_courses_dir / str(api_client.user.pk) / "newclass").exists()
 
 
 def test_delete_real_course(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.delete("/api/courses/cs101/")
 
     assert response.status_code == 204
-    assert not (isolated_courses_dir / "cs101").exists()
+    assert not (isolated_courses_dir / str(api_client.user.pk) / "cs101").exists()
 
 
 def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
@@ -516,22 +516,41 @@ def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
 def test_delete_course_also_removes_its_custom_events(isolated_courses_dir, api_client):
     from agent.services import custom_events
 
-    _seed_syllabus("cs101")
-    _seed_syllabus("cs102")
-    custom_events.create_event("cs101", "2026-09-01", None, "Delete me", "other")
-    custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other")
-    custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other")
+    user = api_client.user
+    _seed_syllabus("cs101", user)
+    _seed_syllabus("cs102", user)
+    custom_events.create_event("cs101", "2026-09-01", None, "Delete me", "other", user=user)
+    custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other", user=user)
+    custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other", user=user)
 
     response = api_client.delete("/api/courses/cs101/")
 
     assert response.status_code == 204
-    remaining_titles = {e["title"] for e in custom_events.list_events()}
+    remaining_titles = {e["title"] for e in custom_events.list_events(user=user)}
     assert remaining_titles == {"Keep me (other course)", "Keep me (general)"}
 
 
+def test_delete_course_only_removes_the_owning_users_custom_events(isolated_courses_dir, api_client, django_user_model):
+    from agent.services import custom_events
+
+    owner = api_client.user
+    other = django_user_model.objects.create_user(username="other-user")
+
+    _seed_syllabus("cs101", owner)
+    _seed_syllabus("cs101", other)
+    custom_events.create_event("cs101", "2026-09-01", None, "Owner's deadline", "other", user=owner)
+    custom_events.create_event("cs101", "2026-09-01", None, "Other user's deadline", "other", user=other)
+
+    response = api_client.delete("/api/courses/cs101/")
+
+    assert response.status_code == 204
+    assert {e["title"] for e in custom_events.list_events(user=owner)} == set()
+    assert {e["title"] for e in custom_events.list_events(user=other)} == {"Other user's deadline"}
+
+
 def test_delete_course_removes_db_backed_course_state(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
-    _seed_syllabus("cs102")
+    _seed_syllabus("cs101", api_client.user)
+    _seed_syllabus("cs102", api_client.user)
     user = api_client.user
     storage.update_flashcard_progress("cs101", {
         "term": "Closure", "definition": "Captured state.", "status": "mastered", "starred": False,
@@ -564,13 +583,19 @@ def test_delete_course_removes_db_backed_course_state(isolated_courses_dir, api_
     response = api_client.delete("/api/courses/cs101/")
 
     assert response.status_code == 204
-    assert FlashcardProgress.objects.filter(course_id="cs101").count() == 0
-    assert GradeItem.objects.filter(course_id="cs101").count() == 0
-    assert CalendarSyncRecord.objects.filter(course_id="cs101").count() == 0
-    assert QuizAttempt.objects.filter(course_id="cs101").count() == 0
-    assert MasteryScore.objects.filter(course_id="cs101").count() == 0
-    assert CourseSession.objects.filter(course_id="cs101").count() == 0
-    assert GradeItem.objects.filter(course_id="cs102").count() == 1
+    # Scoped by user, not just course_id: course_id="cs101" is reused as a
+    # fixture value across many tests in this file (and other users'
+    # records for it may legitimately exist in the shared test database),
+    # so a global course_id-only count would be sensitive to unrelated
+    # tests rather than verifying delete_course cleaned up *this* user's
+    # state, which is what's actually under test.
+    assert FlashcardProgress.objects.filter(course_id="cs101", user=user).count() == 0
+    assert GradeItem.objects.filter(course_id="cs101", user=user).count() == 0
+    assert CalendarSyncRecord.objects.filter(course_id="cs101", user=user).count() == 0
+    assert QuizAttempt.objects.filter(course_id="cs101", user=user).count() == 0
+    assert MasteryScore.objects.filter(course_id="cs101", user=user).count() == 0
+    assert CourseSession.objects.filter(course_id="cs101", user=user).count() == 0
+    assert GradeItem.objects.filter(course_id="cs102", user=user).count() == 1
 
 
 class _NeverCalledMessages:
@@ -586,7 +611,7 @@ class _NeverCalledClient:
 
 
 def test_ask_returns_500_not_crash_on_corrupt_reference_file(isolated_courses_dir, api_client, monkeypatch):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     # get_client() is called before storage.read_references() inside
     # ask_async, so it must be mocked so construction succeeds — but its
@@ -594,7 +619,7 @@ def test_ask_returns_500_not_crash_on_corrupt_reference_file(isolated_courses_di
     # corrupt-file error should raise before any network call happens.
     monkeypatch.setattr(ask, "get_client", lambda: _NeverCalledClient())
 
-    references_dir = isolated_courses_dir / "cs101" / "references"
+    references_dir = isolated_courses_dir / str(api_client.user.pk) / "cs101" / "references"
     references_dir.mkdir(parents=True, exist_ok=True)
     (references_dir / "bad.json").write_text("not valid json {{{", encoding="utf-8")
 
@@ -610,7 +635,7 @@ def test_grading_config_get_returns_default_scale_when_unset(isolated_courses_di
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
 
     response = api_client.get("/api/courses/cs101/grading/")
 
@@ -625,7 +650,7 @@ def test_grading_config_get_404s_without_syllabus(isolated_courses_dir, api_clie
 
 
 def test_grading_config_put_updates_categories(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.put(
         "/api/courses/cs101/grading/",
@@ -634,12 +659,12 @@ def test_grading_config_put_updates_categories(isolated_courses_dir, api_client)
     )
 
     assert response.status_code == 200
-    updated = storage.read_syllabus("cs101")
+    updated = storage.read_syllabus("cs101", api_client.user)
     assert updated["grading"] == [{"component": "Homework", "weight_pct": 100, "total_items": 5, "drop_lowest": None}]
 
 
 def test_grading_config_put_rejects_invalid_total_items(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.put(
         "/api/courses/cs101/grading/",
@@ -651,7 +676,7 @@ def test_grading_config_put_rejects_invalid_total_items(isolated_courses_dir, ap
 
 
 def test_grading_config_put_accepts_non_summing_weights_with_warning(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.put(
         "/api/courses/cs101/grading/",
@@ -667,7 +692,7 @@ def test_grading_config_put_warns_about_orphaned_grades(isolated_courses_dir, ap
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
     storage.write_grades("cs101", {"course_id": "cs101", "items": [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 90, "max_points": 100},
     ]})
@@ -690,7 +715,7 @@ def test_grading_config_put_404s_without_syllabus(isolated_courses_dir, api_clie
 
 
 def test_grading_config_get_includes_category_choices(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.get("/api/courses/cs101/grading/")
 
@@ -702,7 +727,7 @@ def test_grades_get_returns_items_and_breakdown(isolated_courses_dir, api_client
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
     storage.write_grades("cs101", {"course_id": "cs101", "items": [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 90, "max_points": 100},
     ]})
@@ -723,7 +748,7 @@ def test_grade_items_post_adds_item(isolated_courses_dir, api_client):
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
 
     response = api_client.post(
         "/api/courses/cs101/grades/items/",
@@ -740,7 +765,7 @@ def test_grade_items_post_422s_for_unknown_component(isolated_courses_dir, api_c
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
 
     response = api_client.post(
         "/api/courses/cs101/grades/items/",
@@ -755,7 +780,7 @@ def test_grade_item_detail_patch_updates(isolated_courses_dir, api_client):
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
     add = api_client.post(
         "/api/courses/cs101/grades/items/",
         {"component": "Homework", "title": "HW 1", "score": 90, "max_points": 100},
@@ -778,7 +803,7 @@ def test_grade_item_detail_delete_removes_item(isolated_courses_dir, api_client)
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
     add = api_client.post(
         "/api/courses/cs101/grades/items/",
         {"component": "Homework", "title": "HW 1", "score": 90, "max_points": 100},
@@ -796,7 +821,7 @@ def test_grades_whatif_returns_needed_and_missable(isolated_courses_dir, api_cli
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "Test", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100, "total_items": 4}], "topics": [],
-    })
+    }, api_client.user)
 
     response = api_client.get("/api/courses/cs101/grades/whatif/?target=75")
 
@@ -806,7 +831,7 @@ def test_grades_whatif_returns_needed_and_missable(isolated_courses_dir, api_cli
 
 
 def test_grades_whatif_400s_for_non_numeric_target(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.get("/api/courses/cs101/grades/whatif/?target=notanumber")
 
@@ -822,7 +847,7 @@ def test_grades_summary_returns_rollup(isolated_courses_dir, api_client):
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "CS101", "dates": [],
         "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
-    })
+    }, api_client.user)
     storage.write_grades("cs101", {"course_id": "cs101", "items": [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 88, "max_points": 100},
     ]})
@@ -1035,11 +1060,11 @@ def test_deadlines_get_can_filter_by_course_id(isolated_courses_dir, api_client)
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "CS", "dates": [{"date": "2099-01-01", "title": "CS Final", "type": "exam"}],
         "grading": [], "topics": [],
-    })
+    }, api_client.user)
     storage.write_syllabus("math201", {
         "course_id": "math201", "course_name": "Math", "dates": [{"date": "2099-01-01", "title": "Math Final", "type": "exam"}],
         "grading": [], "topics": [],
-    })
+    }, api_client.user)
 
     response = api_client.get("/api/deadlines/?course_id=cs101")
 
@@ -1049,7 +1074,7 @@ def test_deadlines_get_can_filter_by_course_id(isolated_courses_dir, api_client)
 
 @pytest.mark.django_db
 def test_deadlines_get_for_draft_course_returns_empty_list(isolated_courses_dir, api_client):
-    storage.write_course_draft("draft101", "Draft Class")
+    storage.write_course_draft("draft101", "Draft Class", api_client.user)
 
     response = api_client.get("/api/deadlines/?course_id=draft101")
 
@@ -1062,7 +1087,7 @@ def test_deadlines_post_replacement_hides_syllabus_deadline(isolated_courses_dir
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "CS", "dates": [{"date": "2099-01-01", "title": "Project Due", "type": "assignment"}],
         "grading": [], "topics": [],
-    })
+    }, api_client.user)
     original = api_client.get("/api/deadlines/?course_id=cs101").data[0]
 
     response = api_client.post(
@@ -1086,7 +1111,7 @@ def test_deadlines_post_replacement_hides_syllabus_deadline(isolated_courses_dir
 
 @pytest.mark.django_db
 def test_deadlines_post_creates_custom_event(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.post(
         "/api/deadlines/",
@@ -1140,7 +1165,7 @@ def test_deadlines_post_rejects_nonexistent_course_id(isolated_courses_dir, api_
 
 @pytest.mark.django_db
 def test_deadlines_post_accepts_real_course_id(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     response = api_client.post(
         "/api/deadlines/",
@@ -1185,7 +1210,7 @@ def test_custom_event_detail_patch_null_time_clears_it(isolated_courses_dir, api
 
 @pytest.mark.django_db
 def test_custom_event_detail_patch_null_course_id_becomes_general(isolated_courses_dir, api_client):
-    _seed_syllabus("cs101")
+    _seed_syllabus("cs101", api_client.user)
 
     create_response = api_client.post(
         "/api/deadlines/",
@@ -1378,7 +1403,7 @@ def test_deadlines_get_degrades_on_corrupt_custom_events_json(isolated_courses_d
         "course_id": "cs101", "course_name": "Test",
         "dates": [{"date": far_date, "title": "Final Exam", "type": "exam"}],
         "grading": [], "topics": [],
-    })
+    }, api_client.user)
     (isolated_courses_dir / "custom_events.json").write_text("{not valid json", encoding="utf-8")
 
     response = api_client.get("/api/deadlines/")

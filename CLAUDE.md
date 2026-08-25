@@ -9,6 +9,7 @@ OnTrack is an AI agent scoped to the current semester's coursework, built on the
 - Structured JSON per course as the knowledge store for extracted/generated content (syllabus, notes, references, quiz_history) — no vector DB
 - Django + DRF, served over **ASGI** (uvicorn), not WSGI — the agent makes per-request calls to the Anthropic API, which are I/O-bound; async views (`adrf`) + `AsyncAnthropic` keep the event loop free instead of blocking a worker thread per call
 - Django's `db.sqlite3` holds auth/session/admin tables plus mutable per-user state that benefits from relational queries/constraints (flashcard progress, grades, quiz attempts, mastery scores, calendar sync records, custom events, notifications, sessions, saved sites) — extracted/generated *content* itself (syllabus, notes, references) still lives in per-course JSON, never the DB
+- Course content is user-scoped on disk: `courses/<user.pk>/<course_id>/...`, not a shared `courses/<course_id>/` — two students can each have their own `cs101` without colliding. The 9 CLI dev-tool commands (never used by real students) resolve a single designated owner account via the `CLI_OWNER_EMAIL` env var (see `agent/services/cli_owner.py`) instead of taking a `--user` flag. Pre-existing flat-layout course data needs a one-time `python manage.py migrate_course_ownership --apply` to move it under an owner's `<user.pk>/`.
 - Google Calendar API for deadline sync — built (`calendar_sync.py` + `custom_events.py`); requires a user-provided Google Cloud OAuth client
 
 ## Non-negotiable constraints
@@ -78,6 +79,8 @@ course-copilot/
       mastery.py                # CLI wrapper (--rebuild / --weak-topics)
       reminders.py                # CLI wrapper (--within-days / --course-id)
       grades.py                   # CLI wrapper (--add / --list / --whatif / --set-grading)
+      migrate_course_ownership.py # one-time on-disk migration: courses/<course_id>/ ->
+                                  # courses/<owner.pk>/<course_id>/ (run with --apply)
     tests/                  # pytest (pytest-django + pytest-asyncio); live-API tests skip
                             # cleanly without ANTHROPIC_API_KEY set
     templates/agent/
@@ -91,22 +94,26 @@ course-copilot/
   courses/
     custom_events.json    # top-level (not per-course) — manually-added deadlines/events;
                           # absent until the first custom event is created
-    <course_id>/
-      syllabus.json       # extracted dates, topics, grading breakdown
-      notes/
-        <lecture_id>.json # chunked notes/slides, one file per lecture — see schema below
-      references/
-        <reference_id>.json # uploaded reference material, one file per doc — see schema below
-      sessions/
-        <session_id>.json # multi-turn grounded Q&A conversation history
-      quiz_history.json   # append-only event log: every attempt, questions asked, correct/incorrect
-      mastery_scores.json # derived from quiz_history.json — never hand-edited, always rebuildable
-      grades.json         # entered scores (score/max_points) against syllabus.json's grading
-                          # categories — user-editable CRUD, not an append-only log; absent
-                          # until the first grade is added
-      trusted_domains.json # human-approved web-search domains — absent until at least one is approved
-      calendar_sync.json   # which of this course's syllabus deadlines have been pushed to
-                          # Google Calendar — absent until the first sync
+    <user.pk>/            # every piece of course content is user-scoped — two students
+                          # can each have their own "cs101" without colliding or seeing
+                          # each other's data (integer primary key, not username/email —
+                          # stable, no path-unsafe characters)
+      <course_id>/
+        syllabus.json       # extracted dates, topics, grading breakdown
+        notes/
+          <lecture_id>.json # chunked notes/slides, one file per lecture — see schema below
+        references/
+          <reference_id>.json # uploaded reference material, one file per doc — see schema below
+        sessions/
+          <session_id>.json # multi-turn grounded Q&A conversation history
+        quiz_history.json   # append-only event log: every attempt, questions asked, correct/incorrect
+        mastery_scores.json # derived from quiz_history.json — never hand-edited, always rebuildable
+        grades.json         # entered scores (score/max_points) against syllabus.json's grading
+                            # categories — user-editable CRUD, not an append-only log; absent
+                            # until the first grade is added
+        trusted_domains.json # human-approved web-search domains — absent until at least one is approved
+        calendar_sync.json   # which of this course's syllabus deadlines have been pushed to
+                            # Google Calendar — absent until the first sync
   test-syllabi/           # sample syllabi for testing extraction
   test-notes/             # sample lecture notes + slide decks for testing chunk_notes
   CLAUDE.md               # this file

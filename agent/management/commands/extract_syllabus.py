@@ -5,6 +5,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from agent.services import storage
+from agent.services.cli_owner import resolve_owner_user
 from agent.services.syllabus_extraction import MODEL, extract_syllabus_async, read_source_text_from_path
 
 
@@ -18,6 +19,7 @@ class Command(BaseCommand):
         parser.add_argument("--force", action="store_true", help="Overwrite existing syllabus.json without confirmation")
 
     def handle(self, *args, **options):
+        owner = resolve_owner_user()
         source_path = Path(options["source"])
         if not source_path.exists():
             raise CommandError(f"source file not found: {source_path}")
@@ -57,7 +59,7 @@ class Command(BaseCommand):
         )
 
         try:
-            existing = storage.read_syllabus(options["course_id"])
+            existing = storage.read_syllabus(options["course_id"], owner)
         except (storage.SyllabusStorageError, storage.InvalidCourseIdError) as e:
             raise CommandError(str(e))
 
@@ -70,5 +72,5 @@ class Command(BaseCommand):
                 self.stdout.write("Aborted. No file was written.")
                 return
 
-        out_path = storage.write_syllabus(options["course_id"], data, overwrite=True)
+        out_path = storage.write_syllabus(options["course_id"], data, owner, overwrite=True)
         self.stdout.write(self.style.SUCCESS(f"\nWrote {out_path}"))
