@@ -3,6 +3,7 @@ import asyncio
 from django.core.management.base import BaseCommand, CommandError
 
 from agent.services import quiz
+from agent.services.cli_owner import resolve_owner_user
 from agent.services.storage import CourseNotFoundError
 
 
@@ -18,11 +19,12 @@ class Command(BaseCommand):
         parser.add_argument("--chunk-id", dest="chunk_id", default=None, help="Quiz on a specific chunk by id")
 
     def handle(self, *args, **options):
+        owner = resolve_owner_user()
         course_id = options["course_id"]
 
         try:
             q = asyncio.run(
-                quiz.generate_question_async(course_id, topic=options["topic"], chunk_id=options["chunk_id"])
+                quiz.generate_question_async(course_id, topic=options["topic"], chunk_id=options["chunk_id"], user=owner)
             )
         except CourseNotFoundError as e:
             raise CommandError(str(e))
@@ -42,7 +44,7 @@ class Command(BaseCommand):
 
         result = quiz.record_attempt(
             course_id, q["lecture_id"], q["chunk_id"], q["topic"],
-            q["question"], q["correct_answer"], user_answer,
+            q["question"], q["correct_answer"], user_answer, user=owner,
         )
 
         if result["correct"]:

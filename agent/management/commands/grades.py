@@ -3,6 +3,7 @@ import json
 from django.core.management.base import BaseCommand, CommandError
 
 from agent.services import grades, storage
+from agent.services.cli_owner import resolve_owner_user
 from agent.services.storage import CourseNotFoundError
 
 
@@ -29,6 +30,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        owner = resolve_owner_user()
         course_id = options["course_id"]
 
         if options["set_grading"]:
@@ -46,7 +48,7 @@ class Command(BaseCommand):
                     self.stdout.write(self.style.WARNING(w))
 
             try:
-                storage.write_grading_config(course_id, grading, grade_scale)
+                storage.write_grading_config(course_id, grading, owner, grade_scale=grade_scale)
             except CourseNotFoundError as e:
                 raise CommandError(str(e))
             self.stdout.write(self.style.SUCCESS(f"Updated grading config for '{course_id}'."))
@@ -55,7 +57,7 @@ class Command(BaseCommand):
         if options["add"]:
             component, title, score, max_points = options["add"]
             try:
-                item = grades.add_item(course_id, component, title, float(score), float(max_points), options["date"])
+                item = grades.add_item(course_id, component, title, float(score), float(max_points), options["date"], user=owner)
             except (CourseNotFoundError, ValueError) as e:
                 raise CommandError(str(e))
             self.stdout.write(self.style.SUCCESS(
@@ -65,10 +67,10 @@ class Command(BaseCommand):
 
         if options["list"]:
             try:
-                grade = grades.current_grade(course_id)
+                grade = grades.current_grade(course_id, user=owner)
             except CourseNotFoundError as e:
                 raise CommandError(str(e))
-            for item in storage.read_grades(course_id)["items"]:
+            for item in storage.read_grades(course_id, user=owner)["items"]:
                 self.stdout.write(f"  [{item['component']}] {item['title']}: {item['score']}/{item['max_points']}")
             overall = grade["overall_pct"]
             self.stdout.write(self.style.SUCCESS(
@@ -78,8 +80,8 @@ class Command(BaseCommand):
 
         if options["whatif"] is not None:
             try:
-                needed = grades.grade_needed(course_id, options["whatif"])
-                missable = grades.missable_by_category(course_id, options["whatif"])
+                needed = grades.grade_needed(course_id, options["whatif"], user=owner)
+                missable = grades.missable_by_category(course_id, options["whatif"], user=owner)
             except CourseNotFoundError as e:
                 raise CommandError(str(e))
 

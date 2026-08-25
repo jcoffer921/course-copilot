@@ -3,6 +3,7 @@ import asyncio
 from django.core.management.base import BaseCommand, CommandError
 
 from agent.services import domain_suggestions, storage
+from agent.services.cli_owner import resolve_owner_user
 from agent.services.storage import CourseNotFoundError
 
 
@@ -22,16 +23,17 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        owner = resolve_owner_user()
         course_id = options["course_id"]
 
         if options["suggest"]:
-            self._suggest(course_id)
+            self._suggest(course_id, owner)
         else:
-            self._approve(course_id, options["approve"])
+            self._approve(course_id, options["approve"], owner)
 
-    def _suggest(self, course_id):
+    def _suggest(self, course_id, owner):
         try:
-            domains = asyncio.run(domain_suggestions.suggest_domains(course_id))
+            domains = asyncio.run(domain_suggestions.suggest_domains(course_id, owner))
         except CourseNotFoundError as e:
             raise CommandError(str(e))
         except ValueError as e:
@@ -48,7 +50,7 @@ class Command(BaseCommand):
             f"\nApprove with: python manage.py domains {course_id} --approve " + ",".join(domains)
         )
 
-    def _approve(self, course_id, raw_domains):
+    def _approve(self, course_id, raw_domains, owner):
         domains = [d.strip() for d in raw_domains.split(",") if d.strip()]
         errors = storage.validate_trusted_domains({"course_id": course_id, "domains": domains})
 
@@ -59,7 +61,7 @@ class Command(BaseCommand):
             raise CommandError("invalid domain list")
 
         try:
-            out_path = storage.write_trusted_domains(course_id, domains)
+            out_path = storage.write_trusted_domains(course_id, domains, owner)
         except storage.InvalidCourseIdError as e:
             raise CommandError(str(e))
 
