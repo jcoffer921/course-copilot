@@ -120,35 +120,38 @@ def test_validate_grading_config_validates_grade_scale_cutoffs():
     assert any("min_pct" in e for e in errors)
 
 
-def test_write_grading_config_merges_into_existing_syllabus(isolated_courses_dir):
+def test_write_grading_config_merges_into_existing_syllabus(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="grading-merge", email="grading-merge@example.com")
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "CS101", "dates": [], "grading": [], "topics": ["A"],
-    })
+    }, user)
 
     grading = [{"component": "Homework", "weight_pct": 100, "total_items": 5}]
-    storage.write_grading_config("cs101", grading, {"passing_pct": 65, "cutoffs": []})
+    storage.write_grading_config("cs101", grading, user, {"passing_pct": 65, "cutoffs": []})
 
-    syllabus = storage.read_syllabus("cs101")
+    syllabus = storage.read_syllabus("cs101", user)
     assert syllabus["grading"] == grading
     assert syllabus["grade_scale"] == {"passing_pct": 65, "cutoffs": []}
     assert syllabus["course_name"] == "CS101"  # untouched
 
 
-def test_write_grading_config_leaves_grade_scale_untouched_when_omitted(isolated_courses_dir):
+def test_write_grading_config_leaves_grade_scale_untouched_when_omitted(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="grading-omitted", email="grading-omitted@example.com")
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "CS101", "dates": [], "grading": [],
         "topics": [], "grade_scale": {"passing_pct": 70, "cutoffs": []},
-    })
+    }, user)
 
-    storage.write_grading_config("cs101", [{"component": "HW", "weight_pct": 100}])
+    storage.write_grading_config("cs101", [{"component": "HW", "weight_pct": 100}], user)
 
-    syllabus = storage.read_syllabus("cs101")
+    syllabus = storage.read_syllabus("cs101", user)
     assert syllabus["grade_scale"] == {"passing_pct": 70, "cutoffs": []}
 
 
-def test_write_grading_config_raises_when_no_syllabus_exists(isolated_courses_dir):
+def test_write_grading_config_raises_when_no_syllabus_exists(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="grading-no-syllabus", email="grading-no-syllabus@example.com")
     with pytest.raises(storage.CourseNotFoundError):
-        storage.write_grading_config("cs101", [{"component": "HW", "weight_pct": 100}])
+        storage.write_grading_config("cs101", [{"component": "HW", "weight_pct": 100}], user)
 
 
 def test_validate_grading_config_rejects_invalid_component_name():
