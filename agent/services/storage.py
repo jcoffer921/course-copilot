@@ -1199,12 +1199,13 @@ class CourseAlreadyExistsError(Exception):
     """Raised when a course_id already has either course.json or syllabus.json."""
 
 
-def write_course_draft(course_id: str, course_name: str) -> Path:
+def write_course_draft(course_id: str, course_name: str, user) -> Path:
     """Writes course.json — a class that has a name but no syllabus yet.
     Raises InvalidCourseIdError (via _course_dir) for a bad slug, and
     CourseAlreadyExistsError if course_id already has course.json or
-    syllabus.json — a draft can't collide with itself or a real course."""
-    out_dir = _course_dir(course_id)
+    syllabus.json for this user — a draft can't collide with itself or a
+    real course belonging to the same user."""
+    out_dir = _course_dir(course_id, user)
     course_path = out_dir / "course.json"
     syllabus_path = out_dir / "syllabus.json"
 
@@ -1225,44 +1226,46 @@ def write_course_draft(course_id: str, course_name: str) -> Path:
     return course_path
 
 
-def course_exists(course_id: str) -> bool:
-    """True if course_id is a real (syllabus'd) course — the same
-    definition reminders.list_courses() uses, so this matches exactly what
-    the UI already offers as a selectable course. False (never raises) for
-    a draft-only course, a missing course, or an unsafe/invalid course_id —
-    callers doing input validation want a plain reject, not an exception
-    for the common case of a client-supplied string."""
+def course_exists(course_id: str, user) -> bool:
+    """True if course_id is a real (syllabus'd) course for this user — the
+    same definition reminders.list_courses() uses, so this matches exactly
+    what the UI already offers as a selectable course. False (never raises)
+    for a draft-only course, a missing course, or an unsafe/invalid
+    course_id — callers doing input validation want a plain reject, not an
+    exception for the common case of a client-supplied string."""
     try:
-        course_dir = _course_dir(course_id)
+        course_dir = _course_dir(course_id, user)
     except InvalidCourseIdError:
         return False
     return (course_dir / "syllabus.json").exists()
 
 
-def course_or_draft_exists(course_id: str) -> bool:
-    """True if course_id exists as either a real course or a draft class."""
+def course_or_draft_exists(course_id: str, user) -> bool:
+    """True if course_id exists as either a real course or a draft class for
+    this user."""
     try:
-        course_dir = _course_dir(course_id)
+        course_dir = _course_dir(course_id, user)
     except InvalidCourseIdError:
         return False
     return (course_dir / "syllabus.json").exists() or (course_dir / "course.json").exists()
 
 
-def delete_course(course_id: str) -> None:
-    """Deletes courses/<course_id>/ entirely — syllabus, notes, references,
-    sessions, quiz history, mastery scores, grades, calendar sync records,
-    flashcard progress, custom events, and notifications. Raises
-    CourseNotFoundError if course_id exists as neither a draft nor a real
-    course. Irreversible; callers are responsible for confirming with the
-    user before calling this (plan-then-pause per CLAUDE.md)."""
-    course_dir = _course_dir(course_id)
+def delete_course(course_id: str, user) -> None:
+    """Deletes courses/<user.pk>/<course_id>/ entirely — syllabus, notes,
+    references, sessions, quiz history, mastery scores, grades, calendar
+    sync records, flashcard progress, custom events, and notifications, all
+    scoped to this user. Raises CourseNotFoundError if course_id exists as
+    neither a draft nor a real course for this user. Irreversible; callers
+    are responsible for confirming with the user before calling this
+    (plan-then-pause per CLAUDE.md)."""
+    course_dir = _course_dir(course_id, user)
     if not (course_dir / "course.json").exists() and not (course_dir / "syllabus.json").exists():
         raise CourseNotFoundError(f"no course '{course_id}' found")
     shutil.rmtree(course_dir)
-    delete_course_state(course_id)
+    delete_course_state(course_id, user)
 
 
-def delete_course_state(course_id: str) -> None:
+def delete_course_state(course_id: str, user) -> None:
     from django.db import transaction
     from agent.models import (
         CalendarSyncRecord,
@@ -1276,23 +1279,24 @@ def delete_course_state(course_id: str) -> None:
         SavedSite,
     )
 
+    user_filter = _flashcard_user_filter(user)
     with transaction.atomic():
-        FlashcardProgress.objects.filter(course_id=course_id).delete()
-        GradeItem.objects.filter(course_id=course_id).delete()
-        CalendarSyncRecord.objects.filter(course_id=course_id).delete()
-        CustomEvent.objects.filter(course_id=course_id).delete()
-        Notification.objects.filter(course_id=course_id).delete()
-        QuizAttempt.objects.filter(course_id=course_id).delete()
-        MasteryScore.objects.filter(course_id=course_id).delete()
-        CourseSession.objects.filter(course_id=course_id).delete()
-        SavedSite.objects.filter(course_id=course_id).delete()
+        FlashcardProgress.objects.filter(course_id=course_id, **user_filter).delete()
+        GradeItem.objects.filter(course_id=course_id, **user_filter).delete()
+        CalendarSyncRecord.objects.filter(course_id=course_id, **user_filter).delete()
+        CustomEvent.objects.filter(course_id=course_id, **user_filter).delete()
+        Notification.objects.filter(course_id=course_id, **user_filter).delete()
+        QuizAttempt.objects.filter(course_id=course_id, **user_filter).delete()
+        MasteryScore.objects.filter(course_id=course_id, **user_filter).delete()
+        CourseSession.objects.filter(course_id=course_id, **user_filter).delete()
+        SavedSite.objects.filter(course_id=course_id, **user_filter).delete()
 
 
-def rename_course(course_id: str, course_name: str) -> None:
+def rename_course(course_id: str, course_name: str, user) -> None:
     """Updates course_name in place — course.json for a draft, syllabus.json
-    for a real course, whichever exists. Raises CourseNotFoundError if
-    neither exists."""
-    course_dir = _course_dir(course_id)
+    for a real course, whichever exists for this user. Raises
+    CourseNotFoundError if neither exists."""
+    course_dir = _course_dir(course_id, user)
     course_path = course_dir / "course.json"
     syllabus_path = course_dir / "syllabus.json"
 
