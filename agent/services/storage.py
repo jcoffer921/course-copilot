@@ -95,6 +95,10 @@ class QuizStorageError(Exception):
     """Raised when quiz_history.json or mastery_scores.json on disk is corrupt/unreadable."""
 
 
+class CourseMetadataStorageError(Exception):
+    """Raised when an existing user-managed course.json is corrupt."""
+
+
 class FlashcardProgressStorageError(Exception):
     """Raised when flashcard progress cannot be read or written."""
 
@@ -528,6 +532,13 @@ def write_notes(course_id: str, lecture_id: str, data: dict, user, overwrite: bo
     return out_path
 
 
+def delete_lecture(course_id: str, lecture_id: str, user) -> None:
+    """Delete one owned validated lecture file, if present."""
+    path = _lecture_path(course_id, lecture_id, user)
+    if path.exists():
+        path.unlink()
+
+
 def read_references(course_id: str, user) -> list:
     """Returns a list of parsed reference dicts for every file under
     courses/<course_id>/references/*.json, sorted by filename. Returns [] if
@@ -571,6 +582,13 @@ def write_reference(course_id: str, reference_id: str, data: dict, user, overwri
     references_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out_path
+
+
+def delete_reference(course_id: str, reference_id: str, user) -> None:
+    """Delete one owned validated reference file, if present."""
+    path = _reference_path(course_id, reference_id, user)
+    if path.exists():
+        path.unlink()
 
 
 def read_trusted_domains(course_id: str, user) -> list:
@@ -663,19 +681,14 @@ def _flashcard_user_filter(user=None) -> dict:
     return {"user__isnull": True}
 
 
-def _scope_user_queryset(queryset, user=None, include_legacy: bool = True):
+def _scope_user_queryset(queryset, user=None, include_legacy: bool = False):
     if not getattr(user, "is_authenticated", False):
         # An anonymous caller must only ever see anonymous (user=NULL) rows —
         # returning the queryset unfiltered here would leak every
         # authenticated user's data (quiz history, grades, saved sites, etc.)
         # to any unauthenticated request.
         return queryset.filter(user__isnull=True)
-    from django.db.models import Q
-
-    scoped = Q(user=user)
-    if include_legacy:
-        scoped |= Q(user__isnull=True)
-    return queryset.filter(scoped)
+    return queryset.filter(user=user)
 
 
 def _flashcard_record_to_dict(record) -> dict:
@@ -785,9 +798,14 @@ def read_saved_flashcards(course_id: str, user=None) -> list:
 FLASHCARD_CACHE_LIMIT = 200
 
 
-def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -> None:
+def remember_generated_flashcards(course_id: str, flashcards: list, user=None, topic: str = None) -> None:
     """Stores generated card text so course Q&A can reference the full deck,
-    even before the learner marks progress or stars cards."""
+    even before the learner marks progress or stars cards.
+
+    `topic` (the chunk topic every card in one generation batch shares) is
+    recorded so mastery.py can fold flashcard ratings into that topic's
+    score. Omitting it (e.g. a caller unrelated to generation) leaves an
+    existing card's topic untouched rather than blanking it out."""
     _validate_course_id(course_id)
     from agent.models import FlashcardProgress
 
@@ -800,16 +818,15 @@ def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -
         key = card.get("key") or flashcard_key(term, definition)
         lookup = {"course_id": course_id, "card_key": key, **_flashcard_user_filter(user)}
         existing = FlashcardProgress.objects.filter(**lookup).first()
-        defaults = {
-            "user": user_value,
-            "term": term,
-            "definition": definition,
-        }
         if existing:
             existing.user = user_value
             existing.term = term
             existing.definition = definition
-            existing.save(update_fields=["user", "term", "definition", "updated_at"])
+            update_fields = ["user", "term", "definition", "updated_at"]
+            if topic is not None:
+                existing.topic = topic
+                update_fields.append("topic")
+            existing.save(update_fields=update_fields)
         else:
             FlashcardProgress.objects.create(
                 course_id=course_id,
@@ -817,6 +834,7 @@ def remember_generated_flashcards(course_id: str, flashcards: list, user=None) -
                 card_key=key,
                 term=term,
                 definition=definition,
+                topic=topic or "",
                 status=None,
                 starred=False,
             )
@@ -892,6 +910,141 @@ def update_flashcard_progress(course_id: str, card: dict, user=None) -> dict:
     }
 
 
+def _flashcard_review_state(record) -> dict:
+    return {
+        "key": record.card_key,
+        "term": record.term,
+        "definition": record.definition,
+        "topic": record.topic,
+        "suspended": bool(record.suspended),
+        "rating": record.rating,
+        "interval_days": record.interval_days,
+        "review_count": record.review_count,
+        "last_reviewed": record.last_reviewed.isoformat() if record.last_reviewed else None,
+        "next_review": record.next_review.isoformat() if record.next_review else None,
+    }
+
+
+class FlashcardSuspendedError(Exception):
+    """Raised when reviewing a card the learner has suspended. Reviewing
+    would silently reactivate it into the due queue, which the learner did
+    not ask for — call unsuspend_flashcard first."""
+
+
+def review_flashcard(course_id: str, key: str, rating: str, user=None, now=None) -> dict:
+    """Records a spaced-repetition review for one flashcard and returns its
+    updated scheduling state. Creating the row on first review (rather than
+    requiring it pre-exist) is expected — every card is reviewable the first
+    time it's shown, before any progress row exists for it."""
+    from . import spaced_repetition
+    from agent.models import FlashcardProgress
+
+    if rating not in spaced_repetition.RATINGS:
+        raise ValueError(f"rating must be one of {spaced_repetition.RATINGS}, got {rating!r}")
+    _validate_course_id(course_id)
+
+    lookup = {"course_id": course_id, "card_key": key, **_flashcard_user_filter(user)}
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    existing = FlashcardProgress.objects.filter(**lookup).first()
+    if existing and existing.suspended:
+        raise FlashcardSuspendedError(f"card '{key}' is suspended; unsuspend it before reviewing")
+
+    schedule = spaced_repetition.schedule_review(rating, existing.interval_days if existing else 0, now=now)
+    record, _ = FlashcardProgress.objects.update_or_create(
+        **lookup,
+        defaults={
+            "user": user_value,
+            "term": existing.term if existing else "",
+            "definition": existing.definition if existing else "",
+            "status": existing.status if existing else None,
+            "starred": existing.starred if existing else False,
+            "rating": rating,
+            "interval_days": schedule["interval_days"],
+            "review_count": (existing.review_count if existing else 0) + 1,
+            "last_reviewed": schedule["reviewed_at"],
+            "next_review": schedule["next_review"],
+        },
+    )
+    return _flashcard_review_state(record)
+
+
+def suspend_flashcard(course_id: str, key: str, suspended: bool = True, user=None) -> dict:
+    """Suspends (or unsuspends) a card so it stops (or resumes) appearing in
+    the due queue. Never silently flips this — only an explicit call here
+    changes it; regeneration and progress updates leave it untouched."""
+    from agent.models import FlashcardProgress
+
+    _validate_course_id(course_id)
+    lookup = {"course_id": course_id, "card_key": key, **_flashcard_user_filter(user)}
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    existing = FlashcardProgress.objects.filter(**lookup).first()
+    record, _ = FlashcardProgress.objects.update_or_create(
+        **lookup,
+        defaults={
+            "user": user_value,
+            "term": existing.term if existing else "",
+            "definition": existing.definition if existing else "",
+            "suspended": bool(suspended),
+        },
+    )
+    return _flashcard_review_state(record)
+
+
+def due_flashcards(course_id: str, user=None, limit: int = None, now=None) -> list:
+    """Cards due for review: never reviewed, or due at/before `now`. Excludes
+    suspended cards and cache rows with no card text (nothing to show)."""
+    from django.db.models import F, Q
+    from agent.models import FlashcardProgress
+
+    _validate_course_id(course_id)
+    now = now or datetime.now(timezone.utc)
+    records = (
+        FlashcardProgress.objects
+        .filter(course_id=course_id, suspended=False, **_flashcard_user_filter(user))
+        .exclude(term="")
+        .filter(Q(next_review__isnull=True) | Q(next_review__lte=now))
+        .order_by(F("next_review").asc(nulls_first=True), "id")
+    )
+    if limit:
+        records = records[:limit]
+    return [_flashcard_review_state(record) for record in records]
+
+
+FLASHCARD_RATING_VALUE = {"again": 0.0, "hard": 0.35, "good": 0.7, "easy": 1.0}
+
+
+def flashcard_topic_stats(course_id: str, user=None) -> dict:
+    """Per-topic flashcard-review signal for mastery.py: how many cards in
+    that topic have been rated at least once, their average rating (mapped
+    to 0..1 via FLASHCARD_RATING_VALUE), and the most recent review. Cards
+    with no topic (generated before the topic field existed) or never
+    reviewed (rating is null) are excluded — they carry no usable signal."""
+    _validate_course_id(course_id)
+    from agent.models import FlashcardProgress
+
+    records = (
+        FlashcardProgress.objects
+        .filter(course_id=course_id, **_flashcard_user_filter(user))
+        .exclude(topic="")
+        .exclude(rating__isnull=True)
+    )
+    stats = {}
+    for record in records:
+        bucket = stats.setdefault(record.topic, {"ratings": [], "last_reviewed": None})
+        bucket["ratings"].append(FLASHCARD_RATING_VALUE.get(record.rating, 0.5))
+        if record.last_reviewed and (bucket["last_reviewed"] is None or record.last_reviewed > bucket["last_reviewed"]):
+            bucket["last_reviewed"] = record.last_reviewed
+
+    return {
+        topic: {
+            "count": len(bucket["ratings"]),
+            "avg_rating": sum(bucket["ratings"]) / len(bucket["ratings"]),
+            "last_reviewed": bucket["last_reviewed"].isoformat() if bucket["last_reviewed"] else None,
+        }
+        for topic, bucket in stats.items()
+    }
+
+
 def reset_flashcard_progress(course_id: str, keys: list, user=None) -> None:
     _validate_course_id(course_id)
     from agent.models import FlashcardProgress
@@ -955,6 +1108,7 @@ def read_mastery_scores(course_id: str, user=None):
                 "attempts": r.attempts,
                 "last_seen": r.last_seen,
                 "status": r.status,
+                "reason": r.reason,
             }
             for r in records
         ],
@@ -982,8 +1136,33 @@ def write_mastery_scores(course_id: str, data: dict, user=None) -> None:
                 attempts=int(score.get("attempts", 0)),
                 last_seen=score.get("last_seen"),
                 status=score.get("status", ""),
+                reason=score.get("reason", ""),
                 rebuilt_at=data.get("rebuilt_at", datetime.now(timezone.utc).isoformat()),
             )
+
+
+def dismiss_recommendation(course_id: str, topic: str, user=None, dismissed_until=None) -> None:
+    """Hides one (course, topic) study recommendation. `dismissed_until=None`
+    means "until explicitly cleared"; a datetime means "deferred until then".
+    Never touches quiz/flashcard/deadline data — recommendations.py always
+    recomputes those from scratch, so clearing this table can only ever
+    bring a hidden recommendation back, never lose anything academic."""
+    _validate_course_id(course_id)
+    from agent.models import RecommendationDismissal
+
+    user_value = user if getattr(user, "is_authenticated", False) else None
+    RecommendationDismissal.objects.update_or_create(
+        course_id=course_id, topic=topic, **_flashcard_user_filter(user),
+        defaults={"user": user_value, "dismissed_until": dismissed_until},
+    )
+
+
+def read_recommendation_dismissals(course_id: str, user=None) -> dict:
+    _validate_course_id(course_id)
+    from agent.models import RecommendationDismissal
+
+    records = RecommendationDismissal.objects.filter(course_id=course_id, **_flashcard_user_filter(user))
+    return {r.topic: r.dismissed_until for r in records}
 
 
 def read_grades(course_id: str, user=None) -> dict:
@@ -1094,6 +1273,11 @@ def _custom_event_to_dict(event) -> dict:
         "end_time": event.end_time,
         "title": event.title,
         "type": normalize_date_type(event.type),
+        "location": event.location,
+        "notes": event.notes,
+        "source": event.source,
+        "estimated_effort_minutes": event.estimated_effort_minutes,
+        "source_material_id": str(event.source_material_id) if event.source_material_id else None,
         "replaces_syllabus_key": event.replaces_syllabus_key,
         "completed": event.completed,
         "synced": event.synced,
@@ -1119,19 +1303,13 @@ def write_custom_events(events: list, user=None) -> None:
 
     user_value = user if getattr(user, "is_authenticated", False) else None
     with transaction.atomic():
-        legacy_event_ids = set()
         delete_queryset = CustomEvent.objects.all()
         if getattr(user, "is_authenticated", False):
-            legacy_event_ids = set(
-                CustomEvent.objects.filter(user__isnull=True).values_list("event_id", flat=True)
-            )
             delete_queryset = _scope_user_queryset(delete_queryset, user, include_legacy=False)
         else:
             delete_queryset = delete_queryset.filter(user__isnull=True)
         delete_queryset.delete()
         for event in events:
-            if event.get("id") in legacy_event_ids:
-                continue
             CustomEvent.objects.create(
                 event_id=event.get("id", ""),
                 user=user_value,
@@ -1141,6 +1319,11 @@ def write_custom_events(events: list, user=None) -> None:
                 end_time=event.get("end_time"),
                 title=event.get("title", ""),
                 type=normalize_date_type(event.get("type", "")),
+                location=event.get("location", ""),
+                notes=event.get("notes", ""),
+                source=event.get("source") or "manual",
+                estimated_effort_minutes=event.get("estimated_effort_minutes"),
+                source_material_id=event.get("source_material_id"),
                 replaces_syllabus_key=event.get("replaces_syllabus_key") or None,
                 completed=bool(event.get("completed", False)),
                 synced=bool(event.get("synced", False)),
@@ -1151,21 +1334,8 @@ def write_custom_events(events: list, user=None) -> None:
 
 
 def claim_custom_event(event_id: str, user) -> None:
-    """Reassigns a legacy (pre-auth, user=NULL) custom event to user, the
-    moment an authenticated caller actually targets it for update, delete,
-    or calendar sync. Legacy events are otherwise shared read-only across
-    every authenticated user (write_custom_events above deliberately never
-    touches one it wasn't given by id) — without this claim step, a mutation
-    aimed at one by id would either silently discard its own change (an
-    update matching a still-legacy id is skipped by write_custom_events) or,
-    for calendar sync specifically, wrongly stamp shared state (a Google
-    Calendar sync is inherently per-user) onto a row every other user still
-    sees. A no-op for anonymous callers or an event_id with no legacy row."""
-    if not getattr(user, "is_authenticated", False):
-        return
-    from agent.models import CustomEvent
-
-    CustomEvent.objects.filter(event_id=event_id, user__isnull=True).update(user=user)
+    """Legacy anonymous events are never claimable by an authenticated user."""
+    return
 
 
 def write_syllabus(course_id: str, data: dict, user, overwrite: bool = False) -> Path:
@@ -1181,6 +1351,28 @@ def write_syllabus(course_id: str, data: dict, user, overwrite: bool = False) ->
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     return out_path
+
+
+def delete_syllabus_preserving_course(course_id: str, user) -> None:
+    """Remove trusted syllabus content while retaining the user's course shell."""
+    course_dir = _course_dir(course_id, user)
+    syllabus_path = course_dir / "syllabus.json"
+    syllabus = read_syllabus(course_id, user)
+    if syllabus is None:
+        return
+    course_path = course_dir / "course.json"
+    course_path.write_text(
+        json.dumps(
+            {
+                "course_id": course_id,
+                "course_name": syllabus.get("course_name") or course_id.upper(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    syllabus_path.unlink()
 
 
 def write_grading_config(course_id: str, grading: list, user, grade_scale: dict = None) -> Path:
@@ -1202,7 +1394,7 @@ class CourseAlreadyExistsError(Exception):
     """Raised when a course_id already has either course.json or syllabus.json."""
 
 
-def write_course_draft(course_id: str, course_name: str, user) -> Path:
+def write_course_draft(course_id: str, course_name: str, user, **metadata) -> Path:
     """Writes course.json — a class that has a name but no syllabus yet.
     Raises InvalidCourseIdError (via _course_dir) for a bad slug, and
     CourseAlreadyExistsError if course_id already has course.json or
@@ -1223,10 +1415,45 @@ def write_course_draft(course_id: str, course_name: str, user) -> Path:
             "course_id": course_id,
             "course_name": course_name,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            **metadata,
         }, indent=2),
         encoding="utf-8",
     )
     return course_path
+
+
+def read_course_metadata(course_id: str, user) -> dict | None:
+    """Read optional user-managed metadata without treating it as syllabus content."""
+    course_path = _course_dir(course_id, user) / "course.json"
+    if not course_path.exists():
+        return None
+    try:
+        data = json.loads(course_path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as exc:
+        raise CourseMetadataStorageError(f"course metadata for '{course_id}' is corrupt") from exc
+    if not isinstance(data, dict) or data.get("course_id") != course_id or not isinstance(data.get("course_name"), str):
+        raise CourseMetadataStorageError(f"course metadata for '{course_id}' has an invalid shape")
+    return data
+
+
+def write_course_metadata(course_id: str, data: dict, user) -> Path:
+    """Replace validated metadata for an existing owned course."""
+    course_dir = _course_dir(course_id, user)
+    if not (course_dir / "course.json").exists() and not (course_dir / "syllabus.json").exists():
+        raise CourseNotFoundError(f"no course '{course_id}' found")
+    if not isinstance(data, dict) or data.get("course_id") != course_id or not str(data.get("course_name") or "").strip():
+        raise CourseMetadataStorageError("course metadata has an invalid shape")
+    course_path = course_dir / "course.json"
+    course_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return course_path
+
+
+def course_is_archived(course_id: str, user) -> bool:
+    try:
+        metadata = read_course_metadata(course_id, user)
+    except CourseMetadataStorageError:
+        return False
+    return bool(metadata and metadata.get("archived"))
 
 
 def course_exists(course_id: str, user) -> bool:
@@ -1280,6 +1507,7 @@ def delete_course_state(course_id: str, user) -> None:
         Notification,
         QuizAttempt,
         SavedSite,
+        CourseMaterial,
     )
 
     user_filter = _flashcard_user_filter(user)
@@ -1293,6 +1521,7 @@ def delete_course_state(course_id: str, user) -> None:
         MasteryScore.objects.filter(course_id=course_id, **user_filter).delete()
         CourseSession.objects.filter(course_id=course_id, **user_filter).delete()
         SavedSite.objects.filter(course_id=course_id, **user_filter).delete()
+        CourseMaterial.objects.filter(course_id=course_id, **user_filter).delete()
 
 
 def rename_course(course_id: str, course_name: str, user) -> None:
@@ -1303,16 +1532,18 @@ def rename_course(course_id: str, course_name: str, user) -> None:
     course_path = course_dir / "course.json"
     syllabus_path = course_dir / "syllabus.json"
 
+    found = False
     if course_path.exists():
         data = json.loads(course_path.read_text(encoding="utf-8"))
         data["course_name"] = course_name
         course_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        return
+        found = True
 
     if syllabus_path.exists():
         data = json.loads(syllabus_path.read_text(encoding="utf-8"))
         data["course_name"] = course_name
         syllabus_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        return
+        found = True
 
-    raise CourseNotFoundError(f"no course '{course_id}' found")
+    if not found:
+        raise CourseNotFoundError(f"no course '{course_id}' found")

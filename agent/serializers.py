@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from .services import storage
 
@@ -14,6 +15,28 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     display_name = serializers.CharField(required=False, allow_blank=False, max_length=150)
     username = serializers.CharField(required=False, allow_blank=False, max_length=150)
     notifications_enabled = serializers.BooleanField(required=False)
+    timezone = serializers.CharField(required=False, max_length=64)
+    preferred_session_minutes = serializers.ChoiceField(required=False, choices=[15, 25, 30, 45, 60, 90])
+    available_study_days = serializers.ListField(
+        required=False, allow_empty=False, child=serializers.IntegerField(min_value=0, max_value=6), max_length=7,
+    )
+    reminder_lead_minutes = serializers.ChoiceField(required=False, choices=[0, 5, 10, 15, 30, 60, 1440])
+
+    def validate_timezone(self, value):
+        try:
+            ZoneInfo(value)
+        except ZoneInfoNotFoundError:
+            raise serializers.ValidationError("Use a valid IANA timezone identifier.")
+        return value
+
+    def validate_available_study_days(self, value):
+        if len(set(value)) != len(value):
+            raise serializers.ValidationError("Study days cannot contain duplicates.")
+        return sorted(value)
+
+
+class AccountDeleteSerializer(serializers.Serializer):
+    confirmation = serializers.CharField(allow_blank=False)
 
 
 class CalendarSyncRequestSerializer(serializers.Serializer):
@@ -32,7 +55,11 @@ class CreateCustomEventRequestSerializer(serializers.Serializer):
     end_time = serializers.TimeField(required=False, allow_null=True, default=None)
     title = serializers.CharField(allow_blank=False)
     type = serializers.CharField(allow_blank=False)
+    location = serializers.CharField(required=False, allow_blank=True, max_length=255, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=2000, default="")
     completed = serializers.BooleanField(required=False, default=False)
+    estimated_effort_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=1, default=None)
+    source_material_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     replaces_syllabus_key = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
 
     def validate(self, attrs):
@@ -51,8 +78,11 @@ class UpdateCustomEventRequestSerializer(serializers.Serializer):
     end_time = serializers.TimeField(required=False, allow_null=True, default=None)
     title = serializers.CharField(required=False, allow_blank=False, default=None)
     type = serializers.CharField(required=False, allow_blank=False, default=None)
+    location = serializers.CharField(required=False, allow_blank=True, max_length=255, default=None)
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=2000, default=None)
     completed = serializers.BooleanField(required=False, default=None)
-    replaces_syllabus_key = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
+    estimated_effort_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=1, default=None)
+    source_material_id = serializers.UUIDField(required=False, allow_null=True, default=None)
 
     def validate(self, attrs):
         if attrs.get("type") is not None:
@@ -62,6 +92,40 @@ class UpdateCustomEventRequestSerializer(serializers.Serializer):
         if attrs.get("time") and attrs.get("end_time") and attrs["end_time"] <= attrs["time"]:
             raise serializers.ValidationError({"end_time": "End time must be later than start time."})
         return attrs
+
+
+class ConfirmDeadlineActionItemSerializer(serializers.Serializer):
+    action = serializers.ChoiceField(choices=["create", "update", "delete"], default="create")
+    event_id = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
+    course_id = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
+    title = serializers.CharField(required=False, allow_blank=False, default=None)
+    date = serializers.DateField(required=False, allow_null=True, default=None)
+    time = serializers.TimeField(required=False, allow_null=True, default=None)
+    end_time = serializers.TimeField(required=False, allow_null=True, default=None)
+    type = serializers.CharField(required=False, allow_blank=False, default=None)
+
+    def validate(self, attrs):
+        if attrs.get("type") is not None:
+            attrs["type"] = _validate_deadline_type(attrs.get("type"))
+        if attrs["action"] in ("update", "delete") and not attrs.get("event_id"):
+            raise serializers.ValidationError({"event_id": f"event_id is required for action '{attrs['action']}'."})
+        return attrs
+
+
+class ConfirmDeadlineActionsRequestSerializer(serializers.Serializer):
+    actions = ConfirmDeadlineActionItemSerializer(many=True)
+
+    def validate_actions(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one action is required.")
+        # A full-semester recurring class schedule (ask.py's CLASS_SCHEDULE_WEEKS
+        # = 15 weeks, up to 3 meetings/week) can legitimately propose up to ~45
+        # items in one confirmation — capped well above that, not at an
+        # arbitrary round number, so a real MWF/TTh semester schedule never
+        # gets rejected.
+        if len(value) > 150:
+            raise serializers.ValidationError("Too many actions in one confirmation.")
+        return value
 
 
 class NotificationReadSerializer(serializers.Serializer):
@@ -75,19 +139,96 @@ class ExtractSyllabusRequestSerializer(serializers.Serializer):
 
 
 class AskRequestSerializer(serializers.Serializer):
-    question = serializers.CharField(allow_blank=False)
+    question = serializers.CharField(allow_blank=False, max_length=4000)
     session_id = serializers.CharField(required=False, allow_blank=False, default=None)
+    client_request_id = serializers.UUIDField(required=False, default=None)
+    grounding_mode = serializers.ChoiceField(
+        choices=["course_materials", "course_materials_and_web"],
+        required=False,
+        default="course_materials",
+    )
+
+    def validate(self, attrs):
+        if attrs.get("client_request_id") and not attrs.get("session_id"):
+            raise serializers.ValidationError({"client_request_id": "A session_id is required for retry safety."})
+        return attrs
+
+
+class SessionRenameSerializer(serializers.Serializer):
+    title = serializers.CharField(allow_blank=False, max_length=255)
+
+
+class SessionDeleteSerializer(serializers.Serializer):
+    confirmation = serializers.CharField(allow_blank=False)
+
+
+class CitationPreviewSerializer(serializers.Serializer):
+    session_id = serializers.CharField(allow_blank=False, max_length=64)
+    message_index = serializers.IntegerField(min_value=0)
+    citation_index = serializers.IntegerField(min_value=0, max_value=11)
+    material_id = serializers.CharField(allow_blank=False, max_length=128)
+    material_type = serializers.ChoiceField(choices=["syllabus", "notes", "slides", "reference", "web"])
+    lecture_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=64)
+    chunk_id = serializers.CharField(required=False, allow_blank=True, allow_null=True, max_length=128)
+    url = serializers.URLField(required=False, allow_blank=True, allow_null=True, max_length=2048)
+
+    def validate(self, attrs):
+        if attrs["material_type"] == "web" and not attrs.get("url"):
+            raise serializers.ValidationError({"url": "A web citation requires its URL."})
+        if attrs["material_type"] in {"notes", "slides"} and not attrs.get("lecture_id"):
+            raise serializers.ValidationError({"lecture_id": "A lecture citation requires its lecture ID."})
+        return attrs
 
 
 class ChunkNotesRequestSerializer(serializers.Serializer):
     file = serializers.FileField()
     lecture_id = serializers.CharField(allow_blank=False)
-    date = serializers.CharField(required=False, allow_blank=True, default=None)
+    date = serializers.DateField(required=False, allow_null=True, default=None)
     overwrite = serializers.BooleanField(required=False, default=False)
 
 
 class CreateCourseDraftRequestSerializer(serializers.Serializer):
     course_name = serializers.CharField(allow_blank=False)
+    course_code = serializers.CharField(required=False, allow_blank=True, max_length=64, default="")
+    instructor = serializers.CharField(required=False, allow_blank=True, max_length=150, default="")
+    semester = serializers.RegexField(regex=r"^(spring|summer|fall|winter)-\d{4}$", required=False)
+    color = serializers.RegexField(regex=r"^#[0-9a-fA-F]{6}$", required=False)
+
+
+class UpdateCourseRequestSerializer(serializers.Serializer):
+    course_name = serializers.CharField(required=False, allow_blank=False)
+    course_code = serializers.CharField(required=False, allow_blank=True, max_length=64)
+    instructor = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    semester = serializers.RegexField(regex=r"^(spring|summer|fall|winter)-\d{4}$", required=False)
+    color = serializers.RegexField(regex=r"^#[0-9a-fA-F]{6}$", required=False)
+    confirm_semester_move = serializers.BooleanField(required=False, default=False)
+
+    def validate(self, attrs):
+        if not any(key != "confirm_semester_move" for key in attrs):
+            raise serializers.ValidationError("At least one course field is required.")
+        return attrs
+
+
+class CourseArchiveSerializer(serializers.Serializer):
+    archived = serializers.BooleanField()
+
+
+class CourseDeleteSerializer(serializers.Serializer):
+    confirmation = serializers.CharField(allow_blank=False)
+
+
+class SyllabusReviewSerializer(serializers.Serializer):
+    confirm = serializers.BooleanField()
+    syllabus = serializers.JSONField()
+
+    def validate_confirm(self, value):
+        if value is not True:
+            raise serializers.ValidationError("Explicit confirmation is required.")
+        return value
+
+
+class MaterialDeleteSerializer(serializers.Serializer):
+    confirmation = serializers.CharField(allow_blank=False)
 
 
 class IngestReferenceRequestSerializer(serializers.Serializer):
@@ -151,6 +292,44 @@ class FlashcardProgressResetSerializer(serializers.Serializer):
     keys = serializers.ListField(child=serializers.CharField(allow_blank=False), allow_empty=True)
 
 
+class FlashcardReviewRequestSerializer(serializers.Serializer):
+    key = serializers.CharField(allow_blank=False)
+    rating = serializers.ChoiceField(choices=["again", "hard", "good", "easy"])
+
+
+class FlashcardSuspendRequestSerializer(serializers.Serializer):
+    key = serializers.CharField(allow_blank=False)
+    suspended = serializers.BooleanField(required=False, default=True)
+
+
+class UpdateExamPlanRequestSerializer(serializers.Serializer):
+    included_topics = serializers.ListField(
+        child=serializers.CharField(allow_blank=False), required=False, allow_null=True, default=None,
+    )
+    included_material_ids = serializers.ListField(
+        child=serializers.CharField(allow_blank=False), required=False, allow_null=True, default=None,
+    )
+
+
+class DismissRecommendationRequestSerializer(serializers.Serializer):
+    course_id = serializers.CharField(allow_blank=False)
+    topic = serializers.CharField(allow_blank=False)
+    defer_hours = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
+
+
+class StartStudySessionRequestSerializer(serializers.Serializer):
+    topic = serializers.CharField(required=False, allow_blank=True, default="")
+    duration_minutes = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
+    mode = serializers.ChoiceField(choices=["mixed", "flashcards", "quiz"], required=False, default="mixed")
+
+
+class RecordStudyActivityRequestSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(
+        choices=["flashcard_reviewed", "quiz_answered"],
+    )
+    payload = serializers.JSONField(required=False, default=dict)
+
+
 class RecordAttemptRequestSerializer(serializers.Serializer):
     lecture_id = serializers.CharField(allow_blank=False)
     chunk_id = serializers.CharField(allow_blank=False)
@@ -158,6 +337,31 @@ class RecordAttemptRequestSerializer(serializers.Serializer):
     question = serializers.CharField(allow_blank=False)
     correct_answer = serializers.CharField(allow_blank=False)
     user_answer = serializers.CharField(allow_blank=False)
+
+
+class StartPracticeAttemptRequestSerializer(serializers.Serializer):
+    question_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=10)
+
+
+class UpdatePracticeAttemptRequestSerializer(serializers.Serializer):
+    question_id = serializers.CharField(allow_blank=False)
+    user_answer = serializers.CharField(required=False, allow_blank=False)
+    flagged = serializers.BooleanField(required=False)
+    position = serializers.IntegerField(required=False, min_value=0)
+
+    def validate(self, attrs):
+        if not any(key in attrs for key in ("user_answer", "flagged", "position")):
+            raise serializers.ValidationError("Provide an answer, flag state, or position.")
+        return attrs
+
+
+class RateInteractiveFlashcardRequestSerializer(serializers.Serializer):
+    card_key = serializers.CharField(allow_blank=False)
+    rating = serializers.ChoiceField(choices=["again", "hard", "good", "easy"])
+
+
+class NavigateInteractiveFlashcardRequestSerializer(serializers.Serializer):
+    position = serializers.IntegerField(min_value=0)
 
 
 class GradingCategorySerializer(serializers.Serializer):

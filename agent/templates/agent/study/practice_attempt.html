@@ -1,0 +1,17 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div class="is-page practice-page" data-course-id="{{ course_id }}" data-quiz-id="{{ quiz_id }}" data-attempt-id="{{ attempt_id }}">
+  <nav class="is-breadcrumb" aria-label="Breadcrumb"><a href="{% url 'courses-page' %}">Courses</a><span>/</span><a href="{% url 'course-detail-page' course_id=course_id %}" id="pa-course">Course</a><span>/</span><a href="{% url 'exam-detail-page' course_id=course_id exam_id=quiz_id %}" id="pa-exam">Exam</a><span>/</span><span>Practice Exam</span></nav>
+  <header class="is-header"><div><h1 id="pa-title">Practice Exam</h1><div class="is-meta"><span id="pa-question-meta">Loading questions…</span><span class="is-pill">Practice mode</span><span id="pa-timer" aria-label="Elapsed time">00:00</span></div></div><a class="btn btn-secondary" href="{% url 'exam-detail-page' course_id=course_id exam_id=quiz_id %}">Save &amp; exit</a></header>
+  <div id="pa-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
+  <div id="pa-loading" class="shared-state" role="status">Loading your saved attempt…</div>
+  <div id="pa-error" class="shared-state shared-state-error" hidden><h2>Couldn't load this attempt</h2><p></p><button id="pa-retry" class="btn btn-secondary" type="button">Try again</button></div>
+  <div id="pa-content" class="is-layout" hidden>
+    <main class="is-workspace">
+      <div class="is-progress-row"><span id="pa-percent">0% complete</span><div class="is-progress"><span id="pa-progress"></span></div></div>
+      <section class="is-question-card" aria-labelledby="pa-question"><div class="is-source"><span id="pa-topic"></span><span>·</span><span id="pa-source"></span></div><h2 id="pa-question"></h2><fieldset id="pa-choices" class="is-choices"><legend class="sr-only">Choose one answer</legend></fieldset><div id="pa-result" class="is-result" hidden></div><footer><button id="pa-previous" class="btn btn-secondary" type="button">← Previous</button><button id="pa-flag" class="is-flag" type="button" aria-pressed="false">⚑ Flag for review</button><button id="pa-submit" class="btn btn-primary" type="button">Next question</button></footer></section>
+    </main>
+    <aside class="is-aside"><section class="is-panel"><h2>Exam progress</h2><div id="pa-grid" class="pa-grid" aria-label="Question navigation"></div><div class="pa-legend"><span>● Answered</span><span>□ Current</span><span>⚑ Flagged</span></div></section><section class="is-panel"><h2>Session details</h2><p id="pa-detail-count"></p><p id="pa-detail-time"></p><p id="pa-detail-topics"></p></section><section class="is-cora"><strong>🤖 Cora will explain after you submit</strong><p>Grounded explanations and topic insights appear only when the practice exam is finalized.</p></section></aside>
+  </div>
+</div>
+{% endblock %}

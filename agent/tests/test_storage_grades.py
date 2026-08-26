@@ -16,13 +16,14 @@ def test_read_grades_returns_empty_skeleton_for_new_course(isolated_courses_dir)
     assert data == {"course_id": "cs101", "items": []}
 
 
-def test_write_then_read_grades_round_trips(isolated_courses_dir):
+def test_write_then_read_grades_round_trips(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="grade-owner")
     data = {"course_id": "cs101", "items": [
         {"id": "abc123", "component": "Homework", "title": "HW 1", "score": 90, "max_points": 100, "date": "2026-01-15"},
     ]}
-    storage.write_grades("cs101", data)
+    storage.write_grades("cs101", data, user=user)
 
-    assert storage.read_grades("cs101") == data
+    assert storage.read_grades("cs101", user=user) == data
 
 
 def test_read_grades_ignores_legacy_corrupt_json(isolated_courses_dir):

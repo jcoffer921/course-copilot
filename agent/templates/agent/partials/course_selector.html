@@ -1,0 +1,30 @@
+<section class="app-course-selector" aria-labelledby="course-selector-title">
+  <h2 id="course-selector-title">This semester</h2>
+  {% verbatim %}
+  <button type="button" style="{{ courseChipStyleAll }}" onClick="{{ selectAll }}">
+    <span class="app-course-dot app-course-dot-all"></span>
+    All Courses
+  </button>
+  <sc-for list="{{ courseChips }}" as="c" hint-placeholder-count="2">
+    <sc-if value="{{ c.isEditing }}" hint-placeholder-val="{{ false }}">
+      <div class="course-chip-row" style="{{ c.chipStyle }}">
+        <span style="{{ c.dotStyle }}"></span>
+        <input class="input" aria-label="Course name" value="{{ c.editValue }}" onChange="{{ c.onEditChange }}" onKeyDown="{{ c.onEditKeyDown }}" onBlur="{{ c.onEditBlur }}" autofocus>
+      </div>
+    </sc-if>
+    <sc-if value="{{ !c.isEditing }}" hint-placeholder-val="{{ true }}">
+      <div class="course-chip-row" style="{{ c.chipStyle }}" onClick="{{ c.onClick }}">
+        <span style="{{ c.dotStyle }}"></span>
+        <span class="app-course-name">{{ c.label }}</span>
+        <span class="course-chip-actions">
+          <button type="button" class="course-chip-icon-btn" aria-label="Rename course" onClick="{{ c.onEditStart }}">✎</button>
+          <button type="button" class="course-chip-icon-btn" aria-label="Delete course" onClick="{{ c.onDeleteStart }}">×</button>
+        </span>
+      </div>
+    </sc-if>
+  </sc-for>
+  <sc-if value="{{ editCourseError }}" hint-placeholder-val="{{ false }}">
+    <p class="app-inline-error">{{ editCourseError }}</p>
+  </sc-if>
+  {% endverbatim %}
+</section>

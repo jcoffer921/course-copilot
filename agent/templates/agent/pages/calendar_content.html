@@ -1,0 +1,41 @@
+<section class="cal-page" data-calendar-api="{% url 'calendar-data' %}" data-deadlines-api="{% url 'deadlines' %}" aria-labelledby="calendar-title">
+  <header class="cal-header">
+    <h1 id="calendar-title">Calendar</h1>
+    <div class="cal-nav-tools" aria-label="Calendar navigation">
+      <button class="cal-button" id="cal-today" type="button">Today</button>
+      <div class="cal-arrow-group"><button class="cal-icon-button" id="cal-prev" type="button" aria-label="Previous period">‹</button><button class="cal-icon-button" id="cal-next" type="button" aria-label="Next period">›</button></div>
+      <strong id="cal-range" aria-live="polite"></strong>
+    </div>
+    <div class="cal-actions">
+      <button class="cal-button cal-filter-toggle" id="cal-filter-toggle" type="button" aria-expanded="false" aria-controls="cal-utility">Filters</button>
+      <div class="cal-segmented" aria-label="Calendar view"><button type="button" data-cal-view="week">Week</button><button type="button" data-cal-view="month">Month</button></div>
+      <button class="cal-button cal-button-primary" id="cal-add" type="button"><span aria-hidden="true">＋</span> Add event</button>
+    </div>
+  </header>
+  <div class="cal-layout">
+    <aside class="cal-utility" id="cal-utility" aria-label="Calendar filters">
+      <section class="cal-side-card" aria-labelledby="mini-month-title">
+        <div class="cal-side-heading"><h2 id="mini-month-title"></h2><div><button class="cal-mini-arrow" id="mini-prev" type="button" aria-label="Previous month">‹</button><button class="cal-mini-arrow" id="mini-next" type="button" aria-label="Next month">›</button></div></div>
+        <div class="cal-mini-weekdays" aria-hidden="true"><span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span></div><div class="cal-mini-grid" id="mini-grid"></div>
+      </section>
+      <section class="cal-side-card" aria-labelledby="course-filter-title"><h2 id="course-filter-title">Filter by course</h2><div id="cal-course-filters"></div><label class="cal-check-row"><input id="cal-show-unassigned" type="checkbox"><span class="cal-filter-swatch cal-general-swatch"></span><span>Show unassigned</span></label></section>
+      <section class="cal-side-card" aria-labelledby="type-filter-title"><h2 id="type-filter-title">Filter by type</h2><div id="cal-type-filters"></div></section>
+      <section class="cal-side-card cal-upcoming" aria-labelledby="upcoming-title"><h2 id="upcoming-title">Upcoming deadlines</h2><div id="cal-upcoming-list"></div><button class="cal-text-button" id="cal-view-upcoming" type="button">View all deadlines <span aria-hidden="true">›</span></button></section>
+    </aside>
+    <main class="cal-workspace" aria-live="polite">
+      <div id="cal-loading" class="cal-status"><span class="cal-spinner" aria-hidden="true"></span> Loading your calendar…</div>
+      <div id="cal-error" class="cal-status cal-status-error" hidden><strong>Calendar couldn’t load.</strong><span id="cal-error-message"></span><button class="cal-button" id="cal-retry" type="button">Try again</button></div>
+      <div id="cal-warning" class="cal-warning" hidden></div>
+      <div id="cal-empty" class="cal-empty" hidden><strong>No events in this period</strong><span>Add an event or choose another period.</span><button class="cal-button cal-button-primary" type="button" data-open-event>Add event</button></div>
+      <div id="cal-week" class="cal-week" hidden><div class="cal-week-head" id="cal-week-head"></div><div class="cal-all-day" id="cal-all-day"></div><div class="cal-time-scroll"><div class="cal-time-grid" id="cal-time-grid"></div></div></div>
+      <div id="cal-month" class="cal-month" hidden><div class="cal-month-weekdays"><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div><div class="cal-month-grid" id="cal-month-grid"></div></div>
+    </main>
+  </div>
+  <div class="cal-popover" id="cal-popover" role="dialog" aria-modal="false" aria-labelledby="cal-popover-title" hidden>
+    <button class="cal-popover-close" type="button" aria-label="Close event details">×</button><div class="cal-popover-title-row"><span id="cal-popover-dot"></span><div><strong id="cal-popover-title"></strong><span id="cal-popover-course"></span></div></div><dl id="cal-popover-details"></dl><p id="cal-popover-notes" hidden></p><div class="cal-popover-actions"><button class="cal-button" id="cal-complete" type="button">Mark complete</button><button class="cal-button" id="cal-edit" type="button">Edit</button><button class="cal-button cal-danger" id="cal-delete" type="button">Delete</button></div>
+  </div>
+  <div class="cal-modal-backdrop" id="cal-event-modal" hidden><section class="cal-modal" role="dialog" aria-modal="true" aria-labelledby="cal-modal-title"><header><div><span class="cal-kicker">Calendar event</span><h2 id="cal-modal-title">Add event</h2></div><button type="button" data-close-modal aria-label="Close">×</button></header><form id="cal-event-form">
+    <input id="cal-event-id" type="hidden"><input id="cal-event-key" type="hidden"><label>Title<input id="cal-event-title" maxlength="255" required autocomplete="off"></label><div class="cal-form-grid"><label>Date<input id="cal-event-date" type="date" required></label><label>Course<select id="cal-event-course"><option value="">Unassigned</option></select></label></div><label class="cal-check-row cal-all-day-check"><input id="cal-event-all-day" type="checkbox"><span>All-day event</span></label><div class="cal-form-grid" id="cal-time-fields"><label>Starts<input id="cal-event-start" type="time"></label><label>Ends<input id="cal-event-end" type="time"></label></div><div class="cal-form-grid"><label>Type<select id="cal-event-type"><option value="hw">Assignment</option><option value="project">Project</option><option value="test_quiz">Exam or quiz</option><option value="class">Class</option><option value="other">Study, meeting, or personal</option></select></label><label>Location<input id="cal-event-location" maxlength="255" autocomplete="off"></label></div><label>Notes<textarea id="cal-event-notes" maxlength="2000" rows="3"></textarea></label><p class="cal-form-error" id="cal-form-error" role="alert" hidden></p><footer><button class="cal-button" type="button" data-close-modal>Cancel</button><button class="cal-button cal-button-primary" id="cal-save" type="submit">Save event</button></footer>
+  </form></section></div>
+  <div class="cal-modal-backdrop" id="cal-delete-modal" hidden><section class="cal-modal cal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="cal-delete-title"><header><div><span class="cal-kicker">Confirm deletion</span><h2 id="cal-delete-title">Delete this event?</h2></div></header><p>This removes the event from OnTrack. This action can’t be undone.</p><footer><button class="cal-button" type="button" data-cancel-delete>Cancel</button><button class="cal-button cal-danger-solid" id="cal-confirm-delete" type="button">Delete event</button></footer></section></div>
+</section>

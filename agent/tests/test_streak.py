@@ -91,3 +91,39 @@ def test_streak_is_scoped_to_authenticated_user(isolated_courses_dir, django_use
 
     assert streak.current_streak(user=jordan) == 0
     assert streak.current_streak(user=alex) == 1
+
+
+def test_week_activity_marks_active_days_and_labels_mon_through_sun(isolated_courses_dir, user):
+    # 2026-03-04 is a Wednesday.
+    wednesday = datetime(2026, 3, 4).date()
+    monday = wednesday - timedelta(days=2)
+    _seed_syllabus("cs101", user)
+    storage.append_quiz_attempt("cs101", _attempt_at(monday), user=user)
+    storage.append_quiz_attempt("cs101", _attempt_at(wednesday), user=user)
+
+    week = streak.week_activity(user=user, today=wednesday)
+
+    assert [day["label"] for day in week] == ["M", "T", "W", "T", "F", "S", "S"]
+    assert [day["date"] for day in week] == [(monday + timedelta(days=i)).isoformat() for i in range(7)]
+    assert [day["active"] for day in week] == [True, False, True, False, False, False, False]
+
+
+def test_week_activity_marks_days_after_today_as_future(isolated_courses_dir, user):
+    wednesday = datetime(2026, 3, 4).date()
+    _seed_syllabus("cs101", user)
+
+    week = streak.week_activity(user=user, today=wednesday)
+
+    assert [day["is_future"] for day in week] == [False, False, False, True, True, True, True]
+
+
+def test_week_activity_is_scoped_to_authenticated_user(isolated_courses_dir, django_user_model):
+    wednesday = datetime(2026, 3, 4).date()
+    jordan = django_user_model.objects.create_user(username="week-jordan")
+    alex = django_user_model.objects.create_user(username="week-alex")
+    _seed_syllabus("cs101", jordan)
+    _seed_syllabus("cs101", alex)
+    storage.append_quiz_attempt("cs101", _attempt_at(wednesday), user=alex)
+
+    assert not any(day["active"] for day in streak.week_activity(user=jordan, today=wednesday))
+    assert any(day["active"] for day in streak.week_activity(user=alex, today=wednesday))

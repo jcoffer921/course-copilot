@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 from asgiref.sync import sync_to_async
 
-from . import grades, mastery, sessions, storage
+from . import calendar_events, citations, custom_events, grades, mastery, sessions, storage
 from .client import MODEL_DEFAULT as MODEL, MODEL_HAIKU, get_client
 from .storage import CourseNotFoundError
 
@@ -135,6 +135,8 @@ from: "syllabus", specific lecture_ids (from NOTES), specific reference_ids (fro
 "saved_sites" or full saved URLs (from SAVED_SITES), "recalled_conversations" (from earlier same-course \
 chat excerpts), "quiz_history", "mastery_scores", "flashcards", "grades", "grade_calculator", and/or \
 full URLs (from a permitted web search). Empty list when grounded is false.
+- Use only the exact source labels present in the supplied context. OnTrack resolves these labels to \
+owned material IDs and excerpts after your response; never invent a source label.
 """
 
 
@@ -143,13 +145,19 @@ WEB_SEARCH_MAX_USES = 5
 CLASS_SCHEDULE_WEEKS = 15
 DEADLINE_INTENT_RE = re.compile(
     r"("
-    r"\b(add|create|schedule|put|make|remember|remind)\b.*\b(deadline|due|homework|hw|assignment|project|quiz|test|exam|class|event|meeting|presentation|lab)\b"
+    r"\b(add|create|schedule|put|make|remember|remind)\b[\s\S]*\b(deadline|due|homework|hw|assignment|project|quiz|test|exam|class|event|meeting|presentation|lab|calendar)\b"
     r"|"
-    r"\b(deadline|homework|hw|assignment|project|quiz|test|exam|event|meeting|presentation|lab)\b.*\b(is due|due|on|at)\b"
+    r"\b(deadline|homework|hw|assignment|project|quiz|test|exam|event|meeting|presentation|lab)\b[\s\S]*\b(is due|due|on|at)\b"
     r"|"
-    r"\b(class|lecture|lab|seminar|course)\b.*\b(meets|meeting|schedule|scheduled|every|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mwf|tth|tu/th|tues/thurs)\b"
+    r"\b(class|lecture|lab|seminar|course)\b[\s\S]*\b(meets|meeting|schedule|scheduled|every|mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mwf|tth|tu/th|tues/thurs)\b"
     r"|"
-    r"\b(meets|meeting|schedule|scheduled|every)\b.*\b(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mwf|tth|tu/th|tues/thurs)\b"
+    r"\b(meets|meeting|schedule|scheduled|every)\b[\s\S]*\b(mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?|mwf|tth|tu/th|tues/thurs)\b"
+    r"|"
+    r"\b(move|reschedule|push|change|update|edit|shift|postpone)\b[\s\S]*\b(deadline|due|homework|hw|assignment|project|quiz|test|exam|class|event|meeting|presentation|lab|calendar|it|that|this)\b"
+    r"|"
+    r"\b(delete|remove|cancel)\b[\s\S]*\b(deadline|due|homework|hw|assignment|project|quiz|test|exam|class|event|meeting|presentation|lab|calendar|it|that|this)\b"
+    r"|"
+    r"\b(add|put)\b[\s\S]*\b(to|on)\b[\s\S]*\bcalendar\b"
     r")",
     re.I,
 )
@@ -235,13 +243,16 @@ def _parse_json_response(raw: str) -> dict:
     raise json.JSONDecodeError("no JSON object found in model output", raw or "", 0)
 
 
-DEADLINE_EXTRACTION_PROMPT = """Extract a deadline/calendar event request for OnTrack.
+DEADLINE_EXTRACTION_PROMPT = """Extract a calendar action request for OnTrack: adding a new deadline/event, \
+editing an existing one, or removing one.
 
 Return ONLY valid JSON:
 {
   "is_deadline_request": true,
-  "missing": ["title"|"date"|"course_id"],
+  "missing": ["title"|"date"|"course_id"|"event_match"],
   "deadline": {
+    "action": "create"|"update"|"delete",
+    "event_id": "string|null",
     "title": "string",
     "course_id": "string|null",
     "date": "YYYY-MM-DD",
@@ -249,30 +260,32 @@ Return ONLY valid JSON:
     "end_time": "HH:MM|null",
     "type": "hw|project|test_quiz|class|other"
   },
-  "deadlines": [
-    {
-      "title": "string",
-      "course_id": "string|null",
-      "date": "YYYY-MM-DD",
-      "time": "HH:MM|null",
-      "end_time": "HH:MM|null",
-      "type": "hw|project|test_quiz|class|other"
-    }
-  ],
+  "deadlines": [ /* same shape as "deadline", for multiple items */ ],
   "message": "short confirmation or follow-up question"
 }
 
 Rules:
+- "action" is "create" for a brand-new deadline/event, "update" to change an existing one's date/time/title, \
+or "delete" to remove one. Default to "create" when the user is clearly describing something new.
+- For "update"/"delete", you are given EXISTING_DEADLINES (id/title/date/time/type/source) for this course. \
+Match the user's reference (e.g. "my project deadline", "the midterm") to the single best existing item by \
+title and context, and set "event_id" to its exact id. Still fill in "title"/"date"/"type" from that matched \
+item (carrying forward whatever the user isn't changing) so the proposal is a complete, resolved record.
+- If you cannot confidently match a unique existing item for an update/delete (none look right, or more than \
+one plausibly matches), do NOT guess — put "event_match" in missing and ask which one they mean in message, \
+listing the plausible candidates by title and date.
+- For "update", only include the fields that should change plus whatever is needed to keep the record \
+complete — do not silently drop a field that isn't changing.
 - Use the supplied current course when the user does not name another course.
 - Use null course_id only when the user clearly says it is general/all courses.
 - If a required field is missing or ambiguous, put it in missing and ask for it in message.
 - Do not invent dates. If the date is relative, resolve it using today's date.
-- Treat "remind me", "remember", "put this on my calendar", "add this to deadlines", and "I have X due/on/at Y" as event/deadline requests when they contain enough event intent.
+- Treat "remind me", "remember", "put this on my calendar", "add this to deadlines", and "I have X due/on/at Y" as create requests, and "move"/"reschedule"/"push back"/"change" as update requests, and "delete"/"remove"/"cancel" as delete requests, whenever they contain enough event intent.
 - Map homework/assignment/problem set to hw, exam/test/quiz to test_quiz, lectures/classes/meetings to class, presentations/projects to project, and meetings/labs/other events to other unless the user clearly gives a course category.
-- For recurring college class schedules with multiple meeting days (for example MWF, Tuesdays/Thursdays, Mon and Wed), return one item per meeting in "deadlines". Use the supplied schedule_start_date/schedule_end_date and create meetings for the full schedule_weeks window. Include only meetings on or after today.
+- For recurring college class schedules with multiple meeting days (for example MWF, Tuesdays/Thursdays, Mon and Wed), return one "create" item per meeting in "deadlines". Use the supplied schedule_start_date/schedule_end_date and create meetings for the full schedule_weeks window. Include only meetings on or after today.
 - If the user gives exact semester start/end dates, use those dates instead of the default schedule window.
-- For one event, return "deadline". For multiple events, return "deadlines" and omit "deadline".
-- If nothing is missing, message should say that the event or class schedule is ready to add to the deadlines calendar and ask the user to confirm.
+- For one item, return "deadline". For multiple items, return "deadlines" and omit "deadline".
+- If nothing is missing, message should briefly describe the action (e.g. "Move Project 1 to Oct 3?") and ask the user to confirm — never say it's already done, since nothing is written until the user confirms.
 """
 
 
@@ -314,7 +327,10 @@ def _looks_like_deadline_request(question: str) -> bool:
 
 def _normalize_pending_deadline(raw: dict, default_course_id: str) -> dict:
     deadline = raw if isinstance(raw, dict) else {}
+    action = deadline.get("action") if deadline.get("action") in {"create", "update", "delete"} else "create"
     return {
+        "action": action,
+        "event_id": str(deadline["event_id"]) if deadline.get("event_id") else None,
         "title": str(deadline.get("title") or "").strip(),
         "course_id": deadline.get("course_id") if deadline.get("course_id") is not None else default_course_id,
         "date": str(deadline.get("date") or "").strip(),
@@ -323,6 +339,22 @@ def _normalize_pending_deadline(raw: dict, default_course_id: str) -> dict:
         "type": storage.normalize_date_type(deadline.get("type")),
         "completed": False,
     }
+
+
+def _existing_deadlines_context(course_id: str, user=None, limit: int = 60) -> list:
+    """Trimmed, id-bearing list of this course's real deadlines (syllabus +
+    manual), so the extraction model can resolve "my project deadline" to a
+    specific event_id for update/delete instead of guessing blind. Ownership
+    is enforced independently server-side when the action is actually
+    confirmed (calendar_events.all_events is already user-scoped) — this
+    context is only ever used to help the model pick the right reference,
+    never trusted as the source of authorization."""
+    events = calendar_events.all_events(user, course_ids=[course_id])
+    events = sorted(events, key=lambda e: e.get("date") or "")[:limit]
+    return [
+        {"id": e["id"], "title": e["title"], "date": e["date"], "time": e.get("time"), "type": e["type"], "source": e["source"]}
+        for e in events
+    ]
 
 
 def _looks_like_save_site_request(question: str) -> bool:
@@ -461,12 +493,36 @@ def _learning_tools_context(course_id: str, user=None) -> dict:
     return context
 
 
-async def _extract_deadline_request(client, question: str, course_id: str, syllabus: dict) -> dict:
+async def _structure_result_sources(
+    result: dict, course_id: str, question: str, user=None, session_id: str = None,
+) -> dict:
+    result = dict(result)
+    if not isinstance(result.get("answer"), str) or not result["answer"].strip():
+        raise ValueError("Cora returned an invalid answer.")
+    if not isinstance(result.get("grounded"), bool):
+        raise ValueError("Cora returned an invalid grounded value.")
+    source_labels = citations.validate_source_labels(result.get("sources"))
+    if not result.get("grounded"):
+        result["sources"] = []
+        return result
+    result["sources"] = await sync_to_async(citations.resolve_citations)(
+        user,
+        course_id,
+        source_labels,
+        question,
+        result.get("answer", ""),
+        session_id,
+    )
+    return result
+
+
+async def _extract_deadline_request(client, question: str, course_id: str, syllabus: dict, user=None) -> dict:
     today_date = date.today()
     days_since_sunday = (today_date.weekday() + 1) % 7
     week_start = today_date - timedelta(days=days_since_sunday)
     week_end = week_start + timedelta(days=6)
     schedule_end = week_start + timedelta(days=(CLASS_SCHEDULE_WEEKS * 7) - 1)
+    existing_deadlines = await sync_to_async(_existing_deadlines_context)(course_id, user=user)
     course_context = {
         "current_course_id": course_id,
         "current_course_name": syllabus.get("course_name") or course_id,
@@ -477,6 +533,7 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
         "schedule_start_date": week_start.isoformat(),
         "schedule_end_date": schedule_end.isoformat(),
         "allowed_categories": ["hw", "project", "test_quiz", "class", "other"],
+        "existing_deadlines": existing_deadlines,
     }
     response = await client.messages.create(
         model=MODEL_HAIKU,
@@ -495,16 +552,27 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
         raw_deadline = data.get("deadline")
         raw_deadlines = [raw_deadline] if isinstance(raw_deadline, dict) else []
     pending_deadlines = [_normalize_pending_deadline(raw, course_id) for raw in raw_deadlines if isinstance(raw, dict)]
-    missing = [m for m in data.get("missing", []) if m in {"title", "date", "course_id"}]
+    missing = [m for m in data.get("missing", []) if m in {"title", "date", "course_id", "event_match"}]
     if not pending_deadlines and "title" not in missing:
         missing.append("title")
     if any(not pending["title"] for pending in pending_deadlines) and "title" not in missing:
         missing.append("title")
     if any(not pending["date"] for pending in pending_deadlines) and "date" not in missing:
         missing.append("date")
+    if any(pending["action"] in ("update", "delete") and not pending["event_id"] for pending in pending_deadlines) and "event_match" not in missing:
+        missing.append("event_match")
     first_pending = pending_deadlines[0] if len(pending_deadlines) == 1 else None
+    default_message = (
+        "I need a little more detail before I can do that."
+        if missing
+        else "I can update this after you confirm the details."
+        if any(p["action"] == "update" for p in pending_deadlines)
+        else "I can remove this after you confirm."
+        if any(p["action"] == "delete" for p in pending_deadlines)
+        else "I can add this to your calendar after you confirm the details."
+    )
     return {
-        "answer": data.get("message") or ("I can add this deadline after you confirm the details." if not missing else "I need a little more detail before I can add that deadline."),
+        "answer": data.get("message") or default_message,
         "grounded": True,
         "sources": ["syllabus"],
         "pending_deadline": None if missing else first_pending,
@@ -513,10 +581,25 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
     }
 
 
-async def ask_async(course_id: str, question: str, session_id: str = None, user=None) -> dict:
+async def ask_async(
+    course_id: str,
+    question: str,
+    session_id: str = None,
+    user=None,
+    client_request_id: str = None,
+    allow_web: bool = False,
+) -> dict:
+    grounding_mode = "course_materials_and_web" if allow_web else "course_materials"
     syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
     if syllabus is None:
         raise CourseNotFoundError(f"no syllabus.json found for course '{course_id}'")
+
+    if session_id is not None and client_request_id:
+        existing = await sync_to_async(sessions.exchange_for_request)(
+            course_id, session_id, client_request_id, user=user
+        )
+        if existing is not None:
+            return existing
 
     if _looks_like_save_site_request(question):
         request = _extract_save_site_request(question)
@@ -533,23 +616,29 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
             "sources": [site["url"]],
             "saved_site": site,
         }
+        result = await _structure_result_sources(
+            result, course_id, question, user=user, session_id=session_id,
+        )
+        result["grounding_mode"] = grounding_mode
         if session_id is not None:
-            await sync_to_async(sessions.append_message)(course_id, session_id, "user", question, user=user)
-            await sync_to_async(sessions.append_message)(
-                course_id, session_id, "assistant", result["answer"],
-                sources=result["sources"], grounded=result["grounded"], user=user,
+            result = await sync_to_async(sessions.append_exchange)(
+                course_id, session_id, question, result,
+                client_request_id=client_request_id, user=user,
             )
         return result
 
     client = get_client()
 
     if _looks_like_deadline_request(question):
-        result = await _extract_deadline_request(client, question, course_id, syllabus)
+        result = await _extract_deadline_request(client, question, course_id, syllabus, user=user)
+        result = await _structure_result_sources(
+            result, course_id, question, user=user, session_id=session_id,
+        )
+        result["grounding_mode"] = grounding_mode
         if session_id is not None:
-            await sync_to_async(sessions.append_message)(course_id, session_id, "user", question, user=user)
-            await sync_to_async(sessions.append_message)(
-                course_id, session_id, "assistant", result["answer"],
-                sources=result["sources"], grounded=result["grounded"], user=user,
+            result = await sync_to_async(sessions.append_exchange)(
+                course_id, session_id, question, result,
+                client_request_id=client_request_id, user=user,
             )
         return result
 
@@ -560,7 +649,7 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
         course_id, question, session_id=session_id, user=user,
     )
     approved_domains = await sync_to_async(storage.read_trusted_domains)(course_id, user)
-    allowed_domains = _merge_allowed_domains(approved_domains, _domains_from_saved_sites(saved_sites))
+    allowed_domains = _merge_allowed_domains(approved_domains, _domains_from_saved_sites(saved_sites)) if allow_web else []
     learning_tools = await sync_to_async(_learning_tools_context)(course_id, user=user)
 
     context = f"SYLLABUS:\n{json.dumps(syllabus, indent=2)}\n\n"
@@ -631,7 +720,10 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
                 envelope = json.dumps({
                     "answer": m["content"],
                     "grounded": m.get("grounded", False),
-                    "sources": m.get("sources", []),
+                    "sources": [
+                        label for label in (citations.legacy_source_label(source) for source in m.get("sources", []))
+                        if label
+                    ],
                 })
                 messages.append({"role": "assistant", "content": envelope})
             else:
@@ -693,15 +785,127 @@ async def ask_async(course_id: str, question: str, session_id: str = None, user=
 
     result = {
         "answer": data.get("answer", ""),
-        "grounded": bool(data.get("grounded", False)),
+        "grounded": data.get("grounded", False),
         "sources": data.get("sources", []),
     }
+    result = await _structure_result_sources(
+        result, course_id, question, user=user, session_id=session_id,
+    )
+    result["grounding_mode"] = grounding_mode
 
     if session_id is not None:
-        await sync_to_async(sessions.append_message)(course_id, session_id, "user", question, user=user)
-        await sync_to_async(sessions.append_message)(
-            course_id, session_id, "assistant", result["answer"],
-            sources=result["sources"], grounded=result["grounded"], user=user,
+        result = await sync_to_async(sessions.append_exchange)(
+            course_id, session_id, question, result,
+            client_request_id=client_request_id, user=user,
         )
 
     return result
+
+
+def _format_when(date_str: str, time_str: str | None) -> str:
+    # Avoids the platform-specific "%-d"/"%-I" strftime flags (Unix-only —
+    # Windows raises ValueError on them) by formatting day/hour manually.
+    try:
+        parsed = date.fromisoformat(date_str)
+        label = f"{parsed.strftime('%b')} {parsed.day}, {parsed.year}"
+    except (TypeError, ValueError):
+        label = date_str or "an unspecified date"
+    if time_str:
+        try:
+            hour, minute = (int(part) for part in time_str.split(":")[:2])
+            period = "AM" if hour < 12 else "PM"
+            hour12 = hour % 12 or 12
+            label += f" at {hour12}:{minute:02d} {period}"
+        except (TypeError, ValueError):
+            pass
+    return label
+
+
+def _resolve_existing_event(course_id: str, event_id: str, user=None) -> dict | None:
+    """Re-resolves event_id against this user's OWN events, regardless of
+    what the extraction model claimed about it — the only real
+    authorization check for update/delete, since model output is untrusted."""
+    events = calendar_events.all_events(user, course_ids=[course_id])
+    return next((e for e in events if e["id"] == event_id), None)
+
+
+def confirm_deadline_actions(course_id: str, session_id: str, actions: list, user=None) -> dict:
+    """Executes one or more calendar actions Cora proposed in this session
+    and the user just explicitly confirmed, then appends one summary turn to
+    the session. This is the only code path allowed to write to the calendar
+    on Cora's behalf — ask_async itself only ever proposes, never writes,
+    per this project's plan-then-pause rule for destructive/bulk writes."""
+    session = sessions.get_session(course_id, session_id, user=user)
+    if session is None:
+        raise sessions.SessionNotFoundError(f"no session '{session_id}' found for course '{course_id}'")
+
+    summaries = []
+    for raw in actions:
+        action = raw.get("action") or "create"
+
+        if action == "create":
+            title = str(raw.get("title") or "").strip()
+            event_date = raw.get("date")
+            if not title or not event_date:
+                raise ValueError("title and date are required to add a deadline")
+            event = custom_events.create_event(
+                raw.get("course_id") or course_id,
+                event_date.isoformat() if hasattr(event_date, "isoformat") else str(event_date),
+                raw["time"].strftime("%H:%M") if raw.get("time") else None,
+                title, raw.get("type") or "other", user=user,
+                end_time=raw["end_time"].strftime("%H:%M") if raw.get("end_time") else None,
+            )
+            summaries.append(f"Added **{event['title']}** — {_format_when(event['date'], event['time'])}.")
+            continue
+
+        event_id = raw.get("event_id")
+        if not event_id:
+            raise ValueError(f"event_id is required to {action} a deadline")
+        existing = _resolve_existing_event(course_id, str(event_id), user=user)
+        if existing is None:
+            raise custom_events.EventNotFoundError(f"no deadline '{event_id}' found for '{course_id}'")
+
+        if action == "delete":
+            if existing["source"] == "syllabus":
+                raise ValueError(
+                    f"'{existing['title']}' comes from the syllabus and can't be deleted — "
+                    "I can mark it complete or move its date/time instead."
+                )
+            custom_events.delete_event(str(event_id), user=user)
+            summaries.append(f"Removed **{existing['title']}** from your calendar.")
+            continue
+
+        if action == "update":
+            fields = {}
+            if raw.get("title"):
+                fields["title"] = str(raw["title"]).strip()
+            if raw.get("date"):
+                fields["date"] = raw["date"].isoformat() if hasattr(raw["date"], "isoformat") else str(raw["date"])
+            if raw.get("time"):
+                fields["time"] = raw["time"].strftime("%H:%M")
+            if raw.get("end_time"):
+                fields["end_time"] = raw["end_time"].strftime("%H:%M")
+            if raw.get("type"):
+                fields["type"] = raw["type"]
+
+            if existing["source"] == "syllabus":
+                merged = {
+                    "date": fields.get("date", existing["date"]),
+                    "time": fields.get("time", existing.get("time")),
+                    "end_time": fields.get("end_time", existing.get("end_time")),
+                    "title": fields.get("title", existing["title"]),
+                    "type": fields.get("type", existing["type"]),
+                }
+                event = custom_events.create_event(
+                    course_id, merged["date"], merged["time"], merged["title"], merged["type"],
+                    user=user, end_time=merged["end_time"], replaces_syllabus_key=existing["key"],
+                )
+            else:
+                event = custom_events.update_event(str(event_id), user=user, **fields)
+            summaries.append(f"Updated **{event['title']}** — now {_format_when(event['date'], event['time'])}.")
+            continue
+
+        raise ValueError(f"unknown action '{action}'")
+
+    confirmation_text = " ".join(summaries) if summaries else "Nothing to confirm."
+    return sessions.append_message(course_id, session_id, "assistant", confirmation_text, grounded=True, user=user)

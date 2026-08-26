@@ -1,0 +1,42 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<section class="settings-page settings-native" data-page-section="settings">
+  <header class="settings-heading"><h1>Settings</h1><p>Manage your profile, privacy, and OnTrack preferences.</p></header>
+  <div id="settings-loading" class="shared-state" role="status">Loading settings…</div>
+  <div id="settings-error" class="shared-state shared-state-error" hidden><h2>Couldn't load settings</h2><p></p><button id="settings-retry" class="btn btn-secondary" type="button">Try again</button></div>
+  <div id="settings-content" class="settings-layout" hidden>
+    <nav class="settings-section-nav" aria-label="Settings sections">
+      <a href="#profile" class="active"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-profile"/></svg><span>Profile</span></a>
+      <a href="#study-preferences"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-clock"/></svg><span>Study preferences</span></a>
+      <a href="#notifications"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-bell"/></svg><span>Notifications</span></a>
+      <a href="#connections"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-link"/></svg><span>Connections</span></a>
+      <a href="#privacy"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><span>Privacy &amp; data</span></a>
+    </nav>
+    <div class="settings-cards">
+      <section id="profile" class="settings-card"><h2>Profile</h2><form id="profile-form">
+        <div class="settings-profile-row"><div class="settings-avatar">{{ user_initials }}</div><label>Display name<input id="settings-display-name" name="display_name" class="input" maxlength="150" required></label><button id="settings-edit" class="btn btn-secondary" type="button">Edit</button></div>
+        <div class="settings-row"><span><small>Google account</small><strong id="settings-email"></strong></span></div>
+        <label class="settings-row"><span><small>Timezone</small><strong>Used for exam countdowns and reminders</strong></span><select id="settings-timezone" name="timezone">{% for zone in timezone_choices %}<option value="{{ zone }}">{{ zone }}</option>{% endfor %}</select></label>
+        <p class="app-inline-error" id="profile-error" hidden></p><button class="btn btn-primary" type="submit">Save changes</button>
+      </form></section>
+      <section id="study-preferences" class="settings-card"><h2>Study preferences</h2><form id="preferences-form">
+        <label class="settings-row"><span><strong>Preferred session length</strong><small>How long you want each study session to be.</small></span><select id="settings-duration"><option value="15">15 minutes</option><option value="25">25 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option><option value="90">90 minutes</option></select></label>
+        <fieldset class="settings-days"><legend>Available study days</legend><small>Choose at least one day.</small><div>{% for day in "MTWTFSS" %}<label><input type="checkbox" value="{{ forloop.counter0 }}"><span>{{ day }}</span></label>{% endfor %}</div></fieldset>
+        <label class="settings-row"><span><strong>Reminder lead time</strong><small>When OnTrack should remind you.</small></span><select id="settings-reminder"><option value="0">At start</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="1440">1 day</option></select></label>
+        <p class="app-inline-error" id="preferences-error" hidden></p><button class="btn btn-primary" type="submit">Save preferences</button>
+      </form></section>
+      <section id="connections" class="settings-card"><h2>Connections</h2>
+        <div class="settings-row"><span><strong>Google sign-in connected</strong><small>Identity only; Calendar access is separate.</small></span><span class="settings-status connected">Connected</span></div>
+        <div class="settings-row"><span><strong id="calendar-state">Calendar not connected — optional</strong><small>Connect your calendar to sync events.</small></span><a id="calendar-connect" class="btn btn-secondary" href="/accounts/calendar/connect/">Connect calendar</a><form id="calendar-disconnect" action="/accounts/calendar/disconnect/" method="post" hidden>{% csrf_token %}<button class="btn btn-secondary" type="submit">Disconnect</button></form></div>
+      </section>
+      <section id="notifications" class="settings-card"><h2>Notifications</h2><label class="settings-row"><span><strong>Browser reminders</strong><small>Allow OnTrack reminder notifications.</small></span><input id="settings-notifications" type="checkbox"></label></section>
+      <section id="privacy" class="settings-card"><h2>Privacy &amp; data</h2>
+        <div class="settings-row"><span><strong>Download my data</strong><small>Export your profile, courses, materials, plans, and study history.</small></span><a class="btn btn-secondary" href="/api/profile/export/" download>Download data</a></div>
+        <div class="settings-row settings-delete-row"><span><strong>Delete account</strong><small>Permanently delete your account and associated data.</small></span><button id="delete-open" class="btn settings-danger-button" type="button">Delete account</button></div>
+      </section>
+    </div>
+  </div>
+  <div id="delete-dialog" class="settings-dialog-backdrop" hidden><section role="dialog" aria-modal="true" aria-labelledby="delete-title" class="settings-dialog"><h2 id="delete-title">Delete your OnTrack account?</h2><p>This permanently removes your profile, courses, materials, study history, plans, and connections. This cannot be undone.</p><form data-account-delete-form><label>Type <strong>DELETE MY ACCOUNT</strong> to confirm<input class="input" name="confirmation" autocomplete="off" required></label><p class="app-inline-error" data-account-delete-error hidden></p><div><button id="delete-cancel" class="btn btn-secondary" type="button">Cancel</button><button class="btn settings-danger-button" type="submit">Delete account</button></div></form></section></div>
+  <div id="settings-status" class="sr-only" role="status" aria-live="polite"></div>
+</section>
+{% endblock %}

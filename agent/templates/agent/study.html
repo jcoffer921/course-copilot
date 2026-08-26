@@ -1,0 +1,102 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div data-page-section="study">
+  {% verbatim %}
+  <nav class="study-subnav" aria-label="Study tools">
+    <button type="button" id="study-subnav-progress" class="btn btn-secondary" onClick="{{ goProgress }}">Progress</button>
+    <button type="button" id="study-subnav-flashcards" class="btn btn-secondary" onClick="{{ goFlashcards }}">Flashcards</button>
+    <button type="button" id="study-subnav-quiz" class="btn btn-secondary" onClick="{{ goQuiz }}">Quiz</button>
+    <button type="button" id="study-subnav-grades" class="btn btn-secondary" onClick="{{ goGrades }}">Grades</button>
+    <a href="/study/?view=session" id="study-subnav-session" class="btn btn-secondary">Guided Session</a>
+  </nav>
+  {% endverbatim %}
+  {% include "agent/pages/progress_content.html" %}
+  {% include "agent/pages/flashcards_content.html" %}
+  {% include "agent/pages/quiz_content.html" %}
+  {% include "agent/pages/grades_content.html" %}
+
+  <section id="guided-session-root" class="guided-session card elev-sm" aria-labelledby="guided-session-title" hidden>
+    <div class="materials-section-heading">
+      <div><div class="card-kicker">Guided study</div><h2 id="guided-session-title">Start a session</h2></div>
+    </div>
+
+    <div id="guided-session-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
+
+    <form id="guided-session-setup" class="guided-session-setup">
+      <label class="materials-field">Course
+        <select id="guided-session-course" class="input" required></select>
+      </label>
+      <label class="materials-field">Topic
+        <select id="guided-session-topic" class="input">
+          <option value="">All topics</option>
+        </select>
+      </label>
+      <label class="materials-field">Duration
+        <select id="guided-session-duration" class="input">
+          <option value="10">10 minutes</option>
+          <option value="15" selected>15 minutes</option>
+          <option value="20">20 minutes</option>
+          <option value="30">30 minutes</option>
+        </select>
+      </label>
+      <label class="materials-field">Mode
+        <select id="guided-session-mode" class="input">
+          <option value="mixed" selected>Flashcards + quiz</option>
+          <option value="flashcards">Flashcards only</option>
+          <option value="quiz">Quiz only</option>
+        </select>
+      </label>
+      <button class="btn btn-primary" type="submit">Start session</button>
+    </form>
+
+    <div id="guided-session-loading" class="shared-state" role="status" hidden>Loading…</div>
+
+    <div id="guided-session-active" class="guided-session-active" hidden>
+      <div class="guided-session-progress">
+        <span id="guided-session-progress-label"></span>
+        <button id="guided-session-end-early" class="btn btn-secondary" type="button">End session</button>
+      </div>
+
+      <div id="guided-session-flashcard-step" class="guided-session-step" hidden>
+        <button id="guided-session-flashcard" type="button" class="guided-flashcard" aria-label="Flip card">
+          <p id="guided-session-flashcard-text"></p>
+        </button>
+        <p class="material-meta">Click the card to flip it, then rate how well you knew it.</p>
+        <div id="guided-session-ratings" class="guided-session-ratings" hidden>
+          <button class="btn btn-secondary" type="button" data-rating="again">Again</button>
+          <button class="btn btn-secondary" type="button" data-rating="hard">Hard</button>
+          <button class="btn btn-secondary" type="button" data-rating="good">Good</button>
+          <button class="btn btn-secondary" type="button" data-rating="easy">Easy</button>
+        </div>
+      </div>
+
+      <div id="guided-session-quiz-step" class="guided-session-step" hidden>
+        <p id="guided-session-question" class="guided-session-question"></p>
+        <div id="guided-session-choices" class="guided-session-choices"></div>
+        <div id="guided-session-open-answer-row" class="guided-session-open-answer-row" hidden>
+          <input id="guided-session-open-answer" class="input" type="text" placeholder="Your answer">
+          <button id="guided-session-submit-open" class="btn btn-primary" type="button">Submit</button>
+        </div>
+        <div id="guided-session-feedback" class="guided-session-feedback" hidden>
+          <p id="guided-session-feedback-result"></p>
+          <p id="guided-session-feedback-explanation" class="material-meta"></p>
+          <a id="guided-session-feedback-source" class="guided-session-source-link" href="#" hidden target="_blank" rel="noopener">View source</a>
+          <button id="guided-session-next-question" class="btn btn-primary" type="button">Next question</button>
+        </div>
+      </div>
+
+      <div id="guided-session-recall-prompt" class="guided-session-step" hidden>
+        <p>Want to try a couple of short-recall questions too?</p>
+        <button id="guided-session-recall-yes" class="btn btn-primary" type="button">Yes, add short-recall</button>
+        <button id="guided-session-recall-skip" class="btn btn-secondary" type="button">Skip to summary</button>
+      </div>
+
+      <div id="guided-session-summary-step" class="guided-session-step" hidden>
+        <h3>Session complete</h3>
+        <ul id="guided-session-summary-list" class="guided-session-summary-list"></ul>
+        <button id="guided-session-restart" class="btn btn-primary" type="button">Start another session</button>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

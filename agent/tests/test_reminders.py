@@ -27,13 +27,13 @@ def test_list_all_deadlines_combines_syllabus_and_custom(isolated_courses_dir, u
     from datetime import date, timedelta
     far_date = (date.today() + timedelta(days=60)).isoformat()  # well outside the 14-day dashboard window, proving this is unbounded
     _seed_syllabus("cs101", [{"date": far_date, "title": "Final Exam", "type": "exam"}], user)
-    custom_events.create_event("cs101", far_date, None, "Study session", "other")
+    custom_events.create_event("cs101", far_date, None, "Study session", "other", user=user)
 
     deadlines = reminders.list_all_deadlines(user=user)
 
     sources = {d["title"]: d["source"] for d in deadlines}
     assert sources["Final Exam"] == "syllabus"
-    assert sources["Study session"] == "custom"
+    assert sources["Study session"] == "manual"
 
 
 def test_list_all_deadlines_can_filter_to_one_course(isolated_courses_dir, user):
@@ -41,7 +41,7 @@ def test_list_all_deadlines_can_filter_to_one_course(isolated_courses_dir, user)
     far_date = (date.today() + timedelta(days=60)).isoformat()
     _seed_syllabus("cs101", [{"date": far_date, "title": "CS Final", "type": "exam"}], user)
     _seed_syllabus("math201", [{"date": far_date, "title": "Math Final", "type": "exam"}], user)
-    custom_events.create_event(None, far_date, None, "General break", "other")
+    custom_events.create_event(None, far_date, None, "General break", "other", user=user)
 
     deadlines = reminders.list_all_deadlines(user=user, course_id="cs101")
 
@@ -61,12 +61,13 @@ def test_custom_replacement_hides_matching_syllabus_deadline(isolated_courses_di
         "Project draft due",
         "assignment",
         replaces_syllabus_key=original["key"],
+        user=user,
     )
 
     deadlines = reminders.list_all_deadlines(user=user, course_id="cs101")
 
     assert [d["title"] for d in deadlines] == ["Project draft due"]
-    assert deadlines[0]["source"] == "custom"
+    assert deadlines[0]["source"] == "manual"
 
 
 def test_general_custom_replacement_hides_original_in_course_filter(isolated_courses_dir, user):
@@ -82,6 +83,7 @@ def test_general_custom_replacement_hides_original_in_course_filter(isolated_cou
         "Campus holiday",
         "other",
         replaces_syllabus_key=original["key"],
+        user=user,
     )
 
     assert reminders.list_all_deadlines(user=user, course_id="cs101") == []
@@ -104,8 +106,8 @@ def test_list_all_deadlines_marks_synced_syllabus_deadline(isolated_courses_dir,
 
 
 def test_list_all_deadlines_marks_synced_custom_event(isolated_courses_dir, user):
-    created = custom_events.create_event("cs101", "2026-09-01", None, "Study session", "other")
-    custom_events.update_event(created["id"], synced=True, google_event_id="evt-2")
+    created = custom_events.create_event("cs101", "2026-09-01", None, "Study session", "other", user=user)
+    custom_events.update_event(created["id"], user=user, synced=True, google_event_id="evt-2")
 
     deadlines = reminders.list_all_deadlines(user=user)
 
@@ -114,7 +116,7 @@ def test_list_all_deadlines_marks_synced_custom_event(isolated_courses_dir, user
 
 
 def test_list_all_deadlines_includes_general_custom_event(isolated_courses_dir, user):
-    custom_events.create_event(None, "2026-11-26", None, "Thanksgiving break", "other")
+    custom_events.create_event(None, "2026-11-26", None, "Thanksgiving break", "other", user=user)
 
     deadlines = reminders.list_all_deadlines(user=user)
 
@@ -122,7 +124,7 @@ def test_list_all_deadlines_includes_general_custom_event(isolated_courses_dir, 
 
 
 def test_list_all_deadlines_excludes_past_custom_events(isolated_courses_dir, user):
-    custom_events.create_event("cs101", "2020-01-01", None, "Long past", "other")
+    custom_events.create_event("cs101", "2020-01-01", None, "Long past", "other", user=user)
 
     deadlines = reminders.list_all_deadlines(user=user)
 
@@ -130,8 +132,8 @@ def test_list_all_deadlines_excludes_past_custom_events(isolated_courses_dir, us
 
 
 def test_list_all_deadlines_includes_incomplete_overdue_assignments(isolated_courses_dir, user):
-    custom_events.create_event("cs101", "2020-01-01", None, "Past homework", "hw")
-    custom_events.create_event("cs101", "2020-01-01", None, "Past project", "project", completed=True)
+    custom_events.create_event("cs101", "2020-01-01", None, "Past homework", "hw", user=user)
+    custom_events.create_event("cs101", "2020-01-01", None, "Past project", "project", completed=True, user=user)
 
     deadlines = reminders.list_all_deadlines(user=user)
 
@@ -139,8 +141,8 @@ def test_list_all_deadlines_includes_incomplete_overdue_assignments(isolated_cou
 
 
 def test_list_all_deadlines_sorted_by_date(isolated_courses_dir, user):
-    custom_events.create_event("cs101", "2099-03-01", None, "Later", "other")
-    custom_events.create_event("cs101", "2099-01-01", None, "Earlier", "other")
+    custom_events.create_event("cs101", "2099-03-01", None, "Later", "other", user=user)
+    custom_events.create_event("cs101", "2099-01-01", None, "Earlier", "other", user=user)
 
     deadlines = reminders.list_all_deadlines(user=user)
 

@@ -1,0 +1,101 @@
+{
+  "course_id": "formal-languages",
+  "course_name": "Formal Languages",
+  "dates": [
+    {
+      "date": "2026-08-30",
+      "title": "Regular Drop - Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-08-31",
+      "title": "Regular Add - Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-08-31",
+      "title": "Late Drop Begins",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-01",
+      "title": "Late Registration Begins",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-01",
+      "title": "Labor Day Holiday - No Classes",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-29",
+      "title": "Final Exam Conflict Filing Period Begins",
+      "type": "other"
+    },
+    {
+      "date": "2026-10-26",
+      "title": "Final Exam Conflict Filing Period Ends",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-14",
+      "title": "Late Registration Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-14",
+      "title": "Late Add Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-14",
+      "title": "Late Drop Deadline",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-14",
+      "title": "Declare Concurrent Majors, Minors, or Certificates - Deadline (Graduating Students)",
+      "type": "other"
+    }
+  ],
+  "grading": [
+    {
+      "component": "Other",
+      "weight_pct": 10
+    },
+    {
+      "component": "Homework",
+      "weight_pct": 30
+    },
+    {
+      "component": "Projects",
+      "weight_pct": 20
+    },
+    {
+      "component": "Tests",
+      "weight_pct": 40
+    }
+  ],
+  "topics": [
+    "Course summary and syllabus discussion",
+    "Introduction to Computational Theory",
+    "Finite Automata",
+    "Nondeterminism",
+    "Regular Expressions",
+    "Nonregular Languages",
+    "Context-Free Grammars",
+    "Pushdown Automata",
+    "Non-Context-Free Languages",
+    "Turing Machines",
+    "Variants of Turing Machines",
+    "The Definition of Algorithms",
+    "Decidable Languages",
+    "Undecidability",
+    "Undecidable Problems from Language Theory",
+    "A Simple Undecidable Problem",
+    "Measuring Complexity",
+    "The Class P",
+    "The Class NP",
+    "Group Projects"
+  ]
+}

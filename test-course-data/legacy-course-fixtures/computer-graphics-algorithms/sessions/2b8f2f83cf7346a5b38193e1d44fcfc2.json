@@ -1,0 +1,38 @@
+{
+  "session_id": "2b8f2f83cf7346a5b38193e1d44fcfc2",
+  "course_id": "computer-graphics-algorithms",
+  "created_at": "2026-08-22T15:14:17.138588+00:00",
+  "updated_at": "2026-08-22T15:39:44.449091+00:00",
+  "messages": [
+    {
+      "role": "user",
+      "content": "can you search the web for info regarding the chapter 1 notes?",
+      "timestamp": "2026-08-22T15:14:42.524554+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Here's a summary of your **Chapter 1** notes, enriched with some additional context from reputable web sources (MDN, Khronos Group) \u2014 clearly marked below.\n\n---\n\n## \ud83d\udcd6 Overview of WebGL *(from your course notes)*\n\nWith the rise of HTML5, browsers evolved into sophisticated application platforms, creating a need for built-in 3D graphics. WebGL was designed to fill that role \u2014 often described as *\"OpenGL for web browsers.\"*\n\n**Key advantages of WebGL (from your notes):**\n- No special plug-ins or libraries needed \u2014 it's built into the browser\n- Cross-platform\n- Uses familiar HTML and JavaScript alongside 3D graphics code\n- Enables rich UIs, 3D games, and data visualization\n- Only needs a text editor and browser to develop\n- Published using standard web technologies\n\n---\n\n## \ud83c\udf10 Additional context from the web *(outside course material)*\n\n<cite index=\"1-1\">WebGL is a JavaScript API for rendering high-performance interactive 3D and 2D graphics within any compatible web browser without the use of plug-ins.</cite>\n\n<cite index=\"1-2\">It does so by introducing an API that closely conforms to OpenGL ES 2.0, usable in HTML `<canvas>` elements.</cite> <cite index=\"1-5\">This conformance makes it possible for the API to take advantage of hardware graphics acceleration provided by the user's device.</cite>\n\n<cite index=\"1-7\">WebGL 2 introduces support for much of the OpenGL ES 3.0 feature set, provided through the `WebGL2RenderingContext` interface.</cite>\n\n---\n\n## \ud83d\udd8a\ufe0f The OpenGL ES Shading Language (GLSL ES) *(from your course notes)*\n\nThe language used to write shaders is called a **shading language**. Since WebGL is based on OpenGL ES 2.0, it uses **GLSL ES** for creating shaders. This means WebGL pages are built with **three languages**:\n1. **HTML5** \u2014 structure\n2. **JavaScript** \u2014 logic/control\n3. **GLSL ES** \u2014 shader code\n\n---\n\n## \ud83c\udf10 Additional context from the web *(outside course material)*\n\n<cite index=\"3-3\">WebGL programs consist of control code written in JavaScript and shader code (GLSL) that is executed on a computer's Graphics Processing Unit (GPU).</cite>\n\n<cite index=\"7-15,7-16\">Shaders use GLSL \u2014 a special OpenGL shading language with syntax similar to C \u2014 executed directly by the graphics pipeline. They split into **vertex shaders** (transform shape positions to 3D coordinates) and **fragment shaders** (compute rendering colors and other attributes).</cite>\n\n<cite index=\"17-1\">The WebGL shading language is a restricted variant of the OpenGL ES Shading Language 1.00, enabling flexible shading and some general purpose usage of GPUs on the web.</cite>\n\n---\n\nWant me to go deeper on any specific concept from Chapter 1, or move on to another topic?",
+      "timestamp": "2026-08-22T15:14:42.527708+00:00",
+      "sources": [
+        "Chapter-01",
+        "https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API",
+        "https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Tutorial/Getting_started_with_WebGL",
+        "https://developer.mozilla.org/en-US/docs/Games/Techniques/3D_on_the_web",
+        "https://www.khronos.org/assets/uploads/developers/library/2015-gtc/NVIDIA-Shaders-WebGL-Meetup-GTC_Mar15.pdf"
+      ],
+      "grounded": true
+    },
+    {
+      "role": "user",
+      "content": "can you save those notes?",
+      "timestamp": "2026-08-22T15:39:44.447090+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "I'm Cora, an AI academic assistant \u2014 I can read and reference your course material, but I don't have the ability to save, store, or modify notes or files. Any saving would need to be done on your end (e.g. copy-pasting into a doc or your note-taking app).\n\nIs there anything else I can help you with for **Computer Graphics Algorithms**?",
+      "timestamp": "2026-08-22T15:39:44.449091+00:00",
+      "sources": [],
+      "grounded": false
+    }
+  ]
+}

@@ -6,25 +6,13 @@ cron / Task Scheduler entry) to see what's coming up, distinct from
 calendar_sync.py which actually commits specific events to Google Calendar.
 """
 
-from datetime import date, datetime, timedelta
 import json
-
-from django.db.utils import DatabaseError
-
-from . import custom_events, storage
-
-OVERDUE_CATEGORIES = {"hw", "project", "test_quiz"}
+from . import calendar_events, storage
 
 
 def list_courses(user) -> list:
     """Returns every course_id that has a syllabus.json for this user, sorted."""
-    user_dir = storage.COURSES_DIR / str(user.pk)
-    if not user_dir.exists():
-        return []
-    return sorted(
-        p.name for p in user_dir.iterdir()
-        if p.is_dir() and (p / "syllabus.json").exists()
-    )
+    return calendar_events.list_course_ids(user)
 
 
 def list_draft_courses(user) -> list:
@@ -40,6 +28,8 @@ def list_draft_courses(user) -> list:
     drafts = []
     for p in sorted(user_dir.iterdir(), key=lambda p: p.name):
         if not p.is_dir():
+            continue
+        if storage.course_is_archived(p.name, user):
             continue
         if (p / "syllabus.json").exists():
             continue
@@ -57,113 +47,27 @@ def list_draft_courses(user) -> list:
 
 
 def _syllabus_deadline_key(deadline: dict) -> str:
-    return "|".join([
-        deadline.get("course_id") or "",
-        deadline.get("date") or "",
-        deadline.get("title") or "",
-        deadline.get("type") or "other",
-    ])
+    return calendar_events.syllabus_deadline_key(deadline)
 
 
-def upcoming_deadlines(user, within_days: int = None, course_ids: list = None) -> list:
+def upcoming_deadlines(user, within_days: int = None, course_ids: list = None, include_general: bool = False) -> list:
     """Returns [{"course_id", "date", "title", "type"}, ...] across all (or
     the given) of this user's courses, sorted by date. Only today-or-later
     dates are included; within_days caps how far into the future, or None
     for no cap."""
-    today = date.today()
-    cutoff = today + timedelta(days=within_days) if within_days is not None else None
-
-    courses = course_ids if course_ids is not None else list_courses(user)
-
-    deadlines = []
-    for course_id in courses:
-        syllabus = storage.read_syllabus(course_id, user)
-        if syllabus is None:
-            continue
-        for d in syllabus.get("dates", []):
-            try:
-                event_date = datetime.strptime(d["date"], "%Y-%m-%d").date()
-            except (KeyError, ValueError, TypeError):
-                continue
-            if event_date < today:
-                continue
-            if cutoff is not None and event_date > cutoff:
-                continue
-            deadline = {
-                "course_id": course_id,
-                "date": d["date"],
-                "title": d.get("title", ""),
-                "type": storage.normalize_date_type(d.get("type", "other")),
-            }
-            deadline["key"] = _syllabus_deadline_key(deadline)
-            deadlines.append(deadline)
-
-    deadlines.sort(key=lambda d: d["date"])
-    return deadlines
+    return calendar_events.upcoming_events(
+        user,
+        within_days=within_days,
+        course_ids=course_ids,
+        include_general=include_general,
+    )
 
 
 def list_all_deadlines(user=None, course_id: str = None) -> list:
-    """Every upcoming deadline from both sources — syllabus-extracted
-    (read-only, tagged source="syllabus") and manually-added (full CRUD,
-    tagged source="custom") — combined and sorted by date, unbounded (no
-    14-day cap, unlike the Dashboard's own upcoming_deadlines() call).
-    Powers the Deadlines tab's full list.
-
-    The sync-status annotation for syllabus deadlines duplicates
-    dashboard.py's _annotate_synced (same 4-line cross-reference against
-    read_calendar_sync) rather than importing it — dashboard.py already
-    imports this module, so importing back would be circular."""
-    today = date.today()
-
-    course_ids = [course_id] if course_id else None
-    syllabus_deadlines = upcoming_deadlines(user, within_days=None, course_ids=course_ids)
-    try:
-        all_custom = [
-            dict(e, source="custom")
-            for e in custom_events.list_events(user=user)
-            if e["date"] >= today.isoformat()
-            or (
-                not e.get("completed")
-                and storage.normalize_date_type(e.get("type")) in OVERDUE_CATEGORIES
-            )
-        ]
-    except (storage.CustomEventsStorageError, DatabaseError):
-        all_custom = []
-
-    custom = [
-        e for e in all_custom
-        if course_id is None or e["course_id"] == course_id
-    ]
-
-    replaced_syllabus_keys = {
-        e.get("replaces_syllabus_key")
-        for e in all_custom
-        if e.get("replaces_syllabus_key")
-    }
-    syllabus_deadlines = [
-        d for d in syllabus_deadlines
-        if d.get("key") not in replaced_syllabus_keys
-    ]
-
-    synced_by_course = {}
-    for d in syllabus_deadlines:
-        course_id = d["course_id"]
-        if course_id not in synced_by_course:
-            try:
-                synced_by_course[course_id] = storage.read_calendar_sync(course_id, user=user)
-            except storage.CalendarSyncStorageError:
-                synced_by_course[course_id] = None
-        course_synced = synced_by_course[course_id]
-        d["synced"] = course_synced is not None and any(
-            r["date"] == d["date"] and r["title"] == d["title"]
-            for r in course_synced
-        )
-        d["source"] = "syllabus"
-        d["id"] = None
-        d["time"] = None
-        d["end_time"] = None
-        d["completed"] = False
-
-    combined = syllabus_deadlines + custom
-    combined.sort(key=lambda d: (d["date"], d["time"] or ""))
-    return combined
+    """Every visible confirmed event for the internal calendar."""
+    return calendar_events.upcoming_events(
+        user,
+        within_days=None,
+        course_ids=[course_id] if course_id else None,
+        include_incomplete_overdue=True,
+    )

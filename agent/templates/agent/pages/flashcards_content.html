@@ -1,0 +1,170 @@
+{% verbatim %}
+    <sc-if value="{{ isFlashcards }}" hint-placeholder-val="{{ false }}">
+      <div class="flashcard-shell">
+        <sc-if value="{{ showNoNotesEmptyState }}" hint-placeholder-val="{{ false }}">
+          <div class="card elev-sm" style="padding:var(--space-6)">
+            <div class="card-kicker">{{ courseIdUpper }}</div>
+            <div class="card-title">{{ courseName }}</div>
+            <p class="card-body">{{ emptyStateMessage }}</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ courseHasNotes }}" hint-placeholder-val="{{ true }}">
+          <div class="flashcard-header">
+            <div class="flashcard-title-row">
+              <div class="flashcard-title-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9h8"/><path d="M8 13h5"/></svg>
+              </div>
+              <div>
+                <h1 style="font-family:var(--font-heading);font-size:28px;margin:0">Flashcard</h1>
+                <p style="margin:2px 0 0;opacity:.62;font-size:13.5px">{{ flashcardDeckSubtitle }}</p>
+              </div>
+            </div>
+            <div class="flashcard-segmented" role="tablist" aria-label="Flashcard view">
+              <button type="button" class="{{ flashcardStudyModeClass }}" onClick="{{ setFlashcardStudyMode }}">Study Mode</button>
+              <button type="button" class="{{ flashcardAllCardsClass }}" onClick="{{ setFlashcardAllCardsMode }}">All Cards</button>
+            </div>
+          </div>
+
+          <div class="flashcard-layout-grid">
+            <div class="flashcard-panel">
+              <div class="flashcard-controls">
+                <div class="flashcard-controls-left">
+                  <select class="flashcard-select" value="{{ flashcardCategory }}" onChange="{{ onFlashcardCategoryChange }}">
+                    <sc-for list="{{ flashcardCategoryOptions }}" as="cat" hint-placeholder-count="2">
+                      <option value="{{ cat.value }}">{{ cat.label }}</option>
+                    </sc-for>
+                  </select>
+                  <label class="flashcard-check-label">
+                    <input type="checkbox" checked="{{ flashcardHideMastered }}" onChange="{{ toggleFlashcardHideMastered }}"/>
+                    Hide Mastered
+                  </label>
+                </div>
+                <button type="button" class="flashcard-outline-btn" onClick="{{ shuffleFlashcards }}">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m18 14 4 4-4 4"/><path d="m18 2 4 4-4 4"/><path d="M2 18h1.5c3.2 0 4.9-1.9 6.6-6.1C11.8 7.7 13.5 6 16.5 6H22"/><path d="M2 6h1.5c1.8 0 3.1.6 4.2 2"/></svg>
+                  Shuffle
+                </button>
+              </div>
+
+              <sc-if value="{{ flashcardsLoading }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:var(--space-8);text-align:center;opacity:.7">Loading flashcards...</div>
+              </sc-if>
+
+              <sc-if value="{{ flashcardsError }}" hint-placeholder-val="{{ false }}">
+                <div style="padding:var(--space-6)">
+                  <p class="card-body" style="margin:0 0 var(--space-4)">{{ flashcardsError }}</p>
+                  <button type="button" class="btn btn-secondary" onClick="{{ retryFlashcards }}">Try again</button>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ showFlashcard }}" hint-placeholder-val="{{ true }}">
+                <sc-if value="{{ flashcardIsStudyMode }}" hint-placeholder-val="{{ true }}">
+                  <div class="flashcard-study-region">
+                    <sc-if value="{{ flashcardAllVisibleMastered }}" hint-placeholder-val="{{ false }}">
+                      <div style="min-height:310px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center">
+                        <div class="card-title" style="margin-bottom:8px">All visible cards are mastered</div>
+                        <p class="card-body" style="max-width:420px">Turn off Hide Mastered or reset progress to keep studying this deck.</p>
+                        <button type="button" class="btn btn-primary" onClick="{{ resetFlashcardProgress }}">Reset Progress</button>
+                      </div>
+                    </sc-if>
+
+                    <sc-if value="{{ !flashcardAllVisibleMastered }}" hint-placeholder-val="{{ true }}">
+                      <div class="flashcard-reference-card" onClick="{{ flipFlashcard }}">
+                        <div class="flashcard-category-pill">{{ flashcardCategoryLabel }}</div>
+                        <button type="button" class="flashcard-star-btn" aria-label="Star this card" onClick="{{ toggleFlashcardStar }}">
+                          <svg width="26" height="26" viewBox="0 0 24 24" fill="{{ flashcardStarFill }}" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.751a.53.53 0 0 1 .294.904l-3.738 3.644a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.62-2.429a2.12 2.12 0 0 0-1.973 0l-4.62 2.429a.53.53 0 0 1-.77-.56l.881-5.14a2.12 2.12 0 0 0-.611-1.878L2.15 9.789a.53.53 0 0 1 .294-.904l5.166-.751a2.12 2.12 0 0 0 1.596-1.16z"/></svg>
+                        </button>
+                        <div class="flashcard-spark">
+                          <svg width="31" height="31" viewBox="0 0 24 24" fill="currentColor" stroke="var(--color-neutral-800)" stroke-width="1.5" stroke-linejoin="round"><path d="m12 2 2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2Z"/></svg>
+                        </div>
+                        <div>
+                          <sc-if value="{{ flashcardShowingTerm }}" hint-placeholder-val="{{ true }}">
+                            <div class="flashcard-question">{{ flashcardVisibleText }}</div>
+                          </sc-if>
+                          <sc-if value="{{ !flashcardShowingTerm }}" hint-placeholder-val="{{ false }}">
+                            <div class="flashcard-answer">{{ flashcardVisibleText }}</div>
+                          </sc-if>
+                          <div class="flashcard-reveal-hint">{{ flashcardRevealHint }}</div>
+                        </div>
+                        <div class="flashcard-mini-progress">
+                          <div class="flashcard-mini-progress-track"><div style="{{ flashcardVisibleProgressBarStyle }}"></div></div>
+                          {{ flashcardVisibleProgressLabel }}
+                        </div>
+                      </div>
+
+                      <div class="flashcard-actions">
+                        <button type="button" class="btn btn-primary" onClick="{{ markFlashcardKnown }}">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+                          I Know This
+                        </button>
+                        <button type="button" class="flashcard-outline-btn" onClick="{{ resetFlashcardProgress }}">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/></svg>
+                          Reset Progress
+                        </button>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ !flashcardIsStudyMode }}" hint-placeholder-val="{{ false }}">
+                  <div class="flashcard-all-table">
+                    <div class="flashcard-all-row flashcard-all-head">
+                      <div>Term</div><div>Definition</div><div>Status</div><div>Actions</div>
+                    </div>
+                    <sc-for list="{{ flashcardAllRows }}" as="row" hint-placeholder-count="6">
+                      <div class="flashcard-all-row">
+                        <div style="font-weight:800;overflow-wrap:anywhere">{{ row.term }}</div>
+                        <div style="opacity:.72;line-height:1.4;overflow-wrap:anywhere">{{ row.definition }}</div>
+                        <span style="{{ row.statusStyle }}">{{ row.statusLabel }}</span>
+                        <div style="display:flex;gap:6px;align-items:center">
+                          <button type="button" class="flashcard-outline-btn" style="padding:7px 10px;font-size:12px" onClick="{{ row.onMaster }}">Master</button>
+                          <button type="button" class="flashcard-outline-btn" style="padding:7px 10px;font-size:12px" onClick="{{ row.onProgress }}">Progress</button>
+                          <button type="button" class="flashcard-outline-btn" style="padding:7px 10px;font-size:12px" onClick="{{ row.onReset }}">Reset</button>
+                          <button type="button" class="flashcard-icon-btn" aria-label="Star card" onClick="{{ row.onToggleStar }}">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ row.starFill }}" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.12 2.12 0 0 0 1.595 1.16l5.166.751a.53.53 0 0 1 .294.904l-3.738 3.644a2.12 2.12 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.62-2.429a2.12 2.12 0 0 0-1.973 0l-4.62 2.429a.53.53 0 0 1-.77-.56l.881-5.14a2.12 2.12 0 0 0-.611-1.878L2.15 9.789a.53.53 0 0 1 .294-.904l5.166-.751a2.12 2.12 0 0 0 1.596-1.16z"/></svg>
+                          </button>
+                        </div>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+
+                <div class="flashcard-footer-nav">
+                  <button type="button" class="flashcard-outline-btn flashcard-nav-left" onClick="{{ previousFlashcard }}">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                    Previous
+                  </button>
+                  <div class="flashcard-card-count">{{ flashcardFooterCountLabel }}</div>
+                  <button type="button" class="flashcard-outline-btn flashcard-nav-right" onClick="{{ nextFlashcard }}">
+                    Next
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                  </button>
+                </div>
+              </sc-if>
+            </div>
+
+            <div class="flashcard-panel flashcard-stats-panel">
+              <h2 class="flashcard-stat-title">Study Statistics</h2>
+              <sc-for list="{{ flashcardStats }}" as="stat" hint-placeholder-count="4">
+                <div class="flashcard-stat-card">
+                  <div class="flashcard-stat-copy">
+                    <div class="flashcard-stat-label">{{ stat.label }}</div>
+                    <div class="flashcard-stat-value">{{ stat.value }}</div>
+                  </div>
+                  <div class="flashcard-stat-icon" style="{{ stat.iconStyle }}">
+                    <sc-if value="{{ stat.isTotal }}" hint-placeholder-val="{{ true }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 9 5-9 5-9-5z"/><path d="m3 12 9 5 9-5"/><path d="m3 17 9 5 9-5"/></svg></sc-if>
+                    <sc-if value="{{ stat.isMastered }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></sc-if>
+                    <sc-if value="{{ stat.isProgress }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg></sc-if>
+                    <sc-if value="{{ stat.isNotStarted }}" hint-placeholder-val="{{ false }}"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-2-2h-5l-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2Z"/></svg></sc-if>
+                  </div>
+                </div>
+              </sc-for>
+              <sc-if value="{{ flashcardSaving }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:12px;opacity:.58">Saving progress…</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+    </sc-if>
+{% endverbatim %}

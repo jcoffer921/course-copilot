@@ -1,0 +1,59 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · OnTrack</title>
+  <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+  {% if page_name != "calendar" and page_name != "courses" and page_name != "cora" and page_name != "course-detail" and page_name != "materials" and page_name != "course-study" and page_name != "course-mastery" and page_name != "course-grades" and page_name != "study-dashboard" and page_name != "exam" and page_name != "settings" and page_name != "practice-attempt" and page_name != "interactive-flashcards" %}<script src="{% static 'agent/js/core/controller.js' %}"></script>{% endif %}
+  {% if page_name != "calendar" and page_name != "courses" and page_name != "cora" and page_name != "course-detail" and page_name != "materials" and page_name != "course-study" and page_name != "course-mastery" and page_name != "course-grades" and page_name != "study-dashboard" and page_name != "exam" and page_name != "settings" and page_name != "practice-attempt" and page_name != "interactive-flashcards" %}<script src="{% static 'agent/support.js' %}"></script>{% endif %}
+  {% if page_name == "calendar" or page_name == "courses" or page_name == "cora" or page_name == "course-detail" or page_name == "materials" or page_name == "course-study" or page_name == "course-mastery" or page_name == "course-grades" or page_name == "study-dashboard" or page_name == "exam" or page_name == "settings" or page_name == "practice-attempt" or page_name == "interactive-flashcards" %}
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'agent/css/app.css' %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}">
+  {% if page_name == "practice-attempt" or page_name == "interactive-flashcards" %}<link rel="stylesheet" href="{% static 'agent/css/interactive_study.css' %}">{% endif %}
+  {% endif %}
+  <script>
+    window.CURRENT_USER_EMAIL = "{{ user.email|escapejs }}";
+    window.CURRENT_USER_NAME = "{{ user.get_full_name|default:user.first_name|default:user.email|escapejs }}";
+    window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
+    window.ONTRACK_PAGE_NAME = "{{ page_name|escapejs }}";
+    window.ONTRACK_INITIAL_TAB = "{{ initial_tab|escapejs }}";
+    window.ONTRACK_INITIAL_COURSE = "{{ initial_course_id|default:'all'|escapejs }}";
+    window.ONTRACK_INITIAL_TOPIC = "{{ initial_topic|default:''|escapejs }}";
+    window.ONTRACK_INITIAL_QUESTION = "{{ initial_question|default:''|escapejs }}";
+    window.ONTRACK_QUIZ_ID = "{{ quiz_id|default:''|escapejs }}";
+    window.ONTRACK_ATTEMPT_ID = "{{ attempt_id|default:''|escapejs }}";
+    window.ONTRACK_DECK_ID = "{{ deck_id|default:''|escapejs }}";
+  </script>
+  <script type="module" src="{% static page_script %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}"></script>
+</head>
+<body data-page="{{ page_name }}">
+  {% csrf_token %}
+  {% include "agent/partials/icon_symbols.html" %}
+  <x-dc>
+    {% if page_name != "calendar" and page_name != "courses" and page_name != "cora" and page_name != "course-detail" and page_name != "materials" and page_name != "course-study" and page_name != "course-mastery" and page_name != "course-grades" and page_name != "study-dashboard" and page_name != "exam" and page_name != "settings" and page_name != "practice-attempt" and page_name != "interactive-flashcards" %}
+    <helmet>
+      <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+      <link rel="stylesheet" href="{% static 'agent/css/app.css' %}">
+      <script src="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/_ds_bundle.js' %}"></script>
+    </helmet>
+    {% endif %}
+
+    <div class="app-shell">
+      {% include "agent/partials/sidebar.html" %}
+      <div class="app-main">
+        {% include "agent/partials/topbar.html" %}
+        <main id="main-content" class="app-content" tabindex="-1">
+          {% block page_content %}{% endblock %}
+        </main>
+      </div>
+      {% if page_name != "calendar" and page_name != "courses" and page_name != "cora" and page_name != "course-detail" and page_name != "materials" and page_name != "course-study" and page_name != "course-mastery" and page_name != "course-grades" and page_name != "study-dashboard" and page_name != "exam" and page_name != "settings" and page_name != "practice-attempt" and page_name != "interactive-flashcards" %}{% include "agent/partials/app_overlays.html" %}{% endif %}
+      {% include "agent/partials/toast_region.html" %}
+    </div>
+  </x-dc>
+  {% if page_name != "calendar" and page_name != "courses" and page_name != "cora" and page_name != "course-detail" and page_name != "materials" and page_name != "course-study" and page_name != "course-mastery" and page_name != "course-grades" and page_name != "study-dashboard" and page_name != "exam" and page_name != "settings" and page_name != "practice-attempt" and page_name != "interactive-flashcards" %}<script type="text/x-dc" data-dc-script>
+{% include "agent/partials/app_logic.html" %}
+  </script>{% endif %}
+</body>
+</html>

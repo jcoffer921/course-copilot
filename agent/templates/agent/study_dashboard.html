@@ -1,0 +1,87 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div data-page-section="study-dashboard" class="study-dash">
+  <div id="study-dash-loading" class="course-workspace-status" role="status" aria-live="polite">Loading study tools…</div>
+  <div id="study-dash-error" class="course-workspace-error" hidden><h2>Study tools couldn’t load</h2><p></p><button class="btn btn-secondary" type="button">Try again</button></div>
+  <div id="study-dash-empty" class="courses-empty" hidden>
+    <h2>No courses yet</h2>
+    <p>Add a course to start building study sessions.</p>
+    <a class="btn btn-primary" href="{% url 'courses-page' %}">Go to courses</a>
+  </div>
+
+  <main id="study-dash-content" hidden>
+    <header class="study-dash-heading">
+      <div><h1>Study</h1><p>Build a session around what needs attention.</p></div>
+    </header>
+
+    <form id="study-dash-controls" class="study-dash-controls">
+      <label>Course<select id="study-dash-course"></select></label>
+      <label>Topic<select id="study-dash-topic"><option value="">Recommended</option></select></label>
+      <label>Time
+        <select id="study-dash-duration">
+          <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="45" selected>45 minutes</option>
+          <option value="60">60 minutes</option>
+        </select>
+      </label>
+      <label>Mode
+        <select id="study-dash-mode">
+          <option value="mixed" selected>Mixed review</option>
+          <option value="flashcards">Flashcards only</option>
+          <option value="quiz">Quiz only</option>
+        </select>
+      </label>
+      <button class="btn btn-primary study-dash-start" type="submit"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-sparkle"/></svg>Start session</button>
+    </form>
+    <p id="study-dash-feedback" class="study-dash-feedback" role="status" aria-live="polite" hidden></p>
+
+    <section class="study-dash-top-grid">
+      <article class="learning-card study-dash-recommended">
+        <h2>Recommended session</h2>
+        <ol id="study-dash-steps" class="study-dash-timeline"></ol>
+      </article>
+      <article class="learning-card">
+        <h2>Due for review</h2>
+        <div id="study-dash-due-list" class="study-dash-stat-list"></div>
+      </article>
+    </section>
+
+    <section class="study-dash-bottom-grid">
+      <div class="study-dash-bottom-col">
+        <article class="learning-card">
+          <h2>Continue last session</h2>
+          <div id="study-dash-continue"></div>
+        </article>
+        <article class="learning-card">
+          <h2>Flashcards</h2>
+          <div class="study-dash-flashcards-row">
+            <div id="study-dash-fc-ring" class="mastery-ring study-dash-fc-ring" role="img" aria-label="Flashcard mastery"><strong id="study-dash-fc-pct">—</strong></div>
+            <div class="study-dash-flashcards-copy">
+              <strong id="study-dash-fc-due">0 cards due</strong>
+              <span id="study-dash-fc-label">Next review</span>
+            </div>
+          </div>
+          <a id="study-dash-fc-link" class="btn btn-secondary" href="#">Review flashcards</a>
+        </article>
+      </div>
+
+      <article class="learning-card study-dash-quiz">
+        <h2>Practice quiz</h2>
+        <span class="course-card-icon orange">?</span>
+        <p class="study-dash-quiz-label">Recent score</p>
+        <strong id="study-dash-quiz-score" class="study-dash-quiz-big">—</strong>
+        <p id="study-dash-quiz-note" class="study-dash-quiz-note"></p>
+        <div id="study-dash-quiz-chart"></div>
+        <a id="study-dash-quiz-link" class="btn btn-secondary" href="#">Start practice quiz</a>
+      </article>
+
+      <article class="learning-card">
+        <h2>Mastery overview</h2>
+        <div id="study-dash-mastery-list" class="study-dash-mastery-list"></div>
+        <a id="study-dash-mastery-link" class="btn btn-secondary" href="#">View all topics</a>
+      </article>
+    </section>
+  </main>
+</div>
+{% endblock %}

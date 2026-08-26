@@ -1,0 +1,7 @@
+<nav class="course-tabs" aria-label="Course workspace">
+  <a class="course-tab{% if page_name == 'course-detail' %} active{% endif %}" href="{% url 'course-detail-page' course_id=course_id %}"{% if page_name == 'course-detail' %} aria-current="page"{% endif %}>Overview</a>
+  <a class="course-tab{% if page_name == 'materials' %} active{% endif %}" href="{% url 'course-materials-page' course_id=course_id %}"{% if page_name == 'materials' %} aria-current="page"{% endif %}>Materials</a>
+  <a class="course-tab{% if page_name == 'course-study' %} active{% endif %}" href="{% url 'course-study-page' course_id=course_id %}"{% if page_name == 'course-study' %} aria-current="page"{% endif %}>Study</a>
+  <a class="course-tab{% if page_name == 'course-mastery' %} active{% endif %}" href="{% url 'course-mastery-page' course_id=course_id %}"{% if page_name == 'course-mastery' %} aria-current="page"{% endif %}>Mastery</a>
+  <a class="course-tab{% if page_name == 'course-grades' %} active{% endif %}" href="{% url 'course-grades-page' course_id=course_id %}"{% if page_name == 'course-grades' %} aria-current="page"{% endif %}>Grades</a>
+</nav>

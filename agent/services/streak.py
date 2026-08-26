@@ -32,6 +32,13 @@ def _attempt_dates(course_id: str, user=None) -> set:
     return dates
 
 
+def _all_attempt_dates(user=None) -> set:
+    all_dates = set()
+    for course_id in reminders.list_courses(user):
+        all_dates |= _attempt_dates(course_id, user=user)
+    return all_dates
+
+
 def current_streak(user=None) -> int:
     """Consecutive calendar days, across ALL courses combined, with at least
     one quiz attempt. Counts backward from today if today has activity, or
@@ -39,9 +46,7 @@ def current_streak(user=None) -> int:
     stays alive until a full day passes with zero activity anywhere, rather
     than resetting the instant today has no entry yet. 0 if neither today
     nor yesterday has any activity, including a brand-new install."""
-    all_dates = set()
-    for course_id in reminders.list_courses(user):
-        all_dates |= _attempt_dates(course_id, user=user)
+    all_dates = _all_attempt_dates(user)
 
     today = datetime.now(timezone.utc).date()
     if today in all_dates:
@@ -56,3 +61,26 @@ def current_streak(user=None) -> int:
         streak_length += 1
         cursor -= timedelta(days=1)
     return streak_length
+
+
+WEEKDAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"]
+
+
+def week_activity(user=None, today=None) -> list:
+    """This UTC calendar week (Monday..Sunday) as
+    [{"label", "date", "active", "is_future"}, ...] for a 7-dot streak
+    strip. "active" means at least one quiz attempt that day; "is_future"
+    marks days later than today so the UI can render them as pending rather
+    than missed."""
+    today = today or datetime.now(timezone.utc).date()
+    monday = today - timedelta(days=today.weekday())
+    all_dates = _all_attempt_dates(user)
+    return [
+        {
+            "label": WEEKDAY_LABELS[i],
+            "date": (monday + timedelta(days=i)).isoformat(),
+            "active": (monday + timedelta(days=i)) in all_dates,
+            "is_future": (monday + timedelta(days=i)) > today,
+        }
+        for i in range(7)
+    ]

@@ -1,0 +1,47 @@
+{% extends "agent/app_base.html" %}
+{% load static %}
+{% block page_content %}
+<section id="cora-workspace" class="cora-workspace" data-page-section="cora" aria-labelledby="cora-page-title-live" data-courses-url="/api/courses/overview/">
+  <nav class="cora-breadcrumb" aria-label="Breadcrumb"><a href="{% url 'cora-page' %}">Cora</a><span aria-hidden="true">/</span><span id="cora-breadcrumb-course">Choose a course</span></nav>
+  <div id="cora-loading" class="cora-page-status" role="status">Loading your Cora workspace…</div>
+  <div id="cora-page-error" class="cora-page-status cora-page-error" role="alert" hidden></div>
+  <div id="cora-empty-courses" class="cora-empty-card" hidden>
+    <img src="{% static 'agent/images/cora-dashboard.png' %}" alt="" class="cora-empty-mascot"><h1>Cora needs a course to get started</h1>
+    <p>Create a course and confirm course material before asking grounded questions.</p><a class="btn btn-primary" href="{% url 'courses-page' %}">Create a course</a>
+  </div>
+  <div id="cora-grid" class="cora-grid" hidden>
+    <aside id="cora-conversations" class="cora-conversations" aria-label="Conversations">
+      <button id="cora-new-session" class="cora-new-button" type="button"><span aria-hidden="true">＋</span>New conversation</button>
+      <label class="cora-field-label" for="cora-course-select">Course</label><select id="cora-course-select" class="cora-select"></select>
+      <label class="sr-only" for="cora-search">Search conversations</label><div class="cora-search-wrap"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-search"/></svg><input id="cora-search" type="search" placeholder="Search conversations" autocomplete="off"></div>
+      <div class="cora-history-heading"><span>Recent</span><button id="cora-close-conversations" type="button" aria-label="Close conversations">×</button></div>
+      <div id="cora-session-list" class="cora-session-list" role="listbox" aria-label="Recent conversations"></div>
+      <p id="cora-session-empty" class="cora-list-empty" hidden>No conversations yet.</p>
+      <p id="cora-search-empty" class="cora-list-empty" hidden>No matching conversations. <button id="cora-clear-search" type="button">Clear search</button></p>
+    </aside>
+    <section class="cora-chat" aria-label="Cora conversation">
+      <header class="cora-chat-header">
+        <button id="cora-open-conversations" class="cora-mobile-tool" type="button" aria-label="Open conversations"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-chat"/></svg></button>
+        <img src="{% static 'agent/images/cora-dashboard.png' %}" alt="" class="cora-header-avatar">
+        <div class="cora-chat-identity"><h1 id="cora-page-title-live">Cora</h1><span class="cora-grounding-badge"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg>Course materials only</span></div>
+        <div class="cora-session-menu-wrap"><button id="cora-session-menu-button" class="cora-icon-button" type="button" aria-label="Conversation options" aria-expanded="false">⋮</button>
+          <div id="cora-session-menu" class="cora-session-menu" hidden><button type="button" data-action="rename">Rename conversation</button><button type="button" data-action="copy-link">Copy conversation link</button><button type="button" data-action="delete" class="danger">Delete conversation</button></div>
+        </div>
+      </header>
+      <div id="cora-material-notice" class="cora-material-notice" hidden></div>
+      <div id="cora-messages" class="cora-messages" tabindex="0" aria-label="Conversation messages">
+        <div id="cora-new-state" class="cora-new-state"><img src="{% static 'agent/images/cora-dashboard.png' %}" alt="Cora, OnTrack’s academic assistant"><h2>Ask Cora about your course</h2><p>I’ll answer from your confirmed course materials and say clearly when they don’t contain the answer.</p><div class="cora-prompt-examples"><button type="button">Summarize the key ideas in my course materials.</button><button type="button">Help me review a topic from my notes.</button></div></div>
+      </div>
+      <button id="cora-new-message-indicator" class="cora-new-message-indicator" type="button" hidden>New message ↓</button>
+      <div id="cora-turn-error" class="cora-turn-error" role="alert" hidden><span></span><button id="cora-retry" type="button">Retry</button></div>
+      <form id="cora-composer" class="cora-composer"><button id="cora-material-picker" class="cora-clip-button" type="button" aria-label="Use confirmed course materials" title="Cora automatically uses this course’s confirmed materials"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-paperclip"/></svg></button><label class="sr-only" for="cora-input">Ask Cora a question</label><textarea id="cora-input" rows="1" maxlength="4000" placeholder="Ask a question about your course…"></textarea><div class="cora-composer-meta"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><label class="sr-only" for="cora-grounding-mode">Grounding mode</label><select id="cora-grounding-mode"><option id="cora-course-option" value="course_materials">Grounded in course materials</option><option id="cora-web-option" value="course_materials_and_web" hidden>Grounded in course materials + approved web</option></select><span id="cora-grounding-course" class="sr-only">course materials</span></div><button id="cora-send" class="cora-send" type="submit" aria-label="Send message" disabled><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-send"/></svg></button></form>
+      <p class="cora-disclaimer">Cora can make mistakes. Check important info.</p><div id="cora-live" class="sr-only" aria-live="polite"></div>
+    </section>
+    <aside id="cora-source-panel" class="cora-source-panel" aria-labelledby="cora-source-title" hidden>
+      <header><h2 id="cora-source-title">Source preview</h2><button id="cora-source-close" class="cora-icon-button" type="button" aria-label="Close source preview">×</button></header>
+      <div id="cora-source-loading" class="cora-source-status" role="status">Loading source…</div><div id="cora-source-error" class="cora-source-status cora-page-error" role="alert" hidden></div>
+      <div id="cora-source-content" hidden><div class="cora-source-heading"><span id="cora-source-icon" aria-hidden="true">▤</span><div><h3 id="cora-source-name"></h3><p id="cora-source-meta"></p></div></div><p class="cora-source-label">Excerpt</p><blockquote id="cora-source-excerpt"></blockquote><a id="cora-source-open" class="btn btn-secondary cora-source-open" target="_blank" rel="noopener" hidden>Open full material</a></div>
+    </aside>
+  </div>
+</section>
+{% endblock %}

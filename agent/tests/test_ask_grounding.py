@@ -78,6 +78,19 @@ def _seed_course(course_id, user):
     }, user)
 
 
+def _seed_lecture(course_id, user, lecture_id="ComputationTheory_Lecture01"):
+    storage.write_notes(course_id, lecture_id, {
+        "lecture_id": lecture_id,
+        "source": "notes",
+        "topics": ["A"],
+        "chunks": [{
+            "id": "sets-chunk",
+            "topic": "A",
+            "text": "A universal set contains the elements under discussion. DeMorgan's law explains complements of unions.",
+        }],
+    }, user)
+
+
 def test_build_web_search_tool_requires_approved_domains():
     assert ask._build_web_search_tool([]) is None
 
@@ -110,6 +123,29 @@ def test_deadline_intent_accepts_natural_event_requests():
 def test_deadline_intent_does_not_catch_plain_course_questions():
     assert not ask._looks_like_deadline_request("what does the project cover?")
     assert not ask._looks_like_deadline_request("explain exam study strategies")
+
+
+def test_deadline_intent_matches_across_multiple_lines():
+    # Regression: the trigger verb/noun and the day-of-week keyword landing
+    # on separate lines (a structured multi-field request, e.g. pasted
+    # "Course: ... / Days: ... / Time: ...") must still match — "." doesn't
+    # span newlines by default, so a plain ".*" here silently missed this
+    # shape entirely and the request fell through to plain grounded Q&A,
+    # where the model correctly (but unhelpfully) said it had no calendar
+    # tool available, confirmed via manual repro in a live session.
+    message = (
+        "Course: CMPSC 457 — Computer Graphics Algorithms\n"
+        "Days: Monday, Wednesday, Friday\n"
+        "Time: 1:25 PM - 2:15 PM\n"
+        "Start: August 24, 2026\n"
+        "End: December 4, 2026"
+    )
+    assert ask._looks_like_deadline_request(message)
+
+
+def test_deadline_intent_matches_generic_add_to_calendar_phrasing():
+    assert ask._looks_like_deadline_request("Can you add this to my calendar?")
+    assert ask._looks_like_deadline_request("please put this on my calendar")
 
 
 @pytest.mark.django_db
@@ -228,7 +264,7 @@ async def test_saved_site_domain_is_available_to_web_search(isolated_courses_dir
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    await ask.ask_async("testcourse", "look up the next WebGL detail from the book", user=user)
+    await ask.ask_async("testcourse", "look up the next WebGL detail from the book", user=user, allow_web=True)
 
     assert fake_client.messages.calls[0]["tools"] == [{
         "type": "web_search_20250305",
@@ -260,7 +296,7 @@ async def test_relevant_prior_sessions_reach_ask_context(isolated_courses_dir, m
 
     result = await ask.ask_async("testcourse", "remember how I want shader examples explained?", user=user)
 
-    assert result["sources"] == ["recalled_conversations"]
+    assert result["sources"][0]["material_id"].startswith("ontrack-conversation-")
     context_message = _content_text(fake_client.messages.calls[0]["messages"][0]["content"])
     assert "RECALLED_CONVERSATIONS" in context_message
     assert "plain language" in context_message
@@ -300,7 +336,7 @@ async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir,
     fake_client = _FakeClient(_FakeResponse(canned))
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    result = await ask.ask_async("testcourse", "some question", user=user)
+    result = await ask.ask_async("testcourse", "some question", user=user, allow_web=True)
 
     assert result["grounded"] is True
     call = fake_client.messages.calls[0]
@@ -310,6 +346,20 @@ async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir,
         "allowed_domains": ["docs.python.org"],
         "max_uses": ask.WEB_SEARCH_MAX_USES,
     }]
+
+
+@pytest.mark.django_db
+async def test_course_material_mode_never_offers_web_even_when_domains_are_approved(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="course-only-web-disabled")
+    _seed_course("testcourse", user)
+    storage.write_trusted_domains("testcourse", ["docs.python.org"], user)
+    fake_client = _FakeClient(_FakeResponse(json.dumps({"answer": "Not covered.", "grounded": False, "sources": []})))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "some question", user=user)
+
+    assert result["grounding_mode"] == "course_materials"
+    assert fake_client.messages.calls[0].get("tools", []) == []
 
 
 @pytest.mark.django_db
@@ -391,7 +441,8 @@ async def test_citation_split_text_blocks_after_tool_use_are_reassembled(
 
     assert result["answer"] == "Per the docs, the walrus operator assigns inline"
     assert result["grounded"] is True
-    assert result["sources"] == ["https://docs.python.org/3/"]
+    assert result["sources"][0]["material_type"] == "web"
+    assert result["sources"][0]["url"] == "https://docs.python.org/3/"
 
 
 @pytest.mark.django_db
@@ -467,6 +518,7 @@ async def test_preamble_text_without_tool_use_is_still_parsed(isolated_courses_d
 async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_courses_dir, monkeypatch, django_user_model):
     user = await sync_to_async(django_user_model.objects.create_user)(username="preamble-set-braces")
     _seed_course("testcourse", user)
+    _seed_lecture("testcourse", user)
     canned = (
         "The notes define a universal set with an example: "
         "`A = {1, 2, 3}`, `B = {1, a, b, c}`.\n\n"
@@ -480,13 +532,18 @@ async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_cou
 
     assert result["answer"] == "Universal set example parsed."
     assert result["grounded"] is True
-    assert result["sources"] == ["ComputationTheory_Lecture01"]
+    assert result["sources"][0]["lecture_id"] == "ComputationTheory_Lecture01"
 
 
 @pytest.mark.django_db
 async def test_answer_with_unescaped_inner_quotes_is_still_parsed(isolated_courses_dir, monkeypatch, django_user_model):
     user = await sync_to_async(django_user_model.objects.create_user)(username="unescaped-inner-quotes")
     _seed_course("testcourse", user)
+    _seed_lecture("testcourse", user)
+    prior = await sync_to_async(sessions.create_session)("testcourse", user=user)
+    await sync_to_async(sessions.append_message)(
+        "testcourse", prior["session_id"], "user", "Morgan's law uses complements of unions.", user=user,
+    )
     canned = (
         '{ "answer": "DeMorgan intuition: "Not (A or B)" means outside both.\\n\\n'
         '```venn\\noperation: union\\na: A\\nb: B\\nuniverse: U\\ncaption: A union B\\n```", '
@@ -500,4 +557,5 @@ async def test_answer_with_unescaped_inner_quotes_is_still_parsed(isolated_cours
     assert '"Not (A or B)"' in result["answer"]
     assert "```venn\noperation: union" in result["answer"]
     assert result["grounded"] is True
-    assert result["sources"] == ["ComputationTheory_Lecture01", "recalled_conversations"]
+    assert result["sources"][0]["material_id"] == "legacy-notes-ComputationTheory_Lecture01"
+    assert result["sources"][1]["material_id"].startswith("ontrack-conversation-")

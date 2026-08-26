@@ -2,6 +2,7 @@ from datetime import datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core.cache import cache
 
 from agent.models import GoogleAccount
 
@@ -35,11 +36,12 @@ def test_google_login_page_redirects_authenticated_user_to_ontrack(client, djang
     response = client.get("/accounts/login/")
 
     assert response.status_code == 302
-    assert response.url == "/"
+    assert response.url == "/dashboard/"
 
 
 @pytest.mark.django_db
 def test_google_login_start_redirects_to_google_and_saves_state(client):
+    cache.clear()
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
         mock_flow = MagicMock()
         mock_flow.authorization_url.return_value = ("https://accounts.google.com/o/oauth2/auth?mock=1", "state-xyz")
@@ -52,6 +54,23 @@ def test_google_login_start_redirects_to_google_and_saves_state(client):
     assert response.url.startswith("https://accounts.google.com/")
     assert client.session["google_oauth_state"] == "state-xyz"
     assert client.session["google_oauth_code_verifier"] == "generated-verifier"
+    assert build_flow.return_value.authorization_url.call_args.kwargs == {}
+
+
+@pytest.mark.django_db
+def test_google_login_start_is_rate_limited(client, monkeypatch):
+    cache.clear()
+    monkeypatch.setenv("ONTRACK_LOGIN_RATE_LIMIT", "1")
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.authorization_url.return_value = ("https://accounts.google.com/mock", "state")
+        flow.code_verifier = "verifier"
+        build_flow.return_value = flow
+
+        assert client.get("/accounts/login/start/").status_code == 302
+        response = client.get("/accounts/login/start/")
+
+    assert response.status_code == 429
 
 
 @pytest.mark.django_db
@@ -64,6 +83,7 @@ def test_google_callback_passes_saved_code_verifier_to_build_flow(client, monkey
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session["google_oauth_code_verifier"] = "saved-verifier-value"
     session.save()
 
@@ -82,6 +102,7 @@ def test_google_callback_passes_saved_code_verifier_to_build_flow(client, monkey
 def test_google_callback_rejects_mismatched_state(client):
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     response = client.get("/accounts/callback/?state=wrong-state&code=abc")
@@ -90,10 +111,25 @@ def test_google_callback_rejects_mismatched_state(client):
 
 
 @pytest.mark.django_db
+def test_google_callback_rejects_missing_pkce_verifier(client):
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session.pop("google_oauth_code_verifier", None)
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 400
+    build_flow.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_google_callback_creates_account_and_logs_in_allowed_email(client, monkeypatch):
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -104,7 +140,7 @@ def test_google_callback_creates_account_and_logs_in_allowed_email(client, monke
         response = client.get("/accounts/callback/?state=expected-state&code=abc")
 
     assert response.status_code == 302
-    assert response.url == "/"
+    assert response.url == "/dashboard/"
     assert GoogleAccount.objects.filter(google_sub="sub-123").exists()
     assert "_auth_user_id" in client.session
 
@@ -114,6 +150,7 @@ def test_google_callback_returns_400_when_fetch_token_fails(client, monkeypatch)
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -135,6 +172,7 @@ def test_google_callback_returns_400_when_verify_id_token_fails(client, monkeypa
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -154,6 +192,7 @@ def test_google_callback_rejects_disallowed_email_and_creates_no_account(client,
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -177,6 +216,7 @@ def test_google_callback_returns_400_when_email_claim_missing(client, monkeypatc
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -196,6 +236,7 @@ def test_google_callback_returns_400_when_sub_claim_missing(client, monkeypatch)
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -215,6 +256,7 @@ def test_google_callback_returns_400_when_email_not_verified(client, monkeypatch
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
 
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
@@ -234,6 +276,7 @@ def test_google_logout_clears_session(client, monkeypatch):
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
          patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
@@ -245,6 +288,7 @@ def test_google_logout_clears_session(client, monkeypatch):
     response = client.post("/accounts/logout/")
 
     assert response.status_code == 302
+    assert response.url == "/accounts/login/"
     assert "_auth_user_id" not in client.session
 
 
@@ -253,6 +297,7 @@ def test_google_logout_rejects_get(client, monkeypatch):
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
     session.save()
     with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
          patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
