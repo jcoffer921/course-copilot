@@ -143,6 +143,8 @@ owned material IDs and excerpts after your response; never invent a source label
 MAX_PAUSE_TURN_CONTINUATIONS = 3
 WEB_SEARCH_MAX_USES = 5
 CLASS_SCHEDULE_WEEKS = 15
+MAX_CALENDAR_ACTIONS = 150
+CALENDAR_WRITE_TOOL_NAME = "propose_calendar_changes"
 DEADLINE_INTENT_RE = re.compile(
     r"("
     r"\b(add|create|schedule|put|make|remember|remind)\b[\s\S]*\b(deadline|due|homework|hw|assignment|project|quiz|test|exam|class|event|meeting|presentation|lab|calendar)\b"
@@ -243,26 +245,10 @@ def _parse_json_response(raw: str) -> dict:
     raise json.JSONDecodeError("no JSON object found in model output", raw or "", 0)
 
 
-DEADLINE_EXTRACTION_PROMPT = """Extract a calendar action request for OnTrack: adding a new deadline/event, \
-editing an existing one, or removing one.
-
-Return ONLY valid JSON:
-{
-  "is_deadline_request": true,
-  "missing": ["title"|"date"|"course_id"|"event_match"],
-  "deadline": {
-    "action": "create"|"update"|"delete",
-    "event_id": "string|null",
-    "title": "string",
-    "course_id": "string|null",
-    "date": "YYYY-MM-DD",
-    "time": "HH:MM|null",
-    "end_time": "HH:MM|null",
-    "type": "hw|project|test_quiz|class|other"
-  },
-  "deadlines": [ /* same shape as "deadline", for multiple items */ ],
-  "message": "short confirmation or follow-up question"
-}
+DEADLINE_EXTRACTION_PROMPT = """Use the propose_calendar_changes tool to prepare a calendar action request for \
+OnTrack: adding a new deadline/event, editing an existing one, or removing one. The tool only prepares a \
+proposal. It does not write anything. The student must review and explicitly confirm every proposed change \
+before OnTrack applies it.
 
 Rules:
 - "action" is "create" for a brand-new deadline/event, "update" to change an existing one's date/time/title, \
@@ -284,9 +270,52 @@ complete — do not silently drop a field that isn't changing.
 - Map homework/assignment/problem set to hw, exam/test/quiz to test_quiz, lectures/classes/meetings to class, presentations/projects to project, and meetings/labs/other events to other unless the user clearly gives a course category.
 - For recurring college class schedules with multiple meeting days (for example MWF, Tuesdays/Thursdays, Mon and Wed), return one "create" item per meeting in "deadlines". Use the supplied schedule_start_date/schedule_end_date and create meetings for the full schedule_weeks window. Include only meetings on or after today.
 - If the user gives exact semester start/end dates, use those dates instead of the default schedule window.
-- For one item, return "deadline". For multiple items, return "deadlines" and omit "deadline".
+- Return every proposed item in the tool's "deadlines" array, including when there is only one item.
 - If nothing is missing, message should briefly describe the action (e.g. "Move Project 1 to Oct 3?") and ask the user to confirm — never say it's already done, since nothing is written until the user confirms.
 """
+
+
+def _build_calendar_write_tool() -> dict:
+    """Build Cora's side-effect-free, plan-before-write calendar tool."""
+    nullable_string = {"type": ["string", "null"]}
+    action_schema = {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string", "enum": ["create", "update", "delete"]},
+            "event_id": nullable_string,
+            "title": {"type": "string"},
+            "course_id": nullable_string,
+            "date": {"type": "string"},
+            "time": nullable_string,
+            "end_time": nullable_string,
+            "type": {"type": "string", "enum": ["hw", "project", "test_quiz", "class", "other"]},
+        },
+        "required": ["action", "event_id", "title", "course_id", "date", "time", "end_time", "type"],
+        "additionalProperties": False,
+    }
+    return {
+        "name": CALENDAR_WRITE_TOOL_NAME,
+        "description": (
+            "Prepare create, update, or delete actions for the student's OnTrack calendar. "
+            "This tool proposes changes only; OnTrack shows them to the student and writes "
+            "nothing until the student explicitly confirms."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "is_deadline_request": {"type": "boolean", "const": True},
+                "missing": {
+                    "type": "array",
+                    "items": {"type": "string", "enum": ["title", "date", "course_id", "event_match"]},
+                    "uniqueItems": True,
+                },
+                "deadlines": {"type": "array", "items": action_schema, "maxItems": MAX_CALENDAR_ACTIONS},
+                "message": {"type": "string"},
+            },
+            "required": ["is_deadline_request", "missing", "deadlines", "message"],
+            "additionalProperties": False,
+        },
+    }
 
 
 def _build_web_search_tool(approved_domains: list[str]) -> dict | None:
@@ -540,18 +569,43 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
         max_tokens=8000,
         system=DEADLINE_EXTRACTION_PROMPT,
         messages=[{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}],
+        tools=[_build_calendar_write_tool()],
+        tool_choice={"type": "tool", "name": CALENDAR_WRITE_TOOL_NAME},
     )
-    raw = "".join(block.text for block in response.content if block.type == "text").strip()
-    raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
-    try:
-        data = _parse_json_response(raw)
-    except json.JSONDecodeError as e:
-        raise ValueError(f"deadline extraction did not return valid JSON: {e}\n\nRaw output:\n{raw}")
+    tool_blocks = [
+        block for block in response.content
+        if getattr(block, "type", None) == "tool_use"
+        and getattr(block, "name", None) == CALENDAR_WRITE_TOOL_NAME
+    ]
+    if len(tool_blocks) > 1:
+        raise ValueError("Cora returned more than one calendar proposal.")
+    if tool_blocks:
+        data = getattr(tool_blocks[0], "input", None)
+        if not isinstance(data, dict):
+            raise ValueError("Cora returned an invalid calendar proposal.")
+    else:
+        # Compatibility with recorded responses created before the calendar
+        # tool contract. New production calls force tool use above.
+        raw = "".join(
+            block.text for block in response.content
+            if getattr(block, "type", None) == "text"
+        ).strip()
+        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+        try:
+            data = _parse_json_response(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"calendar tool did not return valid input: {e}\n\nRaw output:\n{raw}")
+
+    if not isinstance(data.get("missing", []), list):
+        raise ValueError("Cora returned invalid missing calendar fields.")
     raw_deadlines = data.get("deadlines")
     if not isinstance(raw_deadlines, list):
+        # Compatibility with the former single-item extraction response.
         raw_deadline = data.get("deadline")
         raw_deadlines = [raw_deadline] if isinstance(raw_deadline, dict) else []
-    pending_deadlines = [_normalize_pending_deadline(raw, course_id) for raw in raw_deadlines if isinstance(raw, dict)]
+    if len(raw_deadlines) > MAX_CALENDAR_ACTIONS or any(not isinstance(raw, dict) for raw in raw_deadlines):
+        raise ValueError("Cora returned an invalid number or shape of calendar actions.")
+    pending_deadlines = [_normalize_pending_deadline(raw, course_id) for raw in raw_deadlines]
     missing = [m for m in data.get("missing", []) if m in {"title", "date", "course_id", "event_match"}]
     if not pending_deadlines and "title" not in missing:
         missing.append("title")

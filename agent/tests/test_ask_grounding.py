@@ -11,7 +11,7 @@ import pytest
 from asgiref.sync import sync_to_async
 
 from agent.models import SavedSite
-from agent.services import ask, sessions, storage
+from agent.services import ask, custom_events, sessions, storage
 
 
 @pytest.fixture
@@ -39,6 +39,13 @@ class _FakeTextBlock:
 class _FakeNonTextBlock:
     def __init__(self, block_type="server_tool_use"):
         self.type = block_type
+
+
+class _FakeToolUseBlock:
+    def __init__(self, name, tool_input):
+        self.type = "tool_use"
+        self.name = name
+        self.input = tool_input
 
 
 class _FakeResponse:
@@ -102,6 +109,16 @@ def test_build_web_search_tool_scopes_to_approved_domains():
         "allowed_domains": ["docs.python.org"],
         "max_uses": ask.WEB_SEARCH_MAX_USES,
     }
+
+
+def test_calendar_write_tool_is_a_bounded_confirmation_proposal():
+    tool = ask._build_calendar_write_tool()
+
+    assert tool["name"] == "propose_calendar_changes"
+    assert "writes nothing until" in tool["description"]
+    assert tool["input_schema"]["properties"]["deadlines"]["maxItems"] == 150
+    action = tool["input_schema"]["properties"]["deadlines"]["items"]
+    assert action["properties"]["action"]["enum"] == ["create", "update", "delete"]
 
 
 def test_domains_from_saved_sites_extracts_http_hosts():
@@ -187,6 +204,62 @@ async def test_class_schedule_request_can_return_multiple_pending_events(isolate
     assert '"schedule_weeks": 15' in context
     assert "schedule_start_date" in context
     assert "schedule_end_date" in context
+
+
+@pytest.mark.django_db
+async def test_calendar_tool_proposes_change_without_writing_it(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-tool-proposal")
+    _seed_course("testcourse", user)
+    tool_input = {
+        "is_deadline_request": True,
+        "missing": [],
+        "deadlines": [{
+            "action": "create",
+            "event_id": None,
+            "title": "Project 1",
+            "course_id": "testcourse",
+            "date": "2026-09-14",
+            "time": "17:00",
+            "end_time": None,
+            "type": "project",
+        }],
+        "message": "Add Project 1 on Sep 14 at 5:00 PM?",
+    }
+    fake_client = _FakeClient(_FakeResponseWithContent([
+        _FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, tool_input),
+    ]))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async(
+        "testcourse", "add Project 1 to my calendar on September 14 at 5", user=user,
+    )
+
+    assert result["pending_deadline"]["title"] == "Project 1"
+    assert result["pending_deadline"]["action"] == "create"
+    assert await sync_to_async(custom_events.list_events)(user=user) == []
+    call = fake_client.messages.calls[0]
+    assert call["tools"] == [ask._build_calendar_write_tool()]
+    assert call["tool_choice"] == {"type": "tool", "name": ask.CALENDAR_WRITE_TOOL_NAME}
+
+
+@pytest.mark.django_db
+async def test_calendar_tool_rejects_malformed_action_input(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-tool-invalid")
+    _seed_course("testcourse", user)
+    fake_client = _FakeClient(_FakeResponseWithContent([
+        _FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, {
+            "is_deadline_request": True,
+            "missing": [],
+            "deadlines": ["not an action"],
+            "message": "Confirm?",
+        }),
+    ]))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    with pytest.raises(ValueError, match="shape of calendar actions"):
+        await ask.ask_async("testcourse", "add a project to my calendar tomorrow", user=user)
+
+    assert await sync_to_async(custom_events.list_events)(user=user) == []
 
 
 @pytest.mark.django_db

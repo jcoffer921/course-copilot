@@ -8,6 +8,7 @@ trusted from the caller.
 
 import pytest
 from django.contrib.auth.models import User
+from rest_framework.test import APIClient
 
 from agent.serializers import ConfirmDeadlineActionsRequestSerializer
 from agent.services import ask, calendar_events, custom_events, sessions, storage
@@ -163,6 +164,44 @@ def test_confirm_cannot_touch_another_users_event(isolated_courses_dir, user, ot
         ], user=user)
     # the other user's event is untouched
     assert len(custom_events.list_events(user=other_user)) == 1
+
+
+def test_confirm_endpoint_creates_owned_event_after_user_confirmation(isolated_courses_dir, user):
+    _seed_syllabus("cs101", user)
+    session_id = _seed_session("cs101", user)
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        f"/api/courses/cs101/sessions/{session_id}/deadlines/confirm/",
+        {"actions": [{
+            "action": "create", "title": "Project 1", "date": "2026-09-14", "type": "project",
+        }]},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert [event["title"] for event in custom_events.list_events(user=user)] == ["Project 1"]
+
+
+def test_confirm_endpoint_cannot_touch_another_users_event(isolated_courses_dir, user, other_user):
+    _seed_syllabus("cs101", user)
+    _seed_syllabus("cs101", other_user)
+    session_id = _seed_session("cs101", user)
+    other_event = custom_events.create_event(
+        "cs101", "2026-09-14", None, "Private project", "project", user=other_user,
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        f"/api/courses/cs101/sessions/{session_id}/deadlines/confirm/",
+        {"actions": [{"action": "delete", "event_id": other_event["id"]}]},
+        format="json",
+    )
+
+    assert response.status_code == 404
+    assert [event["title"] for event in custom_events.list_events(user=other_user)] == ["Private project"]
 
 
 def test_confirm_missing_session_raises(isolated_courses_dir, user):

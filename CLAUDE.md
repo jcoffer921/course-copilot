@@ -453,6 +453,13 @@ canonical events, course names/colors, server-defined filter groups, and non-fat
 warnings. Canonical API rows also include `start_time`, `all_day`, `course_name`,
 `course_color`, `confirmed`, and `extraction_state`; only confirmed/live rows are returned.
 
+Cora receives the client-side `propose_calendar_changes` tool only for calendar-intent
+messages. The tool is side-effect free: its bounded, structured create/update/delete actions
+are stored and rendered as pending proposals. Calendar writes occur only through the
+authenticated per-session confirmation endpoint after explicit user confirmation. That
+endpoint treats model output as untrusted and re-resolves update/delete event IDs against the
+signed-in user's current owned calendar before mutating anything.
+
 **calendar_sync.json** — per-course, tracks which syllabus-derived deadlines have been
 pushed to Google Calendar (manual/study-plan events track their own sync state inline on the
 database row).
