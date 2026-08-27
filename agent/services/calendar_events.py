@@ -172,7 +172,10 @@ def all_events(user, course_ids: list[str] | None = None, include_general: bool 
     """Compose every confirmed syllabus, manual, and study-plan event.
 
     Pending syllabus review candidates are intentionally absent: only the
-    trusted, post-confirmation syllabus store is read here.
+    trusted, post-confirmation syllabus store is read here. A malformed
+    syllabus is isolated to its course (skipped) rather than raising, same
+    as calendar_snapshot(), so one bad upload cannot blank every exam
+    workspace/plan/study-guide view that this function backs.
     """
     requested_ids = list_course_ids(user) if course_ids is None else list(course_ids)
     try:
@@ -196,7 +199,10 @@ def all_events(user, course_ids: list[str] | None = None, include_general: bool 
     sync_cache: dict = {}
     syllabus_events = []
     for course_id in requested_ids:
-        syllabus = storage.read_syllabus(course_id, user)
+        try:
+            syllabus = storage.read_syllabus(course_id, user)
+        except storage.SyllabusStorageError:
+            continue
         if syllabus is None:
             continue
         material_id = _confirmed_syllabus_material_id(user, course_id)

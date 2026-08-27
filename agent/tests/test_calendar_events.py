@@ -225,3 +225,21 @@ def test_calendar_snapshot_isolates_corrupt_course(isolated_courses_dir, user):
 
     assert [event["title"] for event in snapshot["events"]] == ["Good event"]
     assert snapshot["warnings"] == [{"scope": "bad101", "detail": "BAD101 could not be loaded."}]
+
+
+def test_all_events_isolates_corrupt_course(isolated_courses_dir, user):
+    # all_events() backs the exam workspace/plan/study-guide views, so it
+    # must isolate a bad syllabus the same way its sibling calendar_snapshot()
+    # already does — a single corrupt course shouldn't 500 every course's view.
+    storage.write_syllabus("good101", {
+        "course_id": "good101", "course_name": "Good",
+        "dates": [{"date": "2026-09-03", "title": "Good event", "type": "hw"}],
+        "grading": [], "topics": [],
+    }, user)
+    corrupt = isolated_courses_dir / str(user.pk) / "bad101"
+    corrupt.mkdir(parents=True)
+    (corrupt / "syllabus.json").write_text("{bad json", encoding="utf-8")
+
+    events = calendar_events.all_events(user)
+
+    assert [event["title"] for event in events] == ["Good event"]

@@ -338,6 +338,8 @@ class CourseHeaderView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except storage.CourseNotFoundError:
             return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
+        except (storage.SyllabusStorageError, storage.CourseMetadataStorageError, OSError, ValueError) as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -354,6 +356,8 @@ class CourseOverviewView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
         except storage.CourseNotFoundError:
             return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
+        except (storage.SyllabusStorageError, storage.CourseMetadataStorageError, OSError, ValueError) as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         return Response(data, status=status.HTTP_200_OK)
 
 
@@ -885,6 +889,8 @@ class GradeProjectionView(APIView):
             max_points = float(request.query_params.get("max_points"))
         except (TypeError, ValueError):
             return Response({"detail": "query params 'score' and 'max_points' must be numbers"}, status=status.HTTP_400_BAD_REQUEST)
+        if score < 0 or max_points < 0.01:
+            return Response({"detail": "'score' must be >= 0 and 'max_points' must be >= 0.01"}, status=status.HTTP_400_BAD_REQUEST)
         if not item_id and not component:
             return Response({"detail": "provide either 'item_id' or 'component'"}, status=status.HTTP_400_BAD_REQUEST)
 

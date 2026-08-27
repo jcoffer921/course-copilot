@@ -1911,3 +1911,33 @@ def test_deadlines_post_ignores_legacy_corrupt_custom_events_json(isolated_cours
 
     assert response.status_code == 201
     assert response.data["title"] == "X"
+
+
+def test_grade_projection_rejects_zero_max_points(isolated_courses_dir, api_client):
+    # max_points=0 must be rejected here the same way the real grades-write
+    # path already rejects it (serializers.py's min_value=0.01) — otherwise
+    # it reaches grades._category_pcts's score / max_points unguarded and
+    # raises ZeroDivisionError as a raw 500.
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test", "dates": [],
+        "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
+    }, api_client.user)
+
+    response = api_client.get("/api/courses/cs101/grades/project/?component=Homework&score=90&max_points=0")
+
+    assert response.status_code == 400
+
+
+def test_course_header_isolates_corrupt_syllabus_as_controlled_error(isolated_courses_dir, api_client):
+    # A corrupt syllabus.json must not 500 the course workspace header with
+    # an unhandled exception/raw traceback — same isolation intent as
+    # build_courses_page's per-course warning, translated to a single-course
+    # endpoint as a controlled error response instead of an uncaught crash.
+    course_dir = isolated_courses_dir / str(api_client.user.pk) / "cs101"
+    course_dir.mkdir(parents=True)
+    (course_dir / "syllabus.json").write_text("{bad json", encoding="utf-8")
+
+    response = api_client.get("/api/courses/cs101/header/")
+
+    assert response.status_code == 500
+    assert "detail" in response.data
