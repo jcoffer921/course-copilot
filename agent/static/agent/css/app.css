@@ -704,5 +704,18 @@ a.study-dash-stat-row:hover{border-color:#c9c3b8;background:#fbfaf7}
 .study-dash-quiz-empty{font-size:12px;color:#6b6761;padding:24px 0;text-align:center;margin:0 0 4px}
 .study-dash-mastery-list{display:grid;gap:14px;margin:14px 0}
 .study-dash-mastery-row-head{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:5px}
+
+/* Live Cora response activity */
+.cora-thinking{margin-bottom:20px;padding:0;color:inherit;font-size:inherit}
+.cora-thinking-bubble{display:flex;align-items:center;gap:12px;min-width:270px;padding:12px 15px;background:linear-gradient(100deg,#faf8fd,#fff);border-color:#dcd4ea}
+.cora-thinking-avatar{width:34px;height:34px;flex:none;border-radius:50%;object-fit:contain;background:#f7f2fb}
+.cora-thinking-activity{display:grid;gap:5px}
+.cora-thinking-dots{display:flex;align-items:center;gap:4px;height:10px}
+.cora-thinking-dots i{display:block;width:6px;height:6px;border-radius:50%;background:var(--color-cora);animation:cora-thinking-bounce 1.15s ease-in-out infinite}
+.cora-thinking-dots i:nth-child(2){animation-delay:.16s}.cora-thinking-dots i:nth-child(3){animation-delay:.32s}
+.cora-thinking-label{color:#67616d;font-size:11.5px}
+@keyframes cora-thinking-bounce{0%,60%,100%{transform:translateY(0);opacity:.38}30%{transform:translateY(-4px);opacity:1}}
+@media(prefers-reduced-motion:reduce){.cora-thinking-dots i{animation:none;opacity:.75}.cora-thinking-dots i:nth-child(2){opacity:.5}.cora-thinking-dots i:nth-child(3){opacity:.3}}
+
 @media(max-width:1180px){.learning-page-heading{align-items:start;flex-direction:column}.study-controls{width:100%;flex-wrap:wrap}.study-feature-grid{grid-template-columns:1fr 1fr}.study-recommended{grid-column:1/-1}.mastery-summary-grid{grid-template-columns:1fr 1fr}.mastery-main-grid{grid-template-columns:1fr}.grades-summary-grid{grid-template-columns:1fr 1fr}.grades-main-grid{grid-template-columns:1fr}.study-dash-top-grid{grid-template-columns:1fr}.study-dash-bottom-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:760px){.study-controls{display:grid;grid-template-columns:1fr}.study-controls select{width:100%}.duration-options span{width:48px}.study-feature-grid,.study-lower-grid,.mastery-summary-grid{grid-template-columns:1fr}.study-recommended{grid-column:auto}.study-steps{display:grid}.mastery-table-head{display:none}.mastery-topic-row summary{grid-template-columns:1fr auto}.mastery-topic-row summary .topic-progress{grid-column:1/-1}.evidence-row{grid-template-columns:1fr}.mastery-evidence>.btn{position:static;margin-top:12px}.grades-summary-grid{grid-template-columns:1fr}.grades-goal-card .grades-goal-picker{position:static;margin-top:10px;text-align:left}.grades-breakdown-head{display:none}.grades-breakdown-row,.grades-breakdown-total{grid-template-columns:1fr auto}.grades-gradebook-head{flex-direction:column;align-items:start}.grades-table-head{display:none}.grades-item-row{grid-template-columns:1fr auto;row-gap:6px}.grades-item-row time,.grades-item-row>span:nth-child(2){grid-column:1/2}.study-dash{padding:20px 16px 34px}.study-dash-controls{flex-direction:column;align-items:stretch}.study-dash-controls label{min-width:0}.study-dash-bottom-grid{grid-template-columns:1fr}}

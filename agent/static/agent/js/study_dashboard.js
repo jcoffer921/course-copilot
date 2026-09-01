@@ -14,6 +14,7 @@ function setUrl(push = false) {
 
 function destination(view, topic = "", resume = "") {
   if (view === "flashcards") return `/courses/${encodeURIComponent(state.course.id)}/study/flashcards/due/`;
+  if (view === "quiz") return `/courses/${encodeURIComponent(state.course.id)}/study/quiz/${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`;
   const params = new URLSearchParams({ course: state.course.id, view });
   if (topic) params.set("topic", topic);
   if (resume) params.set("resume", resume);
@@ -213,8 +214,12 @@ async function start(topic, duration, mode) {
   const feedback = byId("study-dash-feedback"); const button = document.querySelector(".study-dash-start");
   button.disabled = true; feedback.hidden = false; feedback.classList.remove("error"); feedback.textContent = "Starting your grounded study session…";
   try {
-    const session = await apiRequest(`/api/courses/${encodeURIComponent(state.course.id)}/study/sessions/`, { method: "POST", body: JSON.stringify({ topic, duration_minutes: duration, mode }) });
-    location.assign(destination("session", topic, session.session_id));
+    const planParams = new URLSearchParams({ topic, duration_minutes: String(duration), mode });
+    const plan = await apiRequest(`/api/courses/${encodeURIComponent(state.course.id)}/study/plan/?${planParams}`);
+    if (!plan.grounded) throw new Error(plan.rationale || "Add course notes before starting this session.");
+    const focusTopic = topic || plan.topic || "";
+    const session = await apiRequest(`/api/courses/${encodeURIComponent(state.course.id)}/study/sessions/`, { method: "POST", body: JSON.stringify({ topic: focusTopic, duration_minutes: duration, mode }) });
+    location.assign(destination("session", focusTopic, session.session_id));
   } catch (error) {
     feedback.textContent = error.message || "Couldn't start a session — try again."; feedback.classList.add("error"); button.disabled = false;
   }

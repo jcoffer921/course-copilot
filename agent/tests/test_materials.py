@@ -130,6 +130,42 @@ def test_failed_syllabus_processing_preserves_confirmed_version(isolated_courses
 
 
 @pytest.mark.django_db
+def test_syllabus_auth_failure_is_actionable(isolated_courses_dir, api_client, monkeypatch):
+    storage.write_course_draft('cs-auth', 'Authentication test', api_client.user)
+
+    async def fail_extract(*_args, **_kwargs):
+        raise ValueError('ANTHROPIC_API_KEY environment variable is not set')
+
+    monkeypatch.setattr(materials, 'extract_syllabus_async', fail_extract)
+    response = api_client.post(
+        '/api/courses/cs-auth/syllabus/extract/',
+        {'file': text_upload()},
+        format='multipart',
+    )
+
+    assert response.status_code == 503
+    assert response.data['code'] == 'api_authentication_failed'
+    assert 'ANTHROPIC_API_KEY' in response.data['detail']
+    assert '.env' in response.data['detail']
+
+
+def test_provider_authentication_error_uses_same_safe_guidance(monkeypatch):
+    class FakeAuthenticationError(Exception):
+        pass
+
+    monkeypatch.setattr(materials, 'AuthenticationError', FakeAuthenticationError)
+    code, message, status_code = materials._llm_failure_details(
+        FakeAuthenticationError('private provider response'),
+        'chunking_failed',
+        'generic failure',
+    )
+
+    assert (code, status_code) == ('api_authentication_failed', 503)
+    assert 'ANTHROPIC_API_KEY' in message
+    assert 'private provider response' not in message
+
+
+@pytest.mark.django_db
 def test_material_status_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
     storage.write_course_draft("cs101", "CS 101", api_client.user)
     other = django_user_model.objects.create_user(username="other-material-user")

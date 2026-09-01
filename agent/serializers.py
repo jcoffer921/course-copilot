@@ -341,6 +341,12 @@ class RecordAttemptRequestSerializer(serializers.Serializer):
 
 class StartPracticeAttemptRequestSerializer(serializers.Serializer):
     question_count = serializers.IntegerField(required=False, min_value=1, max_value=20, default=10)
+    topics = serializers.ListField(
+        child=serializers.CharField(allow_blank=False, max_length=255),
+        required=False,
+        allow_empty=False,
+        max_length=50,
+    )
 
 
 class UpdatePracticeAttemptRequestSerializer(serializers.Serializer):

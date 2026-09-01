@@ -153,6 +153,19 @@ def _all_chunks(course_id: str, user) -> list:
     return chunks
 
 
+def available_topics(course_id: str, user) -> list[str]:
+    """Return distinct topics that currently have usable, grounded note chunks."""
+    topics = []
+    seen = set()
+    for chunk in _all_chunks(course_id, user):
+        topic = str(chunk.get("topic") or "").strip()
+        if not topic or not str(chunk.get("text") or "").strip() or topic in seen:
+            continue
+        seen.add(topic)
+        topics.append(topic)
+    return topics
+
+
 def _topic_quiz_weight(score) -> float:
     """Lower mastery scores should be sampled more often, but strong topics
     should not disappear entirely. Unassessed topics sit between weak and

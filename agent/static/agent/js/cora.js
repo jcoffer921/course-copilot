@@ -37,6 +37,56 @@ function nearBottom() { return els.messages.scrollHeight - els.messages.scrollTo
 function scrollBottom(force = false) { if (force || nearBottom()) requestAnimationFrame(() => { els.messages.scrollTop = els.messages.scrollHeight; }); else els.newMessage.hidden = false; }
 function closeSource() { els.source.hidden = true; els.grid.classList.remove("source-open"); restoreFocus(state.sourceTrigger); state.sourceTrigger = null; }
 
+function createThinkingIndicator() {
+  const article = document.createElement("article");
+  article.className = "cora-message cora-message-assistant cora-thinking";
+  article.setAttribute("role", "status");
+  article.setAttribute("aria-label", "Cora is thinking");
+
+  const meta = document.createElement("div");
+  meta.className = "cora-message-meta";
+  meta.textContent = "Cora";
+
+  const bubble = document.createElement("div");
+  bubble.className = "cora-message-bubble cora-thinking-bubble";
+  const avatar = document.querySelector(".cora-header-avatar")?.cloneNode(true);
+  if (avatar) {
+    avatar.className = "cora-thinking-avatar";
+    avatar.alt = "";
+  }
+  const activity = document.createElement("div");
+  activity.className = "cora-thinking-activity";
+  const dots = document.createElement("span");
+  dots.className = "cora-thinking-dots";
+  dots.setAttribute("aria-hidden", "true");
+  dots.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+  const status = document.createElement("span");
+  status.className = "cora-thinking-label";
+  const phases = [
+    "Reading your course materials",
+    "Finding the most relevant notes",
+    "Putting the answer together",
+  ];
+  let phase = 0;
+  status.textContent = phases[phase];
+  const timer = window.setInterval(() => {
+    phase = (phase + 1) % phases.length;
+    status.textContent = phases[phase];
+  }, 1800);
+
+  activity.append(dots, status);
+  if (avatar) bubble.append(avatar);
+  bubble.append(activity);
+  article.append(meta, bubble);
+  return {
+    element: article,
+    stop() {
+      window.clearInterval(timer);
+      article.remove();
+    },
+  };
+}
+
 function renderSessions() {
   const query = els.search.value.trim().toLocaleLowerCase();
   const rows = state.sessions.filter(item => item.title.toLocaleLowerCase().includes(query));
@@ -176,13 +226,13 @@ async function send(question, requestId = uuid(), retry = false) {
   if (!state.session) await newSession(); if (!state.session) return;
   const follow = nearBottom(); state.requestId = requestId; state.retryQuestion = question; els.turnError.hidden = true;
   if (!retry) state.messages.push({ role: "user", content: question, timestamp: new Date().toISOString() }); renderMessages(); setBusy(true); announce("Cora is thinking."); if (follow) scrollBottom(true);
-  const loading = document.createElement("div"); loading.className = "cora-thinking"; loading.textContent = "Cora is thinking…"; els.messages.append(loading);
+  const thinking = createThinkingIndicator(); els.messages.append(thinking.element);
   try {
     const result = await apiRequest(`/api/courses/${encodeURIComponent(state.course.id)}/ask/`, { method: "POST", body: JSON.stringify({ question, session_id: state.session.session_id, client_request_id: requestId, grounding_mode: els.mode.value }) });
-    state.messages.push({ role: "assistant", content: result.answer, grounded: result.grounded, sources: result.sources || [], timestamp: new Date().toISOString() });
+    thinking.stop(); state.messages.push({ role: "assistant", content: result.answer, grounded: result.grounded, sources: result.sources || [], timestamp: new Date().toISOString() });
     state.retryQuestion = null; els.input.value = ""; renderMessages(); await loadSessions(state.session.session_id); announce("Cora answered."); scrollBottom(follow);
-  } catch (error) { loading.remove(); els.turnError.hidden = false; els.turnError.querySelector("span").textContent = error.message || "Cora is temporarily unavailable."; announce("Cora could not answer. You can retry."); }
-  finally { setBusy(false); els.input.focus(); }
+  } catch (error) { thinking.stop(); els.turnError.hidden = false; els.turnError.querySelector("span").textContent = error.message || "Cora is temporarily unavailable."; announce("Cora could not answer. You can retry."); }
+  finally { thinking.stop(); setBusy(false); els.input.focus(); }
 }
 async function openSource(citation, messageIndex, citationIndex, trigger) {
   state.sourceTrigger = trigger; els.source.hidden = false; els.grid.classList.add("source-open"); els.sourceLoading.hidden = false; els.sourceError.hidden = true; els.sourceContent.hidden = true;

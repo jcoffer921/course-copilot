@@ -93,6 +93,106 @@ def test_practice_create_uses_confirmed_exam_topics_and_resumes(isolated_courses
     assert StudySession.objects.filter(user=owner, mode=StudySession.MODE_QUIZ).count() == 1
 
 
+def test_course_practice_create_uses_selected_confirmed_topic_without_an_exam(isolated_courses_dir, users, monkeypatch):
+    owner, other = users
+    seed_course(owner)
+
+    async def fake_generate(course_id, topic=None, **kwargs):
+        assert course_id == "cs101"
+        assert topic == "Trees"
+        assert kwargs["user"] == owner
+        return generated_question()
+
+    monkeypatch.setattr(interactive_study.quiz, "generate_assessment_question_async", fake_generate)
+    url = "/api/courses/cs101/study/quizzes/course-practice/attempts/"
+    created = client_for(owner).post(url, {"question_count": 1, "topics": ["Trees"]}, format="json")
+
+    assert created.status_code == 201
+    assert created.data["quiz_id"] == "course-practice"
+    assert created.data["title"] == "Course Practice Quiz"
+    assert created.data["question_count"] == 1
+    assert "correct_answer" not in created.data["questions"][0]
+    assert client_for(other).post(url, {"question_count": 1}, format="json").status_code == 404
+
+
+def test_course_practice_rejects_unconfirmed_topic(isolated_courses_dir, users):
+    owner, _ = users
+    seed_course(owner)
+
+    response = client_for(owner).post(
+        "/api/courses/cs101/study/quizzes/course-practice/attempts/",
+        {"question_count": 1, "topics": ["Not in the syllabus"]}, format="json",
+    )
+
+    assert response.status_code == 400
+    assert response.data["detail"] == "The selected topic does not have processed notes available for quiz questions."
+
+
+@pytest.mark.parametrize("question_count", [0, 21])
+def test_course_practice_validates_question_count_at_api_boundary(isolated_courses_dir, users, question_count):
+    owner, _ = users
+    seed_course(owner)
+
+    response = client_for(owner).post(
+        "/api/courses/cs101/study/quizzes/course-practice/attempts/",
+        {"question_count": question_count}, format="json",
+    )
+
+    assert response.status_code == 400
+    assert "question_count" in response.data
+
+
+def test_course_practice_requires_quiz_ready_material(isolated_courses_dir, users):
+    owner, _ = users
+    storage.write_syllabus("empty101", {
+        "course_id": "empty101", "course_name": "Empty Course", "dates": [], "grading": [], "topics": ["Topic"],
+    }, owner)
+
+    response = client_for(owner).post(
+        "/api/courses/empty101/study/quizzes/course-practice/attempts/",
+        {"question_count": 5}, format="json",
+    )
+
+    assert response.status_code == 400
+    assert "Upload and process notes" in response.data["detail"]
+
+
+def test_course_practice_skips_syllabus_topics_without_note_chunks(isolated_courses_dir, users, monkeypatch):
+    owner, _ = users
+    seed_course(owner)
+    syllabus = storage.read_syllabus("cs101", owner)
+    syllabus["topics"].append("More transformations and Basic Animation")
+    storage.write_syllabus("cs101", syllabus, owner, overwrite=True)
+    generated_topics = []
+
+    async def fake_generate(course_id, topic=None, **kwargs):
+        generated_topics.append(topic)
+        return generated_question()
+
+    monkeypatch.setattr(interactive_study.quiz, "generate_assessment_question_async", fake_generate)
+    response = client_for(owner).post(
+        "/api/courses/cs101/study/quizzes/course-practice/attempts/",
+        {"question_count": 2}, format="json",
+    )
+
+    assert response.status_code == 201
+    assert generated_topics == ["Trees", "Trees"]
+
+
+def test_syllabus_response_lists_only_quiz_capable_topics(isolated_courses_dir, users):
+    owner, _ = users
+    seed_course(owner)
+    syllabus = storage.read_syllabus("cs101", owner)
+    syllabus["topics"].append("Topic without notes")
+    storage.write_syllabus("cs101", syllabus, owner, overwrite=True)
+
+    response = client_for(owner).get("/api/courses/cs101/syllabus/")
+
+    assert response.status_code == 200
+    assert response.data["topics"] == ["Trees", "Topic without notes"]
+    assert response.data["quiz_topics"] == ["Trees"]
+
+
 def test_practice_finalize_uses_server_key_once(isolated_courses_dir, users):
     owner, _ = users
     quiz_id = seed_course(owner)
@@ -109,6 +209,8 @@ def test_practice_finalize_uses_server_key_once(isolated_courses_dir, users):
     assert submitted.data["summary"] == {"correct": 1, "answered": 1, "total": 1}
     assert submitted.data["questions"][0]["correct_answer"] == "Preorder"
     assert QuizAttempt.objects.filter(user=owner, course_id="cs101").count() == 1
+    scores = storage.read_mastery_scores("cs101", owner)
+    assert next(item for item in scores["scores"] if item["topic"] == "Trees")["attempts"] == 1
 
     repeated = client.post(f"/api/courses/cs101/study/quizzes/attempts/{session.session_id}/finalize/", {}, format="json")
     assert repeated.status_code == 409
@@ -182,5 +284,30 @@ def test_interactive_pages_require_login_and_owned_resources(isolated_courses_di
     other_browser = Client(); other_browser.force_login(other)
     owner_browser = Client(); owner_browser.force_login(owner)
     assert other_browser.get(path).status_code == 404
-    assert owner_browser.get(path).status_code == 200
-    assert owner_browser.get("/courses/cs101/study/flashcards/due/").status_code == 200
+    practice_response = owner_browser.get(path)
+    assert practice_response.status_code == 200
+    practice_html = practice_response.content.decode()
+    for hook in (
+        'id="pa-question-meta"', 'id="pa-timer"', 'id="pa-grid"',
+        'id="pa-choices"', 'id="pa-flag"', 'id="pa-submit"',
+        'id="pa-ring"', 'id="pa-answered"', 'id="pa-cora"',
+        'id="pa-save-status"',
+    ):
+        assert hook in practice_html
+    assert 'src="/static/agent/js/practice_attempt.js?v=interactive-20260831-4"' in practice_html
+    sidebar = practice_html[practice_html.index('<aside id="app-sidebar"'):practice_html.index("</aside>")]
+    assert 'href="/study/" class="app-nav-link active"' in sidebar
+    assert 'href="/dashboard/" class="app-nav-link active"' not in sidebar
+    assert "Grounded in your materials" in practice_html
+    assert "Ask Cora about this question" in practice_html
+
+    flashcard_response = owner_browser.get("/courses/cs101/study/flashcards/due/")
+    assert flashcard_response.status_code == 200
+    flashcard_html = flashcard_response.content.decode()
+    for hook in (
+        'id="fc-progress"', 'id="fc-card"', 'id="fc-ratings"',
+        'id="fc-summary-ring"', 'id="fc-focus-list"', 'id="fc-topics-dialog"',
+        'id="fc-save-status"',
+    ):
+        assert hook in flashcard_html
+    assert 'src="/static/agent/js/interactive_flashcards.js?v=interactive-20260831-4"' in flashcard_html

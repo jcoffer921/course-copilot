@@ -1,0 +1,106 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div class="is-page quiz-setup-page" data-page-section="practice-quiz-setup" data-course-id="{{ course_id }}">
+  <nav class="is-breadcrumb" aria-label="Breadcrumb">
+    <a href="{% url 'courses-page' %}">Courses</a><span aria-hidden="true">/</span>
+    <a href="{% url 'course-detail-page' course_id=course_id %}" id="qs-course-link">Course</a><span aria-hidden="true">/</span>
+    <a href="{% url 'course-study-page' course_id=course_id %}">Study</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Practice Quiz</span>
+  </nav>
+  <a class="quiz-back-link" href="{% url 'course-study-page' course_id=course_id %}">&larr; Back to Study</a>
+  <header class="quiz-page-heading">
+    <h1>Practice Quiz</h1>
+    <p>Build a quiz from your confirmed course materials.</p>
+    <div class="quiz-course-context">
+      <span class="quiz-course-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-assignment"/></svg></span>
+      <strong id="qs-code">Course</strong><span aria-hidden="true">&bull;</span><span id="qs-course-name">Loading course...</span>
+    </div>
+  </header>
+  <main class="quiz-setup-main">
+    <section class="quiz-setup-card" aria-labelledby="qs-card-title">
+      <div class="quiz-card-heading"><h2 id="qs-card-title">Quiz setup</h2><p>Choose how you'd like to practice.</p></div>
+      <div id="qs-loading" class="quiz-setup-state" role="status">Loading confirmed course topics...</div>
+      <div id="qs-error" class="quiz-error-state" role="alert" aria-live="assertive" hidden>
+        <h2 id="qs-error-title">We couldn't prepare your quiz.</h2>
+        <p id="qs-error-message">Something went wrong while preparing your course materials.</p>
+        <button id="qs-retry" class="btn btn-secondary" type="button">Try again</button>
+      </div>
+      <form id="qs-form" class="quiz-setup-form" hidden novalidate>
+        <div class="quiz-setup-grid">
+          <fieldset class="quiz-setup-field count-field">
+            <legend>Questions</legend>
+            <div class="quiz-count-stepper" role="group" aria-label="Question count">
+              <button id="qs-decrement" type="button" aria-label="Decrease question count">&minus;</button>
+              <input id="qs-count" name="question_count" type="number" min="1" max="20" value="10" inputmode="numeric" aria-describedby="qs-count-help" required>
+              <button id="qs-increment" type="button" aria-label="Increase question count">+</button>
+            </div>
+            <small id="qs-count-help">Up to 20 questions</small>
+            <div id="qs-presets" class="quiz-count-presets" aria-label="Question count presets">
+              <button type="button" data-count="5" aria-pressed="false">5</button>
+              <button type="button" data-count="10" aria-pressed="true">10</button>
+              <button type="button" data-count="15" aria-pressed="false">15</button>
+              <button type="button" data-count="20" aria-pressed="false">20</button>
+            </div>
+          </fieldset>
+          <fieldset class="quiz-setup-field quiz-type-field">
+            <legend>Question type</legend>
+            <label class="quiz-choice-card selected">
+              <input type="radio" name="question_type" value="multiple_choice" checked>
+              <span class="quiz-choice-check" aria-hidden="true">&#10003;</span>
+              <span><strong>Multiple choice</strong><small>4 choices per question</small></span>
+            </label>
+            <span class="quiz-coming-soon">Coming soon <span aria-hidden="true">&#9432;</span></span>
+          </fieldset>
+        </div>
+        <fieldset id="qs-scope" class="quiz-setup-field quiz-scope-field">
+          <legend>Quiz scope</legend>
+          <div class="quiz-scope-options">
+            <label class="quiz-choice-card selected">
+              <input type="radio" name="scope" value="course" checked>
+              <span class="quiz-radio-mark" aria-hidden="true"></span>
+              <span><strong>Whole course</strong><small>Practice across all confirmed topics.</small></span>
+            </label>
+            <label class="quiz-choice-card">
+              <input type="radio" name="scope" value="topic">
+              <span class="quiz-radio-mark" aria-hidden="true"></span>
+              <span><strong>Specific topic</strong><small>Focus on a single topic or concept.</small></span>
+              <span class="quiz-choice-arrow" aria-hidden="true">&rsaquo;</span>
+            </label>
+          </div>
+          <label id="qs-topic-field" class="quiz-topic-field" for="qs-topic" hidden><span>Confirmed topic</span><select id="qs-topic" name="topic"></select></label>
+        </fieldset>
+        <div class="quiz-grounding-note">
+          <span class="quiz-grounding-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span>
+          <span><strong>Grounded in your course materials</strong><small>Cora will only use your confirmed syllabus and uploaded notes.</small></span>
+        </div>
+        <div class="quiz-setup-actions"><button id="qs-start" class="btn btn-primary quiz-start-button" type="submit">Start practice quiz <span aria-hidden="true">&rarr;</span></button></div>
+      </form>
+      <div id="qs-empty" class="quiz-setup-empty" hidden>
+        <h2>Not enough course material yet</h2>
+        <p>Upload notes or confirm your syllabus before creating a grounded quiz.</p>
+        <a class="btn btn-primary" href="{% url 'course-materials-page' course_id=course_id %}">Open course materials</a>
+      </div>
+    </section>
+  </main>
+  <div id="qs-generation-overlay" class="quiz-generation-overlay" role="dialog" aria-modal="true" aria-labelledby="qs-generation-title" aria-describedby="qs-generation-status" tabindex="-1" hidden>
+    <section class="quiz-generation-modal">
+      <div class="quiz-generation-orbit" aria-hidden="true">
+        <span></span><span></span><span></span>
+        <svg class="ot-icon"><use href="#ot-icon-study"/></svg>
+      </div>
+      <p class="quiz-generation-eyebrow">Grounded in your materials</p>
+      <h2 id="qs-generation-title">Preparing your practice quiz</h2>
+      <p id="qs-generation-status" class="quiz-generation-status" aria-live="polite">Reading confirmed course materials...</p>
+      <div class="quiz-generation-progress" aria-hidden="true"><span></span></div>
+      <ol id="qs-generation-steps" class="quiz-generation-steps">
+        <li class="active" data-generation-step="0"><i aria-hidden="true"></i><span>Reading course materials</span></li>
+        <li data-generation-step="1"><i aria-hidden="true"></i><span>Selecting grounded topics</span></li>
+        <li data-generation-step="2"><i aria-hidden="true"></i><span>Generating questions</span></li>
+        <li data-generation-step="3"><i aria-hidden="true"></i><span>Checking answer choices</span></li>
+        <li data-generation-step="4"><i aria-hidden="true"></i><span>Putting your quiz together</span></li>
+      </ol>
+      <p class="quiz-generation-note">This may take a minute. Keep this page open.</p>
+    </section>
+  </div>
+</div>
+{% endblock %}

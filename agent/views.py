@@ -1216,6 +1216,31 @@ class StudySessionsView(APIView):
         return Response(session, status=status.HTTP_201_CREATED)
 
 
+class GuidedStudyPlanView(APIView):
+    """GET a source-grounded session plan without starting the session."""
+
+    async def get(self, request, course_id):
+        serializer = StartStudySessionRequestSerializer(data=request.query_params)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        data = serializer.validated_data
+        try:
+            plan = await sync_to_async(study_sessions.build_grounded_plan)(
+                request.user,
+                course_id,
+                topic=data["topic"],
+                duration_minutes=data["duration_minutes"] or 15,
+                mode=data["mode"],
+            )
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except storage.CourseNotFoundError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(plan, status=status.HTTP_200_OK)
+
+
 class StudySessionDetailView(APIView):
     """GET /api/courses/<course_id>/study/sessions/<session_id>/ — session plus its activity stream."""
 
@@ -1725,6 +1750,7 @@ class SyllabusDetailView(APIView):
                 {"detail": f"no syllabus.json found for course '{course_id}'"},
                 status=status.HTTP_404_NOT_FOUND,
             )
+        data = {**data, "quiz_topics": await sync_to_async(quiz.available_topics)(course_id, request.user)}
         return Response(data)
 
 
@@ -1971,6 +1997,7 @@ class PracticeAttemptsView(APIView):
         try:
             result = await interactive_study.create_practice_attempt(
                 request.user, course_id, quiz_id, serializer.validated_data["question_count"],
+                topics=serializer.validated_data.get("topics"),
             )
         except (storage.CourseNotFoundError, exams.ExamNotFoundError, study_sessions.StudySessionNotFoundError):
             return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)

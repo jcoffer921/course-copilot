@@ -442,6 +442,28 @@ def test_study_session_lifecycle_via_api(isolated_courses_dir, api_client):
     assert history.data["sessions"][0]["session_id"] == session_id
 
 
+def test_guided_study_plan_api_returns_owned_note_and_reference_grounding(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    storage.write_notes("cs101", "lecture-a", {
+        "lecture_id": "lecture-a", "topics": ["A"],
+        "chunks": [{"id": "a-1", "topic": "A", "text": "Course note evidence."}],
+    }, api_client.user)
+    storage.write_reference("cs101", "reference-a", {
+        "reference_id": "reference-a", "title": "Reference for A",
+        "source_filename": "reference.txt", "text": "Supporting material for topic A.",
+    }, api_client.user)
+
+    response = api_client.get(
+        "/api/courses/cs101/study/plan/",
+        {"duration_minutes": 15, "mode": "mixed"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["topic"] == "A"
+    assert response.data["grounded"] is True
+    assert response.data["source_counts"] == {"notes": 1, "references": 1}
+
+
 def test_study_session_start_rejects_missing_owned_course_and_unconfirmed_topic(isolated_courses_dir, api_client):
     missing = api_client.post("/api/courses/private/study/sessions/", {"topic": "A"}, format="json")
     assert missing.status_code == 404

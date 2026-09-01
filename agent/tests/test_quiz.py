@@ -253,6 +253,22 @@ async def test_generate_assessment_question_returns_model_explanation(isolated_c
     assert question["explanation"] == "A closure captures variables from its outer scope."
 
 
+@pytest.mark.parametrize("payload", [
+    '{"question":"Q?","choices":["A","B","C"],"correct_answer":"A"}',
+    '{"question":"Q?","choices":["A","A","C","D"],"correct_answer":"A"}',
+    '{"question":"Q?","choices":["A","B","C","D"],"correct_answer":"E"}',
+])
+async def test_generate_assessment_question_rejects_malformed_multiple_choice_output(
+    isolated_courses_dir, monkeypatch, django_user_model, payload,
+):
+    user, _ = await sync_to_async(django_user_model.objects.get_or_create)(username="malformed-question-owner")
+    await sync_to_async(_seed_quizzable_course)(user)
+    monkeypatch.setattr(quiz, "get_client", lambda: _FakeClient(_FakeResponse(payload)))
+
+    with pytest.raises(ValueError):
+        await quiz.generate_assessment_question_async("cs101", chunk_id="chunk1", flashcards=[], user=user)
+
+
 def test_record_attempt_rejects_chunk_that_does_not_belong_to_this_course(isolated_courses_dir, django_user_model):
     user = django_user_model.objects.create_user(username="record-owner")
     _seed_quizzable_course(user, course_id="cs101")

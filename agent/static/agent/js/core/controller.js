@@ -2728,7 +2728,7 @@ return class Component extends DCLogic {
           grading: (meta && meta.grading) || [],
           onUpload: () => this.openUpload(id),
           onOpenNotes: () => window.location.assign('/courses/' + encodeURIComponent(id) + '/materials/'),
-          onOpenFlashcards: () => window.location.assign('/study/?view=flashcards&course=' + encodeURIComponent(id)),
+          onOpenFlashcards: () => window.location.assign('/courses/' + encodeURIComponent(id) + '/study/flashcards/due/'),
           onOpenChat: () => window.location.assign('/cora/?course=' + encodeURIComponent(id))
         };
       })

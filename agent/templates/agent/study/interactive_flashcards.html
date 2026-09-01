@@ -1,14 +1,82 @@
 {% extends "agent/app_base.html" %}
 {% block page_content %}
 <div class="is-page flash-session-page" data-course-id="{{ course_id }}" data-deck-id="{{ deck_id }}">
-  <nav class="is-breadcrumb" aria-label="Breadcrumb"><a href="{% url 'courses-page' %}">Courses</a><span>/</span><a href="{% url 'course-detail-page' course_id=course_id %}" id="fc-course">Course</a><span>/</span><a href="{% url 'course-study-page' course_id=course_id %}">Study</a><span>/</span><span>Flashcards</span></nav>
-  <header class="is-header"><div class="fc-heading"><span class="fc-topic-icon">♣</span><div><h1 id="fc-title">Flashcards</h1><div class="is-meta"><span id="fc-due">Loading deck…</span><span class="is-pill">▣ Flashcards</span></div></div></div><button id="fc-end" class="btn btn-secondary" type="button">□ End session</button></header>
-  <div id="fc-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
-  <div id="fc-loading" class="shared-state" role="status">Preparing your due cards…</div>
-  <div id="fc-error" class="shared-state shared-state-error" hidden><h2>Couldn't load these flashcards</h2><p></p><button id="fc-retry" class="btn btn-secondary" type="button">Try again</button></div>
-  <div id="fc-content" class="is-layout" hidden>
-    <main class="is-workspace"><div class="is-progress-row"><span id="fc-card-meta"></span><div class="is-progress"><span id="fc-progress"></span></div></div><div class="fc-card-wrap"><button id="fc-prev" class="fc-arrow" type="button" aria-label="Previous card">←</button><button id="fc-card" class="fc-card" type="button"><span id="fc-side">Front</span><small id="fc-topic"></small><strong id="fc-term"></strong><span id="fc-hint">Click the card or press Space to reveal the answer</span></button><button id="fc-next" class="fc-arrow" type="button" aria-label="Next card">→</button></div><p class="fc-keys">Keyboard: ← → navigate · Space reveal · R flip</p><div id="fc-ratings" class="fc-ratings"><button data-rating="again" type="button">↻ Again<small>&lt; 10 minutes</small></button><button data-rating="hard" type="button">≈ Hard<small>10 minutes</small></button><button data-rating="good" type="button">☺ Good<small>1 day</small></button><button data-rating="easy" type="button">☆ Easy<small>3 days</small></button></div><p id="fc-rating-help" class="fc-help">Reveal the card to rate your confidence.</p><div class="fc-source">▤ <span id="fc-source">Grounded course flashcard</span></div></main>
-    <aside class="is-aside"><section class="is-panel"><h2>Session progress</h2><div class="fc-summary"><strong id="fc-percent">0%</strong><div><p><b id="fc-reviewed">0</b> Reviewed</p><p><b id="fc-remaining">0</b> Remaining</p><p><b id="fc-review-again">0</b> Need review</p></div></div></section><section class="is-panel"><h2>Deck focus</h2><p id="fc-focus">Due cards from your saved deck.</p><div id="fc-focus-list" class="fc-focus-list"></div></section><section class="is-cora"><strong>✦ Cora tip</strong><p>Say the answer out loud before flipping the card.</p></section></aside>
+  <nav class="is-breadcrumb" aria-label="Breadcrumb">
+    <a href="{% url 'courses-page' %}">Courses</a><span aria-hidden="true">/</span>
+    <a href="{% url 'course-detail-page' course_id=course_id %}" id="fc-course">Course</a><span aria-hidden="true">/</span>
+    <a href="{% url 'course-study-page' course_id=course_id %}">Study</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Flashcards</span>
+  </nav>
+
+  <header class="is-header">
+    <div class="fc-heading">
+      <span class="fc-topic-icon" aria-hidden="true">♠</span>
+      <div><h1 id="fc-title">Flashcards</h1><div class="is-meta"><span id="fc-due">Loading deck...</span><span class="is-pill">▣ Flashcards</span></div></div>
+    </div>
+    <div class="fc-header-actions">
+      <button id="fc-end" class="btn btn-secondary" type="button">□ End session</button>
+      <details class="fc-overflow">
+        <summary class="btn btn-secondary fc-more" aria-label="More session options"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-more"/></svg></summary>
+        <div class="fc-overflow-menu"><a href="{% url 'course-study-page' course_id=course_id %}">Return to course Study</a></div>
+      </details>
+    </div>
+  </header>
+
+  <div id="fc-alert" class="materials-alert is-page-alert" role="status" aria-live="polite" hidden></div>
+  <div id="fc-save-status" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="fc-loading" class="shared-state is-loading-card" role="status">Preparing your due cards...</div>
+  <div id="fc-error" class="shared-state shared-state-error is-loading-card" hidden>
+    <h2>Couldn't load these flashcards</h2><p></p><button id="fc-retry" class="btn btn-secondary" type="button">Try again</button>
   </div>
+
+  <div id="fc-content" class="is-layout" hidden>
+    <main class="is-workspace">
+      <div class="flash-progress">
+        <div class="fc-progress-heading"><span id="fc-card-meta"></span><span id="fc-success" class="fc-success"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-check"/></svg>0 successful</span></div>
+        <div class="is-progress" role="progressbar" aria-label="Flashcard session completion" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="fc-progress"></span></div>
+      </div>
+
+      <div class="fc-card-wrap">
+        <button id="fc-prev" class="fc-arrow" type="button" aria-label="Previous card">←</button>
+        <button id="fc-card" class="fc-card" type="button" aria-pressed="false" aria-describedby="fc-card-instructions">
+          <span class="fc-card-eyebrow"><span id="fc-side">Front</span><i aria-hidden="true">·</i><small id="fc-topic"></small></span>
+          <strong id="fc-term"></strong>
+          <span id="fc-hint" class="fc-card-hint">Click the card or press Space to reveal the answer</span>
+          <span class="fc-flip-icon" aria-hidden="true">⟳</span>
+        </button>
+        <button id="fc-next" class="fc-arrow" type="button" aria-label="Next card">→</button>
+      </div>
+      <p id="fc-card-instructions" class="fc-keys"><kbd>←</kbd> <kbd>→</kbd> Navigate &nbsp;·&nbsp; <kbd>Space</kbd> Reveal &nbsp;·&nbsp; <kbd>R</kbd> Flip card</p>
+
+      <div id="fc-ratings" class="fc-ratings" aria-label="Rate your recall">
+        <button data-rating="again" type="button">↻ Again<small>&lt; 10 minutes</small></button>
+        <button data-rating="hard" type="button">≈ Hard<small>10 minutes</small></button>
+        <button data-rating="good" type="button">☺ Good<small>1 day</small></button>
+        <button data-rating="easy" type="button">☆ Easy<small>3 days</small></button>
+      </div>
+      <p id="fc-rating-help" class="fc-help">Reveal the card to rate your confidence.</p>
+      <div class="fc-source"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg><span id="fc-source">Grounded course flashcard</span><button id="fc-view-source" class="btn btn-secondary" type="button" hidden>View source ↗</button></div>
+    </main>
+
+    <aside class="is-aside">
+      <section class="is-panel">
+        <h2>Session progress</h2>
+        <div class="fc-summary">
+          <div id="fc-summary-ring" class="fc-summary-ring"><strong id="fc-percent">0%</strong><small>complete</small></div>
+          <div><p><b id="fc-reviewed">0</b> Reviewed</p><p><b id="fc-remaining">0</b> Remaining</p><p><b id="fc-review-again">0</b> Need review</p></div>
+        </div>
+      </section>
+      <section class="is-panel">
+        <h2>Deck focus</h2><p id="fc-focus">Due cards from your saved deck.</p>
+        <div id="fc-focus-list" class="fc-focus-list"></div>
+        <button id="fc-view-topics" class="btn btn-secondary fc-view-topics" type="button">View all topics in deck</button>
+      </section>
+      <section class="is-cora"><div><strong>✦ Cora tip</strong><p>Say the answer out loud before flipping the card.</p></div></section>
+    </aside>
+  </div>
+
+  <dialog id="fc-topics-dialog" class="is-dialog">
+    <div class="is-dialog-card"><header><h2>Topics in this deck</h2><button id="fc-topics-close" type="button" aria-label="Close topic list">×</button></header><div id="fc-topics-dialog-list" class="fc-focus-list"></div></div>
+  </dialog>
 </div>
 {% endblock %}

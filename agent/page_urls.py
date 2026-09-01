@@ -11,6 +11,7 @@ urlpatterns = [
     path("courses/<slug:course_id>/materials/", page_views.course_materials_page, name="course-materials-page"),
     path("courses/<slug:course_id>/schedule/", page_views.course_schedule_redirect, name="course-schedule-page"),
     path("courses/<slug:course_id>/study/", page_views.course_study_page, name="course-study-page"),
+    path("courses/<slug:course_id>/study/quiz/", page_views.practice_quiz_setup_page, name="practice-quiz-setup-page"),
     path("courses/<slug:course_id>/study/quizzes/<str:quiz_id>/attempts/<uuid:attempt_id>/", page_views.practice_attempt_page, name="practice-attempt-page"),
     path("courses/<slug:course_id>/study/flashcards/<slug:deck_id>/", page_views.interactive_flashcards_page, name="interactive-flashcards-page"),
     path("courses/<slug:course_id>/mastery/", page_views.course_mastery_page, name="course-mastery-page"),

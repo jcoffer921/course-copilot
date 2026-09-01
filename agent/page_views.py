@@ -22,6 +22,7 @@ PAGE_SCRIPTS = {
     "course-detail": "agent/js/course_overview.js",
     "materials": "agent/js/materials.js",
     "course-study": "agent/js/course_study.js",
+    "practice-quiz-setup": "agent/js/practice_quiz_setup.js",
     "course-mastery": "agent/js/course_mastery.js",
     "course-grades": "agent/js/course_grades.js",
     "cora": "agent/js/cora.js",
@@ -61,6 +62,12 @@ def _identity_context(user):
 
 
 def _render_page(request, template_name, *, page_name, page_title, initial_tab, course_id=None, **context):
+    modern_page_names = {
+        "calendar", "courses", "cora", "course-detail", "materials", "course-study",
+        "course-mastery", "course-grades", "study-dashboard", "exam", "settings",
+        "practice-quiz-setup", "practice-attempt", "interactive-flashcards",
+    }
+    modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
     return render(
         request,
         template_name,
@@ -68,12 +75,15 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
             "page_name": page_name,
             "page_title": page_title,
             "initial_tab": initial_tab,
+            "modern_shell": modern_shell,
             "initial_course_id": _safe_initial_course(request, course_id),
             "page_script": PAGE_SCRIPTS[page_name],
             "page_asset_version": (
                 "calendar-20260826-4" if page_name == "calendar"
                 else "courses-20260826-2" if page_name == "courses"
                 else "workspace-20260826-3" if page_name in ("materials", "course-detail", "course-study", "course-mastery", "course-grades", "study-dashboard")
+                else "quiz-loading-20260831-1" if page_name == "practice-quiz-setup"
+                else "interactive-20260831-4" if page_name in ("practice-attempt", "interactive-flashcards")
                 else ""
             ),
             "course_id": course_id,
@@ -133,6 +143,15 @@ def course_study_page(request, course_id):
 
 
 @login_required
+def practice_quiz_setup_page(request, course_id):
+    _require_owned_course(request, course_id)
+    return _render_page(
+        request, "agent/study/practice_quiz_setup.html", page_name="practice-quiz-setup",
+        page_title="Set up practice quiz", initial_tab="study", course_id=course_id,
+    )
+
+
+@login_required
 def course_mastery_page(request, course_id):
     _require_owned_course(request, course_id)
     return _render_page(request, "agent/courses/mastery.html", page_name="course-mastery", page_title="Course mastery", initial_tab="dashboard", course_id=course_id)
@@ -165,15 +184,17 @@ def study_page(request):
     requested_view = request.GET.get("view")
     if not requested_view:
         return _render_page(request, "agent/study_dashboard.html", page_name="study-dashboard", page_title="Study", initial_tab="dashboard")
-    if requested_view == "flashcards":
+    if requested_view in {"flashcards", "quiz"}:
         course_id = request.GET.get("course", "")
         if not course_id:
             return redirect("study-page")
         if not COURSE_ID_RE.fullmatch(course_id):
             raise Http404("Course not found.")
         _require_owned_course(request, course_id)
-        return redirect("interactive-flashcards-page", course_id=course_id, deck_id="due")
-    initial_tab = requested_view if requested_view in {"progress", "flashcards", "quiz", "grades", "session"} else "progress"
+        if requested_view == "flashcards":
+            return redirect("interactive-flashcards-page", course_id=course_id, deck_id="due")
+        return redirect("practice-quiz-setup-page", course_id=course_id)
+    initial_tab = requested_view if requested_view in {"progress", "grades", "session"} else "progress"
     return _render_page(
         request, "agent/study.html", page_name="study", page_title="Study", initial_tab=initial_tab,
         initial_topic=_safe_initial_topic(request),
@@ -198,7 +219,7 @@ def practice_attempt_page(request, course_id, quiz_id, attempt_id):
     return _render_page(
         request, "agent/study/practice_attempt.html", page_name="practice-attempt",
         page_title=attempt["title"], initial_tab="study", course_id=course_id,
-        quiz_id=quiz_id, attempt_id=attempt_id,
+        quiz_id=quiz_id, attempt_id=attempt_id, course_practice=quiz_id == "course-practice",
     )
 
 

@@ -109,7 +109,7 @@ function renderStudy() {
     setBody("ov-study-body", [rec.estimated_minutes ? `${rec.estimated_minutes} min` : "", rec.reason].filter(Boolean));
     link.textContent = "Start studying";
     link.href = rec.suggested_mode === "quiz"
-      ? `/study/?course=${encodeURIComponent(courseId)}&view=quiz`
+      ? `/courses/${encodeURIComponent(courseId)}/study/quiz/`
       : `/courses/${encodeURIComponent(courseId)}/study/flashcards/due/`;
     return;
   }

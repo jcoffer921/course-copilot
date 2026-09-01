@@ -34,6 +34,42 @@ def test_start_session_records_a_session_started_activity(isolated_courses_dir, 
     assert detail["activities"][0]["position"] == 0
 
 
+def test_grounded_plan_selects_a_recommended_topic_that_has_notes_and_references(isolated_courses_dir, owner):
+    storage.write_notes("cs101", "lecture-2", {
+        "lecture_id": "lecture-2",
+        "topics": ["Sorting"],
+        "chunks": [{"id": "sorting-basics", "topic": "Sorting", "text": "Comparison sorting."}],
+    }, owner)
+    storage.write_reference("cs101", "sorting-chapter", {
+        "reference_id": "sorting-chapter",
+        "title": "Sorting chapter",
+        "source_filename": "chapter.pdf",
+        "text": "Sorting algorithms include merge sort and quicksort.",
+    }, owner)
+
+    plan = study_sessions.build_grounded_plan(owner, "cs101", duration_minutes=20, mode="mixed")
+
+    assert plan["topic"] == "Sorting"
+    assert plan["grounded"] is True
+    assert plan["source_counts"] == {"notes": 1, "references": 1}
+    assert {source["kind"] for source in plan["sources"]} == {"note", "reference"}
+    assert [step["kind"] for step in plan["steps"]] == ["flashcards", "quiz", "summary"]
+    assert plan["steps"][0]["count"] == "10 cards"
+    assert plan["steps"][1]["count"] == "5 questions"
+
+
+def test_grounded_plan_falls_back_to_course_outline_when_topic_has_no_matching_sources(isolated_courses_dir, owner):
+    plan = study_sessions.build_grounded_plan(
+        owner, "cs101", topic="Recursion", duration_minutes=15, mode="quiz",
+    )
+
+    assert plan["topic"] == "Recursion"
+    assert plan["grounded"] is False
+    assert plan["sources"] == []
+    assert [step["kind"] for step in plan["steps"]] == ["quiz", "summary"]
+    assert "Add or process notes" in plan["rationale"]
+
+
 def test_start_session_rejects_invalid_mode(isolated_courses_dir, owner):
     with pytest.raises(ValueError):
         study_sessions.start_session(owner, "cs101", mode="not-a-mode")

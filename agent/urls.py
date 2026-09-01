@@ -74,6 +74,7 @@ urlpatterns = [
     path("courses/<slug:course_id>/study/flashcards/sessions/<uuid:session_id>/rate/", views.InteractiveFlashcardRateView.as_view(), name="interactive-flashcard-rate"),
     path("courses/<slug:course_id>/study/flashcards/sessions/<uuid:session_id>/end/", views.InteractiveFlashcardEndView.as_view(), name="interactive-flashcard-end"),
     path("courses/<slug:course_id>/study/sessions/", views.StudySessionsView.as_view(), name="study-sessions"),
+    path("courses/<slug:course_id>/study/plan/", views.GuidedStudyPlanView.as_view(), name="guided-study-plan"),
     path(
         "courses/<slug:course_id>/study/sessions/<uuid:session_id>/",
         views.StudySessionDetailView.as_view(),

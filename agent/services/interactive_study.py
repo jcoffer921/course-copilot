@@ -94,16 +94,30 @@ def reserve_practice_attempt(user, course_id, quiz_id, title, question_count):
         return session, True
 
 
-async def create_practice_attempt(user, course_id, quiz_id, question_count=10):
+async def create_practice_attempt(user, course_id, quiz_id, question_count=10, topics=None):
     from asgiref.sync import sync_to_async
 
-    event = await sync_to_async(exams.find_exam_event)(user, course_id, quiz_id)
-    plan = await sync_to_async(exams.get_or_create_plan)(user, course_id, quiz_id)
-    topics = plan.get("included_topics") or []
-    if not topics:
-        raise InteractiveStudyValidationError("Include at least one confirmed exam topic first.")
+    if quiz_id == "course-practice":
+        if not await sync_to_async(storage.course_or_draft_exists)(course_id, user):
+            raise storage.CourseNotFoundError(course_id)
+        syllabus = await sync_to_async(storage.read_syllabus)(course_id, user)
+        confirmed_topics = await sync_to_async(quiz.available_topics)(course_id, user)
+        title = "Course Practice Quiz"
+        empty_message = "Upload and process notes for at least one topic before starting a practice quiz."
+    else:
+        event = await sync_to_async(exams.find_exam_event)(user, course_id, quiz_id)
+        plan = await sync_to_async(exams.get_or_create_plan)(user, course_id, quiz_id)
+        quiz_topics = set(await sync_to_async(quiz.available_topics)(course_id, user))
+        confirmed_topics = [topic for topic in (plan.get("included_topics") or []) if topic in quiz_topics]
+        title = event["title"]
+        empty_message = "Upload processed notes for at least one included exam topic first."
+    if not confirmed_topics:
+        raise InteractiveStudyValidationError(empty_message)
+    selected_topics = list(dict.fromkeys(topics or confirmed_topics))
+    if any(topic not in confirmed_topics for topic in selected_topics):
+        raise InteractiveStudyValidationError("The selected topic does not have processed notes available for quiz questions.")
     session, created = await sync_to_async(reserve_practice_attempt)(
-        user, course_id, quiz_id, event["title"], question_count,
+        user, course_id, quiz_id, title, question_count,
     )
     if not created:
         return await sync_to_async(_practice_payload)(session)
@@ -113,7 +127,7 @@ async def create_practice_attempt(user, course_id, quiz_id, question_count=10):
     try:
         for index in range(question_count):
             generated = await quiz.generate_assessment_question_async(
-                course_id, topic=topics[index % len(topics)], question_type="multiple_choice",
+                course_id, topic=selected_topics[index % len(selected_topics)], question_type="multiple_choice",
                 previous_questions=previous, user=user,
             )
             previous.append(generated["question"])
@@ -125,6 +139,15 @@ async def create_practice_attempt(user, course_id, quiz_id, question_count=10):
                 "source_label": f"{generated['lecture_id']} · confirmed course notes",
                 "user_answer": None, "flagged": False,
             })
+    except quiz.NoChunksAvailableError as exc:
+        def mark_failed():
+            row = _owned(user, course_id, session.session_id, "practice_attempt")
+            row.state = {**row.state, "status": "failed"}
+            row.save(update_fields=["state"])
+        await sync_to_async(mark_failed)()
+        raise InteractiveStudyValidationError(
+            "The selected topic does not have processed notes available for quiz questions."
+        ) from exc
     except Exception:
         def mark_failed():
             row = _owned(user, course_id, session.session_id, "practice_attempt")

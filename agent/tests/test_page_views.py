@@ -17,6 +17,7 @@ PAGE_CASES = [
     ("course-detail-page", {"course_id": "cs101"}, "course-detail"),
     ("course-materials-page", {"course_id": "cs101"}, "materials"),
     ("course-study-page", {"course_id": "cs101"}, "course-study"),
+    ("practice-quiz-setup-page", {"course_id": "cs101"}, "practice-quiz-setup"),
     ("course-mastery-page", {"course_id": "cs101"}, "course-mastery"),
     ("course-grades-page", {"course_id": "cs101"}, "course-grades"),
     ("cora-page", {}, "cora"),
@@ -101,6 +102,97 @@ def test_legacy_flashcards_url_redirects_to_interactive_workspace(client, django
 
     assert response.status_code == 302
     assert response.url == reverse("interactive-flashcards-page", kwargs={"course_id": "cs101", "deck_id": "due"})
+
+
+@pytest.mark.django_db
+def test_legacy_quiz_url_redirects_to_modern_quiz_setup(client, django_user_model, isolated_courses_dir):
+    user = django_user_model.objects.create_user(username="legacy-quiz-user")
+    client.force_login(user)
+    storage.write_course_draft("cs101", "CS 101", user)
+
+    response = client.get(reverse("study-page") + "?view=quiz&course=cs101")
+
+    assert response.status_code == 302
+    assert response.url == reverse("practice-quiz-setup-page", kwargs={"course_id": "cs101"})
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("legacy_view", ["quiz", "flashcards"])
+def test_course_less_legacy_study_urls_redirect_to_dashboard(client, django_user_model, legacy_view):
+    client.force_login(django_user_model.objects.create_user(username=f"legacy-{legacy_view}-user"))
+
+    response = client.get(reverse("study-page") + f"?view={legacy_view}")
+
+    assert response.status_code == 302
+    assert response.url == reverse("study-page")
+
+
+@pytest.mark.django_db
+def test_legacy_quiz_and_flashcard_markup_is_not_rendered(client, django_user_model):
+    client.force_login(django_user_model.objects.create_user(username="no-legacy-study-ui"))
+
+    html = client.get(reverse("study-page") + "?view=progress").content.decode()
+
+    for legacy_hook in (
+        'id="study-subnav-quiz"', 'id="study-subnav-flashcards"',
+        "Set up your quiz", "All Cards", "flashcard-stage",
+    ):
+        assert legacy_hook not in html
+
+
+@pytest.mark.django_db
+def test_course_study_page_only_links_to_new_study_experiences(client, django_user_model, isolated_courses_dir):
+    user = django_user_model.objects.create_user(username="modern-study-links")
+    storage.write_course_draft("cs101", "CS 101", user)
+    client.force_login(user)
+
+    html = client.get(reverse("course-study-page", kwargs={"course_id": "cs101"})).content.decode()
+
+    assert reverse("interactive-flashcards-page", kwargs={"course_id": "cs101", "deck_id": "due"}) in html
+    assert reverse("practice-quiz-setup-page", kwargs={"course_id": "cs101"}) in html
+    assert 'id="practice-quiz"' in html
+    assert "view=quiz" not in html
+    assert "view=flashcards" not in html
+
+
+@pytest.mark.django_db
+def test_practice_quiz_setup_renders_only_the_modern_quiz_launcher(client, django_user_model, isolated_courses_dir):
+    user = django_user_model.objects.create_user(username="quiz-setup-user")
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Data Structures", "dates": [], "grading": [], "topics": ["Trees"],
+    }, user)
+    client.force_login(user)
+
+    response = client.get(reverse("practice-quiz-setup-page", kwargs={"course_id": "cs101"}))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert 'data-page-section="practice-quiz-setup"' in html
+    assert 'id="qs-form"' in html
+    assert 'id="qs-count"' in html
+    assert 'id="qs-decrement"' in html
+    assert 'id="qs-increment"' in html
+    assert 'data-count="20"' in html
+    assert 'id="qs-scope"' in html
+    assert 'id="qs-topic"' in html
+    assert 'id="qs-start"' in html
+    assert 'agent/js/practice_quiz_setup.js?v=quiz-loading-20260831-1' in html
+    assert 'id="qs-generation-overlay"' in html
+    assert 'id="qs-generation-status"' in html
+    assert html.count('data-generation-step=') == 5
+    assert "Reading course materials" in html
+    assert "Generating questions" in html
+    sidebar = html[html.index('<aside id="app-sidebar"'):html.index("</aside>")]
+    assert f'href="{reverse("study-page")}" class="app-nav-link active"' in sidebar
+    assert f'href="{reverse("dashboard-page")}" class="app-nav-link active"' not in sidebar
+    assert "Grounded in your course materials" in html
+    assert "Not enough course material yet" in html
+    assert "view=quiz" not in html
+    for legacy_overlay_token in (
+        "{{ deadlineDate }}", "{{ deadlineTime }}", "{{ deadlineEndTime }}",
+        "{{ deadlineEstimatedEffort }}", "{{ closeUpload }}",
+    ):
+        assert legacy_overlay_token not in html
 
 
 @pytest.mark.django_db
@@ -198,6 +290,9 @@ def test_study_session_view_renders_guided_session_panel_visibly(client, django_
     assert 'window.ONTRACK_INITIAL_TAB = "session"' in html
     assert 'id="guided-session-root"' in html
     assert 'id="guided-session-setup"' in html
+    assert 'id="guided-plan-list"' in html
+    assert 'id="guided-plan-source-list"' in html
+    assert "Generated from your sources" in html
     assert 'src="/static/agent/js/study.js"' in html
 
 
@@ -404,6 +499,7 @@ def test_course_learning_pages_use_native_runtime_and_active_tab(client, django_
     ("course-detail-page", {"course_id": "private"}),
     ("course-materials-page", {"course_id": "private"}),
     ("course-study-page", {"course_id": "private"}),
+    ("practice-quiz-setup-page", {"course_id": "private"}),
     ("course-mastery-page", {"course_id": "private"}),
     ("course-grades-page", {"course_id": "private"}),
     ("exam-detail-page", {"course_id": "private", "exam_id": "midterm"}),

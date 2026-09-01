@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from asgiref.sync import sync_to_async
+from anthropic import AuthenticationError
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Sum
@@ -19,6 +20,7 @@ from .syllabus_extraction import extract_syllabus_async, extract_text_from_bytes
 
 DEFAULT_PROCESSING_TIMEOUT_SECONDS = 90
 DEFAULT_MAX_UPLOAD_BYTES_PER_USER = 200 * 1024 * 1024
+_API_AUTH_MESSAGE = 'Anthropic rejected the configured API key. Update ANTHROPIC_API_KEY in .env, then restart OnTrack.'
 
 
 class MaterialNotFoundError(Exception):
@@ -212,6 +214,14 @@ async def _fail(material, code, message, http_status=422):
     raise MaterialProcessingError(material, code, message, http_status)
 
 
+def _llm_failure_details(exc: Exception, default_code: str, default_message: str):
+    '''Return an actionable error without exposing the provider exception.'''
+    missing_key = isinstance(exc, ValueError) and 'ANTHROPIC_API_KEY' in str(exc)
+    if isinstance(exc, AuthenticationError) or missing_key:
+        return 'api_authentication_failed', _API_AUTH_MESSAGE, 503
+    return default_code, default_message, 422
+
+
 async def _run_syllabus_extraction(material, data: bytes, filename: str, course_id: str, course_name_hint=None) -> CourseMaterial:
     timeout = _processing_timeout()
     try:
@@ -222,8 +232,10 @@ async def _run_syllabus_extraction(material, data: bytes, filename: str, course_
         candidate = await asyncio.wait_for(extract_syllabus_async(source_text, course_id, course_name_hint), timeout)
     except asyncio.TimeoutError:
         await _fail(material, "processing_timeout", "Processing took too long. Try a smaller or simpler document.", 504)
-    except Exception:
-        await _fail(material, "extraction_failed", "OnTrack could not safely extract this syllabus.", 422)
+    except Exception as exc:
+        await _fail(material, *_llm_failure_details(
+            exc, "extraction_failed", "OnTrack could not safely extract this syllabus."
+        ))
 
     errors = storage.validate_syllabus(candidate)
     blocking = [error for error in errors if not error.startswith("WARNING")]
@@ -315,8 +327,10 @@ async def _run_notes_extraction(
         )
     except asyncio.TimeoutError:
         await _fail(material, "processing_timeout", "Processing took too long. Try a smaller or simpler document.", 504)
-    except Exception:
-        await _fail(material, "chunking_failed", "OnTrack could not safely process this lecture material.", 422)
+    except Exception as exc:
+        await _fail(material, *_llm_failure_details(
+            exc, "chunking_failed", "OnTrack could not safely process this lecture material."
+        ))
 
     blocking = [error for error in storage.validate_notes(chunked) if not error.startswith("WARNING")]
     if blocking:

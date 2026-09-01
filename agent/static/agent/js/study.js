@@ -1,8 +1,6 @@
 import { initNavigation } from "./core/navigation.js";
 import { apiRequest } from "./core/api.js";
 import { showToast } from "./core/toast.js";
-import "./flashcards.js";
-import "./quiz.js";
 
 initNavigation();
 
@@ -48,6 +46,7 @@ const STEP_IDS = ["guided-session-flashcard-step", "guided-session-quiz-step", "
 
 const state = {
   session: null,
+  plan: null,
   courseTopics: [],
   targets: null,
   flashcards: [],
@@ -59,6 +58,78 @@ const state = {
   quizAskedQuestions: [],
   currentQuestion: null,
 };
+
+let planRequest = 0;
+
+function renderGroundedPlan(plan) {
+  const title = byId("guided-plan-title");
+  const rationale = byId("guided-plan-rationale");
+  const list = byId("guided-plan-list");
+  const sources = byId("guided-plan-sources");
+  const sourceList = byId("guided-plan-source-list");
+  const duration = byId("guided-plan-duration");
+  if (!title || !rationale || !list || !sources || !sourceList) return;
+
+  title.textContent = plan.topic ? "Focus on " + plan.topic : "Course-wide review";
+  rationale.textContent = plan.rationale;
+  duration.textContent = plan.duration_minutes + " min";
+  list.replaceChildren(...plan.steps.map((step, index) => {
+    const item = document.createElement("li");
+    const number = document.createElement("span");
+    const color = step.kind === "quiz" ? "orange" : step.kind === "summary" ? "purple" : "";
+    number.className = ("guided-plan-number " + color).trim();
+    number.textContent = String(index + 1);
+    const copy = document.createElement("div");
+    const name = document.createElement("strong");
+    const detail = document.createElement("small");
+    const count = document.createElement("span");
+    name.textContent = step.title;
+    detail.textContent = step.detail;
+    count.textContent = step.count;
+    copy.append(name, detail);
+    item.append(number, copy, count);
+    return item;
+  }));
+
+  sourceList.replaceChildren(...plan.sources.map(source => {
+    const chip = document.createElement("span");
+    chip.className = "guided-source-chip " + source.kind;
+    chip.textContent = source.title;
+    chip.title = source.kind === "note" ? "Course note" : "Reference";
+    return chip;
+  }));
+  sources.hidden = plan.sources.length === 0;
+}
+
+async function loadGroundedPlan({ throwOnError = false } = {}) {
+  const courseId = byId("guided-session-course")?.value;
+  if (!courseId) return null;
+  const requestId = ++planRequest;
+  const params = new URLSearchParams({
+    topic: byId("guided-session-topic")?.value || "",
+    duration_minutes: byId("guided-session-duration")?.value || "15",
+    mode: byId("guided-session-mode")?.value || "mixed",
+  });
+  const title = byId("guided-plan-title");
+  if (title) title.textContent = "Reading your notes and references…";
+  try {
+    const path = "/api/courses/" + encodeURIComponent(courseId) + "/study/plan/?" + params;
+    const plan = await apiRequest(path);
+    if (requestId !== planRequest) return state.plan;
+    state.plan = plan;
+    renderGroundedPlan(plan);
+    return plan;
+  } catch (error) {
+    if (requestId === planRequest) {
+      state.plan = null;
+      if (title) title.textContent = "We couldn’t build this plan";
+      const rationale = byId("guided-plan-rationale");
+      if (rationale) rationale.textContent = errorMessage(error);
+    }
+    if (throwOnError) throw error;
+    return null;
+  }
+}
 
 // What the panel should currently look like, independent of the live DOM.
 // enforceUi() below is the ONLY place that writes `.hidden` — every other
@@ -132,7 +203,14 @@ async function loadCourseOptions() {
         topicSelect.value = preselectTopic;
       }
     }
-    select.addEventListener("change", () => updateTopicOptions(select.value));
+    if (!select.dataset.guidedBound) {
+      select.dataset.guidedBound = "true";
+      select.addEventListener("change", () => {
+        updateTopicOptions(select.value);
+        loadGroundedPlan();
+      });
+    }
+    await loadGroundedPlan();
   } catch (error) {
     showAlert(errorMessage(error), true);
   }
@@ -140,7 +218,7 @@ async function loadCourseOptions() {
   function updateTopicOptions(courseId) {
     const topics = state.courseTopics[courseId] || [];
     topicSelect.replaceChildren(
-      Object.assign(document.createElement("option"), { value: "", textContent: "All topics" }),
+      Object.assign(document.createElement("option"), { value: "", textContent: "Recommended from sources" }),
       ...topics.map(topic => Object.assign(document.createElement("option"), { value: topic, textContent: topic })),
     );
   }
@@ -149,6 +227,17 @@ async function loadCourseOptions() {
 function updateProgressLabel(text) {
   const label = byId("guided-session-progress-label");
   if (label) label.textContent = text;
+  const bar = byId("guided-session-progress-bar");
+  if (!bar) return;
+  if (text === "Session complete") {
+    bar.style.width = "100%";
+    return;
+  }
+  const match = text.match(/(\d+)\s*\/\s*(\d+)/);
+  if (!match) return;
+  const offset = text.startsWith("Flashcards") ? 0 : text.startsWith("Quiz") ? 45 : 78;
+  const share = text.startsWith("Flashcards") ? 45 : text.startsWith("Quiz") ? 33 : 20;
+  bar.style.width = `${Math.min(98, offset + (Number(match[1]) / Number(match[2])) * share)}%`;
 }
 
 async function startSession(event) {
@@ -156,13 +245,17 @@ async function startSession(event) {
   clearAlert();
   const courseId = byId("guided-session-course").value;
   if (!courseId) { showAlert("Choose a course first.", true); return; }
-  const topic = byId("guided-session-topic").value;
+  const selectedTopic = byId("guided-session-topic").value;
   const durationMinutes = Number(byId("guided-session-duration").value);
   const mode = byId("guided-session-mode").value;
 
   ui.loadingHidden = false;
+  ui.setupHidden = true;
   enforceUi();
   try {
+    const plan = await loadGroundedPlan({ throwOnError: true });
+    if (!plan?.grounded) throw new Error(plan?.rationale || "Add course notes before starting this session.");
+    const topic = selectedTopic || plan?.topic || "";
     const session = await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/study/sessions/`, {
       method: "POST",
       body: JSON.stringify({ topic, duration_minutes: durationMinutes, mode }),
@@ -184,6 +277,7 @@ async function startSession(event) {
     }
   } catch (error) {
     showAlert(errorMessage(error), true);
+    ui.setupHidden = false;
   } finally {
     ui.loadingHidden = true;
     enforceUi();
@@ -245,6 +339,8 @@ function showFlashcard() {
   const card = state.flashcards[state.flashcardIndex];
   if (!card) { finishFlashcardPhase(); return; }
   byId("guided-session-flashcard-text").textContent = card.term;
+  const side = byId("guided-flashcard-side");
+  if (side) side.textContent = "Question";
   updateProgressLabel(`Flashcards · ${state.flashcardsDone} / ${state.targets.flashcardTarget}`);
 }
 
@@ -253,6 +349,8 @@ function flipFlashcard() {
   if (!card) return;
   state.flashcardFlipped = !state.flashcardFlipped;
   byId("guided-session-flashcard-text").textContent = state.flashcardFlipped ? card.definition : card.term;
+  const side = byId("guided-flashcard-side");
+  if (side) side.textContent = state.flashcardFlipped ? "Answer" : "Question";
   ui.ratingsHidden = !state.flashcardFlipped;
   enforceUi();
 }
@@ -365,6 +463,11 @@ function showFeedback(result, question) {
     ? "Correct!"
     : `Not quite — the correct answer is “${result.correct_answer}”.`;
   byId("guided-session-feedback-explanation").textContent = question.explanation || "";
+  const feedbackIcon = document.querySelector(".guided-feedback-icon");
+  if (feedbackIcon) {
+    feedbackIcon.textContent = result.correct ? "✓" : "!";
+    feedbackIcon.classList.toggle("incorrect", !result.correct);
+  }
   if (question.citation) {
     ui.feedbackSourceHidden = false;
     ui.feedbackSourceHref = question.citation.url || "#";
@@ -449,7 +552,7 @@ function bind() {
     if (target.closest("#guided-session-recall-skip")) return finishSession();
     if (target.closest("#guided-session-restart")) return resetToSetup();
     if (target.closest("#guided-session-end-early")) return finishSession();
-    if (target.closest("#study-subnav-progress, #study-subnav-flashcards, #study-subnav-quiz, #study-subnav-grades")) {
+    if (target.closest("#study-subnav-progress, #study-subnav-grades")) {
       ui.guidedRootHidden = true;
       enforceUi();
     }
@@ -457,6 +560,10 @@ function bind() {
       ui.guidedRootHidden = false;
       enforceUi();
     }
+  });
+  document.addEventListener("change", event => {
+    if (!["guided-session-topic", "guided-session-duration", "guided-session-mode"].includes(event.target.id)) return;
+    loadGroundedPlan();
   });
 }
 

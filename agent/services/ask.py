@@ -797,7 +797,7 @@ async def ask_async(
 
     create_kwargs = {
         "model": MODEL,
-        "max_tokens": 2048,
+        "max_tokens": 8000,
         "system": ASK_SYSTEM_PROMPT,
         "messages": messages,
     }

@@ -16,7 +16,9 @@ function destination(view, topic = "", resume = "") {
 }
 
 function setTopicLinks(topic) {
-  byId("start-quiz").href = destination("quiz", topic);
+  const quizLink = byId("start-quiz");
+  quizLink.href = `/courses/${encodeURIComponent(courseId)}/study/quiz/${topic ? `?topic=${encodeURIComponent(topic)}` : ""}`;
+  quizLink.textContent = "Start practice quiz";
   byId("review-flashcards").href = `/courses/${encodeURIComponent(courseId)}/study/flashcards/due/`;
   byId("study-quiz-topic").textContent = topic || "Choose a topic";
 }
