@@ -201,7 +201,9 @@ def build_course_header(course_id: str, user, today: date | None = None) -> dict
     record = _base_record(course_id, user)
     try:
         deadlines = [
-            event for event in calendar_events.upcoming_events(user, course_ids=[course_id], within_days=None)
+            event for event in calendar_events.upcoming_events(
+                user, course_ids=[course_id], within_days=None, today=today,
+            )
             if not event.get("completed")
         ]
     except (storage.SyllabusStorageError, storage.CustomEventsStorageError, DatabaseError):
@@ -234,7 +236,9 @@ def build_courses_page(user, semester: str | None = None, archived: bool = False
     active_ids = [record["id"] for record in base_records if record["semester"] == selected and not record["archived"] and not record["is_draft"]]
     try:
         all_deadlines = [
-            event for event in calendar_events.upcoming_events(user, course_ids=active_ids, within_days=None)
+            event for event in calendar_events.upcoming_events(
+                user, course_ids=active_ids, within_days=None, today=today,
+            )
             if _in_semester(event.get("date"), selected)
         ]
     except (storage.SyllabusStorageError, storage.CustomEventsStorageError, DatabaseError):

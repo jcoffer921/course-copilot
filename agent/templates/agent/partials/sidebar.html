@@ -14,6 +14,12 @@
     <a href="{% url 'settings-page' %}" class="app-nav-link{% if page_name == 'settings' %} active{% endif %}"{% if page_name == 'settings' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-settings"/></svg>Settings</a>
   </nav>
 
+  <section class="app-support-links" aria-label="Help and support">
+    <span>Help &amp; support</span>
+    <a href="{% url 'feedback-page' %}"{% if page_name == 'feedback' %} class="active" aria-current="page"{% endif %}>Send feedback</a>
+    <a href="{% url 'contact-page' %}">Contact us</a>
+  </section>
+
   <div class="app-account">
     <div class="app-account-avatar">{{ user_initials }}</div>
     <div class="app-account-copy">

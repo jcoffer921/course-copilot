@@ -606,6 +606,26 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
     if len(raw_deadlines) > MAX_CALENDAR_ACTIONS or any(not isinstance(raw, dict) for raw in raw_deadlines):
         raise ValueError("Cora returned an invalid number or shape of calendar actions.")
     pending_deadlines = [_normalize_pending_deadline(raw, course_id) for raw in raw_deadlines]
+    for pending in pending_deadlines:
+        conflicts = []
+        if pending["action"] in ("create", "update") and pending["date"] and pending["time"]:
+            # Cross-course by design (course_ids=None inside detect_conflicts'
+            # all_events() call) — a double-booking with a different course's
+            # event is exactly the kind of thing that must be surfaced, not
+            # missed because we only looked at the current course. Wrapped in
+            # sync_to_async: detect_conflicts hits the ORM and this function
+            # runs inside the ASGI event loop.
+            conflicts = await sync_to_async(calendar_events.detect_conflicts)(
+                user, pending["date"], pending["time"], pending["end_time"],
+                exclude_event_id=pending["event_id"],
+            )
+        pending["conflicts"] = [
+            {
+                "id": c["id"], "title": c["title"], "date": c["date"],
+                "time": c.get("time"), "end_time": c.get("end_time"), "course_id": c.get("course_id"),
+            }
+            for c in conflicts
+        ]
     missing = [m for m in data.get("missing", []) if m in {"title", "date", "course_id", "event_match"}]
     if not pending_deadlines and "title" not in missing:
         missing.append("title")
@@ -616,6 +636,7 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
     if any(pending["action"] in ("update", "delete") and not pending["event_id"] for pending in pending_deadlines) and "event_match" not in missing:
         missing.append("event_match")
     first_pending = pending_deadlines[0] if len(pending_deadlines) == 1 else None
+    has_conflicts = not missing and any(pending["conflicts"] for pending in pending_deadlines)
     default_message = (
         "I need a little more detail before I can do that."
         if missing
@@ -625,13 +646,22 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
         if any(p["action"] == "delete" for p in pending_deadlines)
         else "I can add this to your calendar after you confirm the details."
     )
+    answer = data.get("message") or default_message
+    if has_conflicts:
+        # Surface the overlap so the student decides — never silently
+        # double-book or auto-reschedule around a detected conflict.
+        answer += (
+            " Heads up: this overlaps with something already on your calendar — let me know if "
+            "you'd like to proceed anyway or pick a different time."
+        )
     return {
-        "answer": data.get("message") or default_message,
+        "answer": answer,
         "grounded": True,
         "sources": ["syllabus"],
         "pending_deadline": None if missing else first_pending,
         "pending_deadlines": [] if missing else pending_deadlines,
         "deadline_missing": missing,
+        "deadline_conflicts": has_conflicts,
     }
 
 

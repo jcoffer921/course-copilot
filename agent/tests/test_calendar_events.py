@@ -176,6 +176,17 @@ def test_date_only_deadline_does_not_shift_with_display_timezone(isolated_course
     assert east_date == west_date == due
 
 
+def test_upcoming_events_honors_injected_today(isolated_courses_dir, user):
+    _seed_syllabus(user, [
+        {"date": "2026-08-29", "title": "Future from injected date", "type": "hw"},
+        {"date": "2026-08-25", "title": "Past from injected date", "type": "hw"},
+    ])
+
+    rows = calendar_events.upcoming_events(user, today=date(2026, 8, 26))
+
+    assert [row["title"] for row in rows] == ["Future from injected date"]
+
+
 def test_study_plan_events_are_explicitly_labeled(isolated_courses_dir, user):
     event = custom_events.create_event(
         None,
@@ -243,3 +254,70 @@ def test_all_events_isolates_corrupt_course(isolated_courses_dir, user):
     events = calendar_events.all_events(user)
 
     assert [event["title"] for event in events] == ["Good event"]
+
+
+def test_calendar_snapshot_surfaces_malformed_date_as_a_warning_not_a_silent_drop(isolated_courses_dir, user):
+    # A single bad `date` entry inside an otherwise-valid syllabus.json used
+    # to vanish from the calendar with zero trace anywhere — only whole-file
+    # JSON corruption was ever reported. It must now show up in `warnings`
+    # (still isolated to that one entry — the rest of the course is unaffected).
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Computer Science",
+        "dates": [
+            {"date": "2026-09-03", "title": "Good event", "type": "hw"},
+            {"date": "not-a-date", "title": "Broken entry", "type": "hw"},
+        ],
+        "grading": [], "topics": [],
+    }, user)
+
+    snapshot = calendar_events.calendar_snapshot(user)
+
+    assert [event["title"] for event in snapshot["events"]] == ["Good event"]
+    assert snapshot["warnings"] == [
+        {"scope": "cs101", "detail": "'Broken entry' has an invalid date and was skipped."}
+    ]
+
+
+def test_detect_conflicts_finds_overlap_across_different_courses(isolated_courses_dir, user):
+    due = _future()
+    custom_events.create_event("math201", due, "10:00", "Math lecture", "class", user=user, end_time="11:00")
+
+    conflicts = calendar_events.detect_conflicts(user, due, "10:30", "11:30")
+
+    assert [c["title"] for c in conflicts] == ["Math lecture"]
+
+
+def test_detect_conflicts_no_overlap_for_back_to_back_times(isolated_courses_dir, user):
+    due = _future()
+    custom_events.create_event("cs101", due, "10:00", "First block", "class", user=user, end_time="11:00")
+
+    conflicts = calendar_events.detect_conflicts(user, due, "11:00", "12:00")
+
+    assert conflicts == []
+
+
+def test_detect_conflicts_excludes_the_event_being_moved_against_its_own_prior_self(isolated_courses_dir, user):
+    due = _future()
+    event = custom_events.create_event("cs101", due, "10:00", "Study block", "class", user=user, end_time="11:00")
+
+    conflicts = calendar_events.detect_conflicts(user, due, "10:00", "11:00", exclude_event_id=event["id"])
+
+    assert conflicts == []
+
+
+def test_detect_conflicts_all_day_candidate_never_conflicts(isolated_courses_dir, user):
+    due = _future()
+    custom_events.create_event("cs101", due, "09:00", "Timed event", "class", user=user, end_time="17:00")
+
+    conflicts = calendar_events.detect_conflicts(user, due, None)
+
+    assert conflicts == []
+
+
+def test_detect_conflicts_defaults_missing_end_time_to_one_hour(isolated_courses_dir, user):
+    due = _future()
+    custom_events.create_event("cs101", due, "10:00", "Untimed-end event", "class", user=user)
+
+    conflicts = calendar_events.detect_conflicts(user, due, "10:30", "11:00")
+
+    assert [c["title"] for c in conflicts] == ["Untimed-end event"]

@@ -4,6 +4,8 @@ from . import page_views
 
 
 urlpatterns = [
+    path("privacy/", page_views.privacy_page, name="privacy-page"),
+    path("contact/", page_views.contact_page, name="contact-page"),
     path("", page_views.app_root, name="ontrack"),
     path("dashboard/", page_views.dashboard_page, name="dashboard-page"),
     path("calendar/", page_views.calendar_page, name="calendar-page"),
@@ -21,4 +23,5 @@ urlpatterns = [
     path("cora/", page_views.cora_page, name="cora-page"),
     path("study/", page_views.study_page, name="study-page"),
     path("settings/", page_views.settings_page, name="settings-page"),
+    path("feedback/", page_views.feedback_page, name="feedback-page"),
 ]

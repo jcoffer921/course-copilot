@@ -13,8 +13,12 @@ from.
 """
 
 from datetime import datetime, timezone
+from pathlib import Path
+import re
 
-from . import mastery, reminders, storage
+from agent.models import CourseMaterial
+
+from . import mastery, material_files, reminders, storage
 
 # A deadline this far out (or further) contributes ~0 urgency; overdue or
 # due-today deadlines are maximally urgent.
@@ -39,6 +43,9 @@ WEIGHT_IMPORTANCE = 0.15
 WEIGHT_RECENCY = 0.25
 
 SHORT_SESSION_MINUTES = 12  # at/below this, suggest flashcards only, not a full mixed session
+GROUNDING_SUFFIXES = {".pdf", ".docx", ".pptx"}
+MAX_SOURCES = 3
+STOP_WORDS = {"and", "are", "for", "from", "into", "that", "the", "this", "with"}
 
 
 def _parse_date(value):
@@ -167,6 +174,111 @@ def _is_dismissed(dismissed: dict, topic: str, now: datetime) -> bool:
     return dismissed_until > now
 
 
+def _topic_tokens(value: str) -> set:
+    return {
+        token for token in re.findall(r"[a-z0-9]+", str(value or "").lower())
+        if len(token) > 2 and token not in STOP_WORDS
+    }
+
+
+def _excerpt(value: str, limit: int = 220) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit - 1].rstrip()}…"
+
+
+def _material_source(material, *, excerpt: str, page=None, chunk_id=None, score=0) -> dict:
+    suffix = Path(material.original_filename).suffix.lower()
+    return {
+        "material_id": str(material.material_id),
+        "material_type": material.material_type,
+        "filename": material.original_filename,
+        "file_type": suffix.lstrip(".").upper(),
+        "excerpt": _excerpt(excerpt),
+        "page": page,
+        "chunk_id": chunk_id,
+        "download_url": f"/api/courses/{material.course_id}/materials/{material.material_id}/download/",
+        "_score": score,
+    }
+
+
+def _matching_source(material, topic: str, syllabus: dict, user):
+    """Return the strongest traceable excerpt for this topic in one upload."""
+    topic_normalized = " ".join(str(topic).lower().split())
+    tokens = _topic_tokens(topic)
+    try:
+        if material.material_type == CourseMaterial.TYPE_SYLLABUS:
+            candidate = material.extracted_data if isinstance(material.extracted_data, dict) else syllabus
+            for syllabus_topic in candidate.get("topics", []):
+                if " ".join(str(syllabus_topic).lower().split()) == topic_normalized:
+                    return _material_source(
+                        material, excerpt=f"Course topic: {syllabus_topic}", score=20,
+                    )
+            return None
+
+        if material.material_type in {CourseMaterial.TYPE_NOTES, CourseMaterial.TYPE_SLIDES}:
+            document = storage.read_lecture(material.course_id, material.source_key, user) or {}
+            best = None
+            for chunk in document.get("chunks", []):
+                if not isinstance(chunk, dict):
+                    continue
+                chunk_topic = str(chunk.get("topic") or "")
+                chunk_text = str(chunk.get("text") or "")
+                exact = chunk_topic == topic and bool(chunk_text.strip())
+                if not exact:
+                    continue
+                topic_overlap = len(tokens & _topic_tokens(chunk_topic))
+                text_overlap = len(tokens & _topic_tokens(chunk_text))
+                score = 100 + topic_overlap * 20 + text_overlap
+                if score <= 0 or (best is not None and score <= best[0]):
+                    continue
+                best = (score, chunk, chunk_text or chunk_topic)
+            if best:
+                score, chunk, text = best
+                return _material_source(
+                    material, excerpt=text, page=chunk.get("page"),
+                    chunk_id=chunk.get("id"), score=score + 40,
+                )
+            return None
+
+        if material.material_type == CourseMaterial.TYPE_REFERENCE:
+            document = storage.read_reference(material.course_id, material.source_key, user) or {}
+            best = None
+            for paragraph in re.split(r"\n\s*\n|(?<=[.!?])\s+", str(document.get("text") or "")):
+                overlap = len(tokens & _topic_tokens(paragraph))
+                if overlap and (best is None or overlap > best[0]):
+                    best = (overlap, paragraph)
+            if best:
+                return _material_source(material, excerpt=best[1], score=best[0] + 30)
+    except (OSError, TypeError, ValueError, storage.NotesStorageError, storage.ReferencesStorageError):
+        return None
+    return None
+
+
+def _grounded_sources(course_id: str, topic: str, syllabus: dict, user) -> list:
+    rows = CourseMaterial.objects.filter(
+        user=user, course_id=course_id, processing_status=CourseMaterial.STATUS_READY,
+    ).exclude(review_status=CourseMaterial.REVIEW_SUPERSEDED).order_by("-uploaded_at")
+    sources = []
+    for material in rows:
+        suffix = Path(material.original_filename).suffix.lower()
+        if suffix not in GROUNDING_SUFFIXES or Path(material.storage_key).suffix.lower() != suffix:
+            continue
+        if material.material_type == CourseMaterial.TYPE_SYLLABUS and material.review_status != CourseMaterial.REVIEW_CONFIRMED:
+            continue
+        try:
+            if not material_files.object_storage.exists(user, course_id, material.storage_key):
+                continue
+        except (OSError, ValueError):
+            continue
+        source = _matching_source(material, topic, syllabus, user)
+        if source:
+            sources.append(source)
+    sources.sort(key=lambda source: (-source.pop("_score"), source["filename"].lower()))
+    return sources[:MAX_SOURCES]
+
+
 def candidates_for_course(course_id: str, user, now: datetime) -> list:
     """One ranked candidate per syllabus topic that isn't already
     exam-ready or dismissed/deferred. Never raises for missing grading,
@@ -196,6 +308,13 @@ def candidates_for_course(course_id: str, user, now: datetime) -> list:
         if status == mastery.EXAM_READY:
             continue  # nothing left to gain from recommending this one
 
+        sources = _grounded_sources(course_id, topic, syllabus, user)
+        if not any(source.get("chunk_id") for source in sources):
+            # Syllabus headings and reference passages are useful supporting
+            # evidence, but the current study generators require a processed
+            # note/slide chunk for the exact topic.
+            continue
+
         score = row["score"] if row else None
         last_seen = row["last_seen"] if row else None
         gap = _mastery_gap(score)
@@ -214,6 +333,7 @@ def candidates_for_course(course_id: str, user, now: datetime) -> list:
             "nearest_deadline": {"title": nearest["title"], "date": nearest["date"]} if nearest else None,
             "grading_component": component,
             "reason": _explain(topic, status, recency, nearest, component),
+            "sources": sources,
         })
     return candidates
 

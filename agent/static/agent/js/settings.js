@@ -19,6 +19,7 @@ function fill(data) {
   $("settings-timezone").value = data.timezone;
   $("settings-duration").value = String(data.preferred_session_minutes);
   $("settings-reminder").value = String(data.reminder_lead_minutes);
+  $("settings-reminder-time").value = data.study_reminder_time || "09:00";
   $("settings-notifications").checked = data.notifications_enabled;
   document.querySelectorAll(".settings-days input").forEach(input => { input.checked = data.available_study_days.includes(Number(input.value)); });
   $("calendar-state").textContent = data.calendar_connected ? "Google Calendar connected" : "Calendar not connected — optional";
@@ -40,14 +41,20 @@ async function save(body, errorId) {
   } catch (error) { errorNode.textContent = message(error); errorNode.hidden = false; }
 }
 
-$("profile-form")?.addEventListener("submit", event => { event.preventDefault(); save({ display_name: $("settings-display-name").value, timezone: $("settings-timezone").value, notifications_enabled: $("settings-notifications").checked }, "profile-error"); });
+$("profile-form")?.addEventListener("submit", event => { event.preventDefault(); save({ display_name: $("settings-display-name").value, timezone: $("settings-timezone").value }, "profile-error"); });
 $("preferences-form")?.addEventListener("submit", event => {
   event.preventDefault();
   save({
     preferred_session_minutes: Number($("settings-duration").value), reminder_lead_minutes: Number($("settings-reminder").value),
     available_study_days: [...document.querySelectorAll(".settings-days input:checked")].map(input => Number(input.value)),
-    notifications_enabled: $("settings-notifications").checked,
   }, "preferences-error");
+});
+$("notifications-form")?.addEventListener("submit", event => {
+  event.preventDefault();
+  save({
+    notifications_enabled: $("settings-notifications").checked,
+    study_reminder_time: $("settings-reminder-time").value,
+  }, "notifications-error");
 });
 $("settings-retry")?.addEventListener("click", load);
 

@@ -2,6 +2,8 @@ import { apiRequest } from "./core/api.js";
 import { initNavigation } from "./core/navigation.js";
 import { initCourseHeader } from "./core/course_header.js";
 import { focusFirst, restoreFocus } from "./core/modal.js";
+import { confirmDialog } from "./core/dialogs.js?v=20260901-1";
+import { showToast } from "./core/toast.js";
 
 initNavigation();
 const root = document.querySelector("[data-page-section='course-grades']");
@@ -278,13 +280,13 @@ async function saveItem(event) {
 async function handleDelete(itemId, { fromModal = false } = {}) {
   const item = items.find(i => i.id === itemId);
   if (!item) return;
-  if (!window.confirm(`Delete "${item.title}"? This can't be undone.`)) return;
+  if (!(await confirmDialog({ kicker: "Permanent action", title: `Delete “${item.title}”?`, message: "This grade item cannot be recovered.", confirmLabel: "Delete grade", danger: true }))) return;
   try {
     await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/grades/items/${encodeURIComponent(itemId)}/`, { method: "DELETE" });
     if (fromModal) setModal(false);
     await load();
   } catch (error) {
-    window.alert(error.message);
+    showToast(error.message, "error");
   }
 }
 

@@ -1,7 +1,10 @@
 """Authenticated browser pages for the OnTrack application shell."""
 
+import logging
+
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
+from django.core.cache import cache
 from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -11,8 +14,12 @@ from zoneinfo import available_timezones
 
 from .services import storage
 from .services import interactive_study
+from .services import support
 from .services.study_sessions import StudySessionNotFoundError
 from .services.storage import COURSE_ID_RE
+from .forms import ContactRequestForm
+
+logger = logging.getLogger(__name__)
 
 
 PAGE_SCRIPTS = {
@@ -30,6 +37,7 @@ PAGE_SCRIPTS = {
     "study": "agent/js/study.js",
     "exam": "agent/js/exams.js",
     "settings": "agent/js/settings.js",
+    "feedback": "agent/js/feedback.js",
     "practice-attempt": "agent/js/practice_attempt.js",
     "interactive-flashcards": "agent/js/interactive_flashcards.js",
 }
@@ -65,7 +73,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
     modern_page_names = {
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
         "course-mastery", "course-grades", "study-dashboard", "exam", "settings",
-        "practice-quiz-setup", "practice-attempt", "interactive-flashcards",
+        "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback",
     }
     modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
     return render(
@@ -97,6 +105,53 @@ def _require_owned_course(request, course_id):
     """Keep existence and ownership indistinguishable at browser-page boundaries."""
     if not storage.course_or_draft_exists(course_id, request.user):
         raise Http404("Course not found.")
+
+
+def privacy_page(request):
+    return render(request, "agent/privacy.html", {"contact_email": settings.ONTRACK_SUPPORT_EMAIL or settings.DEFAULT_FROM_EMAIL})
+
+
+def _contact_rate_limited(request):
+    key = f"ontrack:contact:{request.META.get('REMOTE_ADDR', 'unknown')}"
+    if cache.add(key, 1, timeout=3600):
+        return False
+    try:
+        return cache.incr(key) > 5
+    except ValueError:
+        cache.set(key, 1, timeout=3600)
+        return False
+
+
+def contact_page(request):
+    authenticated = request.user.is_authenticated
+    initial = {}
+    if authenticated:
+        initial = {
+            "name": request.user.get_full_name() or request.user.first_name or request.user.username,
+            "email": request.user.email,
+        }
+    submitted = False
+    form = ContactRequestForm(request.POST or None, initial=initial if request.method == "GET" else None)
+    response_status = 200
+    if request.method == "POST":
+        if _contact_rate_limited(request):
+            form.add_error(None, "You've sent several requests recently. Please wait an hour before trying again.")
+            response_status = 429
+        elif form.is_valid():
+            contact_request = form.save(commit=False)
+            contact_request.user = request.user if authenticated else None
+            contact_request.request_id = getattr(request, "request_id", "")
+            contact_request.save()
+            support.notify_support(contact_request)
+            submitted = True
+            form = ContactRequestForm(initial=initial)
+    response = render(request, "agent/contact.html", {
+        "form": form,
+        "submitted": submitted,
+        "support_email": settings.ONTRACK_SUPPORT_EMAIL or settings.DEFAULT_FROM_EMAIL,
+    })
+    response.status_code = response_status
+    return response
 
 
 @login_required
@@ -237,4 +292,11 @@ def settings_page(request):
     return _render_page(
         request, "agent/settings.html", page_name="settings", page_title="Settings", initial_tab="dashboard",
         timezone_choices=sorted(available_timezones()),
+    )
+
+
+@login_required
+def feedback_page(request):
+    return _render_page(
+        request, "agent/feedback.html", page_name="feedback", page_title="Send feedback", initial_tab="support",
     )

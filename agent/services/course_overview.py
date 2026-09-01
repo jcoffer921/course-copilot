@@ -106,10 +106,12 @@ def _grades_section(course_id: str, user) -> dict:
     }
 
 
-def _schedule_section(course_id: str, user) -> dict:
+def _schedule_section(course_id: str, user, today: date) -> dict:
     try:
         events = [
-            event for event in calendar_events.upcoming_events(user, course_ids=[course_id], within_days=None)
+            event for event in calendar_events.upcoming_events(
+                user, course_ids=[course_id], within_days=None, today=today,
+            )
             if not event.get("completed")
         ]
     except (storage.SyllabusStorageError, storage.CustomEventsStorageError, DatabaseError) as e:
@@ -139,6 +141,6 @@ def build_course_overview(course_id: str, user, today: date | None = None) -> di
         "study": _study_section(course_id, user),
         "mastery": _mastery_section(course_id, user, header["mastery"]),
         "grades": _grades_section(course_id, user),
-        "schedule": _schedule_section(course_id, user),
+        "schedule": _schedule_section(course_id, user, today),
         "cora": _cora_section(course_id, user),
     }

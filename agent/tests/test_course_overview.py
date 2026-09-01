@@ -126,11 +126,11 @@ def test_sections_report_empty_not_error_on_syllabus_only_course(isolated_course
     # available=True with count=1 even with nothing else uploaded.
     assert overview["materials"]["count"] == 1
     assert overview["materials"]["recent"][0]["material_id"] == "legacy-syllabus"
-    # study is the other legitimate exception: recommendations.py offers a
-    # "start studying" candidate for any syllabus topic even with zero
-    # activity — a useful starter action, not fabricated ranking data.
-    assert overview["study"]["available"] is True
-    assert overview["study"]["recommendation"]["topic"] == "Recursion"
+    # A legacy syllabus JSON is not proof that its original upload still
+    # exists. Cora now waits for a matching stored PDF/DOCX/PPTX rather than
+    # presenting an untraceable recommendation.
+    assert overview["study"]["available"] is False
+    assert overview["study"]["recommendation"] is None
     assert overview["study"]["in_progress_session"] is None
     for section in ("priority", "mastery", "grades", "schedule", "cora"):
         assert overview[section]["available"] is False, section

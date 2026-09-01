@@ -21,6 +21,7 @@ class UserProfileUpdateSerializer(serializers.Serializer):
         required=False, allow_empty=False, child=serializers.IntegerField(min_value=0, max_value=6), max_length=7,
     )
     reminder_lead_minutes = serializers.ChoiceField(required=False, choices=[0, 5, 10, 15, 30, 60, 1440])
+    study_reminder_time = serializers.TimeField(required=False, format="%H:%M", input_formats=["%H:%M"])
 
     def validate_timezone(self, value):
         try:
@@ -130,6 +131,13 @@ class ConfirmDeadlineActionsRequestSerializer(serializers.Serializer):
 
 class NotificationReadSerializer(serializers.Serializer):
     ids = serializers.ListField(child=serializers.IntegerField(min_value=1), required=False, allow_empty=True, default=None)
+
+
+class PilotFeedbackSerializer(serializers.Serializer):
+    category = serializers.ChoiceField(choices=["bug", "confusing", "idea", "other"])
+    message = serializers.CharField(allow_blank=False, max_length=2000, trim_whitespace=True)
+    page = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    anonymous = serializers.BooleanField(required=False, default=True, write_only=True)
 
 
 class ExtractSyllabusRequestSerializer(serializers.Serializer):

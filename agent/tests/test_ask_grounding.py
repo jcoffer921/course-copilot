@@ -243,6 +243,110 @@ async def test_calendar_tool_proposes_change_without_writing_it(isolated_courses
 
 
 @pytest.mark.django_db
+async def test_calendar_tool_move_request_surfaces_conflict_in_a_different_course(
+    isolated_courses_dir, monkeypatch, django_user_model,
+):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-tool-conflict")
+    _seed_course("testcourse", user)
+    _seed_course("mathcourse", user)
+    existing = await sync_to_async(custom_events.create_event)(
+        "mathcourse", "2026-09-14", "10:00", "Math lecture", "class", user=user, end_time="11:00",
+    )
+    tool_input = {
+        "is_deadline_request": True,
+        "missing": [],
+        "deadlines": [{
+            "action": "create",
+            "event_id": None,
+            "title": "CS301 midterm",
+            "course_id": "testcourse",
+            "date": "2026-09-14",
+            "time": "10:30",
+            "end_time": "11:30",
+            "type": "test_quiz",
+        }],
+        "message": "Add CS301 midterm on Sep 14 at 10:30?",
+    }
+    fake_client = _FakeClient(_FakeResponseWithContent([
+        _FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, tool_input),
+    ]))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async(
+        "testcourse", "move my CS301 exam to Sep 14 at 10:30", user=user,
+    )
+
+    assert result["deadline_conflicts"] is True
+    conflicts = result["pending_deadlines"][0]["conflicts"]
+    assert [c["title"] for c in conflicts] == ["Math lecture"]
+    assert conflicts[0]["course_id"] == "mathcourse"
+    # Nothing is written by the proposal step — the conflict is surfaced,
+    # never auto-resolved (no time nudge, no silent double-booking, no block).
+    events = await sync_to_async(custom_events.list_events)(user=user)
+    assert [event["id"] for event in events] == [existing["id"]]
+
+
+@pytest.mark.django_db
+async def test_calendar_tool_no_conflict_flag_when_times_dont_overlap(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-tool-no-conflict")
+    _seed_course("testcourse", user)
+    await sync_to_async(custom_events.create_event)(
+        "testcourse", "2026-09-14", "08:00", "Morning block", "class", user=user, end_time="09:00",
+    )
+    tool_input = {
+        "is_deadline_request": True,
+        "missing": [],
+        "deadlines": [{
+            "action": "create", "event_id": None, "title": "Project 1", "course_id": "testcourse",
+            "date": "2026-09-14", "time": "17:00", "end_time": None, "type": "project",
+        }],
+        "message": "Add Project 1 on Sep 14 at 5:00 PM?",
+    }
+    fake_client = _FakeClient(_FakeResponseWithContent([
+        _FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, tool_input),
+    ]))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "add Project 1 on September 14 at 5", user=user)
+
+    assert result["deadline_conflicts"] is False
+    assert result["pending_deadlines"][0]["conflicts"] == []
+
+
+@pytest.mark.django_db
+async def test_calendar_tool_delete_proposal_does_not_delete_without_confirmation(
+    isolated_courses_dir, monkeypatch, django_user_model,
+):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-tool-delete-proposal")
+    _seed_course("testcourse", user)
+    existing = await sync_to_async(custom_events.create_event)(
+        "testcourse", "2026-09-14", None, "Project 1", "project", user=user,
+    )
+    tool_input = {
+        "is_deadline_request": True,
+        "missing": [],
+        "deadlines": [{
+            "action": "delete", "event_id": existing["id"], "title": "Project 1",
+            "course_id": "testcourse", "date": "2026-09-14", "time": None, "end_time": None, "type": "project",
+        }],
+        "message": "Remove Project 1?",
+    }
+    fake_client = _FakeClient(_FakeResponseWithContent([
+        _FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, tool_input),
+    ]))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "delete my Project 1 deadline", user=user)
+
+    assert result["pending_deadlines"][0]["action"] == "delete"
+    # Withholding confirmation (never calling confirm_deadline_actions) must
+    # leave the event untouched — the proposal step never calls the Calendar
+    # API or custom_events.delete_event itself.
+    events = await sync_to_async(custom_events.list_events)(user=user)
+    assert [event["id"] for event in events] == [existing["id"]]
+
+
+@pytest.mark.django_db
 async def test_calendar_tool_rejects_malformed_action_input(isolated_courses_dir, monkeypatch, django_user_model):
     user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-tool-invalid")
     _seed_course("testcourse", user)

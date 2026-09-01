@@ -1,4 +1,5 @@
 import { apiRequest } from "./core/api.js";
+import { confirmDialog } from "./core/dialogs.js?v=20260901-1";
 
 const root = document.querySelector(".flash-session-page");
 const courseId = root?.dataset.courseId;
@@ -155,7 +156,7 @@ async function navigate(position) {
 
 async function endSession() {
   const remaining = Math.max(0, state.card_count - state.reviewed_count);
-  if (remaining && !window.confirm(`End this session with ${remaining} card${remaining === 1 ? "" : "s"} remaining? Completed reviews will be kept.`)) return;
+  if (remaining && !(await confirmDialog({ title: "End flashcard session?", message: `${remaining} card${remaining === 1 ? " is" : "s are"} still remaining. Completed reviews will be kept.`, confirmLabel: "End session" }))) return;
   if (await action("end/", undefined, "Flashcard session ended.")) {
     location.assign(`/courses/${encodeURIComponent(courseId)}/study/`);
   }

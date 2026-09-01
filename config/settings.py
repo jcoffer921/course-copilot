@@ -55,6 +55,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "agent.middleware.RequestLoggingMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -113,6 +114,10 @@ REST_FRAMEWORK = {
     ],
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
     "DEFAULT_AUTHENTICATION_CLASSES": ["agent.authentication.SessionAuthenticationWith401"],
+    "DEFAULT_THROTTLE_RATES": {
+        "ai_burst": os.environ.get("ONTRACK_AI_BURST_RATE", "8/min"),
+        "ai_daily": os.environ.get("ONTRACK_AI_DAILY_RATE", "100/day"),
+    },
 }
 
 LANGUAGE_CODE = "en-us"
@@ -123,3 +128,27 @@ USE_TZ = True
 STATIC_URL = "static/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+EMAIL_BACKEND = os.environ.get(
+    "DJANGO_EMAIL_BACKEND",
+    "django.core.mail.backends.console.EmailBackend" if DEBUG else "django.core.mail.backends.smtp.EmailBackend",
+)
+EMAIL_HOST = os.environ.get("DJANGO_EMAIL_HOST", "localhost")
+EMAIL_PORT = int(os.environ.get("DJANGO_EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("DJANGO_EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("DJANGO_EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("DJANGO_EMAIL_USE_TLS", "true").lower() == "true"
+DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL", "OnTrack <reminders@ontrack.local>")
+ONTRACK_SUPPORT_EMAIL = os.environ.get("ONTRACK_SUPPORT_EMAIL", EMAIL_HOST_USER)
+ONTRACK_BASE_URL = os.environ.get("ONTRACK_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"json": {"()": "config.logging.JsonFormatter"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "json"}},
+    "loggers": {
+        "ontrack": {"handlers": ["console"], "level": os.environ.get("ONTRACK_LOG_LEVEL", "INFO"), "propagate": False},
+        "ontrack.requests": {"handlers": ["console"], "level": os.environ.get("ONTRACK_LOG_LEVEL", "INFO"), "propagate": False},
+    },
+}

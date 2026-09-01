@@ -2,7 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from agent.services import mastery, recommendations, storage
+from agent.models import CourseMaterial
+from agent.services import mastery, material_files, recommendations, storage
 
 pytestmark = pytest.mark.django_db
 
@@ -19,13 +20,36 @@ def user(django_user_model):
 
 
 def _seed_course(course_id, topics, grading=None, dates=None, user=None):
-    storage.write_syllabus(course_id, {
+    syllabus = {
         "course_id": course_id,
         "course_name": course_id.upper(),
         "dates": dates or [],
         "grading": grading or [],
         "topics": topics,
+    }
+    storage.write_syllabus(course_id, syllabus, user)
+    storage_key = material_files.object_storage.save(user, course_id, ".pdf", b"%PDF-test")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename=f"{course_id}-syllabus.pdf",
+        material_type=CourseMaterial.TYPE_SYLLABUS, source_key="syllabus",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_CONFIRMED,
+        storage_key=storage_key, size_bytes=9, content_type="application/pdf", extracted_data=syllabus,
+    )
+    lecture_id = f"{course_id}-recommendation-content"
+    storage.write_notes(course_id, lecture_id, {
+        "lecture_id": lecture_id, "topics": topics,
+        "chunks": [
+            {"id": f"topic-{index}", "topic": topic, "text": f"Processed course content about {topic}."}
+            for index, topic in enumerate(topics, start=1)
+        ],
     }, user)
+    notes_key = material_files.object_storage.save(user, course_id, ".docx", b"course-content")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename="zz-course-content.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key=lecture_id,
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=notes_key, size_bytes=14,
+    )
 
 
 FIXED_NOW = datetime(2026, 3, 1, tzinfo=timezone.utc)
@@ -220,3 +244,111 @@ def test_reason_mentions_the_deadline_and_component_it_was_ranked_on(isolated_co
     assert candidate["reason"] == (
         "You haven't studied “Recursion” yet, and Final Exam is due 2026-03-02 and counts toward final exam."
     )
+
+
+def test_topic_without_an_actual_uploaded_file_is_not_recommended(isolated_courses_dir, user):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "CS101", "dates": [], "grading": [], "topics": ["Recursion"],
+    }, user)
+
+    assert recommendations.candidates_for_course("cs101", user, FIXED_NOW) == []
+
+
+@pytest.mark.parametrize("suffix", [".txt", ".md"])
+def test_text_only_uploads_do_not_ground_recommendations(isolated_courses_dir, user, suffix):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "CS101", "dates": [], "grading": [], "topics": ["Recursion"],
+    }, user)
+    key = material_files.object_storage.save(user, "cs101", suffix, b"Recursion")
+    CourseMaterial.objects.create(
+        user=user, course_id="cs101", original_filename=f"notes{suffix}",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="lecture-1",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=key, size_bytes=9,
+    )
+
+    assert recommendations.candidates_for_course("cs101", user, FIXED_NOW) == []
+
+
+@pytest.mark.parametrize(
+    ("suffix", "material_type"),
+    [(".docx", CourseMaterial.TYPE_NOTES), (".pptx", CourseMaterial.TYPE_SLIDES)],
+)
+def test_notes_and_slides_attach_matching_course_evidence(isolated_courses_dir, user, suffix, material_type):
+    _seed_course("cs101", topics=["Recursion"], user=user)
+    storage.write_notes("cs101", "lecture-1", {
+        "lecture_id": "lecture-1", "topics": ["Recursion"],
+        "chunks": [{"id": "chunk-1", "topic": "Recursion", "text": "Recursion uses a base case and a recursive step.", "page": 4}],
+    }, user)
+    key = material_files.object_storage.save(user, "cs101", suffix, b"office-test")
+    material = CourseMaterial.objects.create(
+        user=user, course_id="cs101", original_filename=f"week-3{suffix}", material_type=material_type,
+        source_key="lecture-1", processing_status=CourseMaterial.STATUS_READY,
+        review_status=CourseMaterial.REVIEW_NOT_REQUIRED, storage_key=key, size_bytes=11,
+    )
+
+    sources = recommendations.candidates_for_course("cs101", user, FIXED_NOW)[0]["sources"]
+
+    assert sources[0] == {
+        "material_id": str(material.material_id), "material_type": material_type,
+        "filename": f"week-3{suffix}", "file_type": suffix[1:].upper(),
+        "excerpt": "Recursion uses a base case and a recursive step.", "page": 4,
+        "chunk_id": "chunk-1",
+        "download_url": f"/api/courses/cs101/materials/{material.material_id}/download/",
+    }
+
+
+def test_missing_or_superseded_upload_cannot_be_used_as_evidence(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["Recursion"], user=user)
+    CourseMaterial.objects.filter(course_id="cs101").update(review_status=CourseMaterial.REVIEW_SUPERSEDED)
+    CourseMaterial.objects.create(
+        user=user, course_id="cs101", original_filename="missing.pdf",
+        material_type=CourseMaterial.TYPE_SYLLABUS, source_key="syllabus",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_CONFIRMED,
+        storage_key="0" * 32 + ".pdf", size_bytes=10,
+        extracted_data={"topics": ["Recursion"]},
+    )
+
+    assert recommendations.candidates_for_course("cs101", user, FIXED_NOW) == []
+
+
+def test_reference_pdf_attaches_the_matching_passage(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["Recursion"], user=user)
+    storage.write_reference("cs101", "chapter-4", {
+        "reference_id": "chapter-4", "title": "Algorithms Chapter 4",
+        "source_filename": "chapter-4.pdf",
+        "text": "Iteration repeats a block. Recursion solves a problem using a base case and smaller self-calls.",
+    }, user)
+    key = material_files.object_storage.save(user, "cs101", ".pdf", b"%PDF-reference")
+    material = CourseMaterial.objects.create(
+        user=user, course_id="cs101", original_filename="chapter-4.pdf",
+        material_type=CourseMaterial.TYPE_REFERENCE, source_key="chapter-4",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=key, size_bytes=14, content_type="application/pdf",
+    )
+
+    sources = recommendations.candidates_for_course("cs101", user, FIXED_NOW)[0]["sources"]
+    source = next(source for source in sources if source["material_id"] == str(material.material_id))
+
+    assert source["material_id"] == str(material.material_id)
+    assert source["filename"] == "chapter-4.pdf"
+    assert source["file_type"] == "PDF"
+    assert "Recursion solves a problem" in source["excerpt"]
+
+
+def test_syllabus_or_reference_without_a_topic_chunk_cannot_qualify_a_recommendation(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["Recursion"], user=user)
+    CourseMaterial.objects.filter(course_id="cs101", material_type=CourseMaterial.TYPE_NOTES).delete()
+    storage.delete_lecture("cs101", "cs101-recommendation-content", user)
+
+    assert recommendations.candidates_for_course("cs101", user, FIXED_NOW) == []
+
+
+def test_fuzzy_text_overlap_does_not_qualify_without_an_exact_topic_chunk(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["Hierarchical Objects"], user=user)
+    lecture = storage.read_lecture("cs101", "cs101-recommendation-content", user)
+    lecture["chunks"][0]["topic"] = "Scene Graphs"
+    lecture["chunks"][0]["text"] = "Scene graphs contain hierarchical objects."
+    storage.write_notes("cs101", "cs101-recommendation-content", lecture, user, overwrite=True)
+
+    assert recommendations.candidates_for_course("cs101", user, FIXED_NOW) == []

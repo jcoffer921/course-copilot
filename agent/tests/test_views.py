@@ -4,9 +4,9 @@ from datetime import date, timedelta
 import pytest
 from rest_framework.test import APIClient
 
-from agent.models import CalendarSyncRecord, CourseSession, FlashcardProgress, GradeItem, MasteryScore, Notification, QuizAttempt, SavedSite
+from agent.models import CalendarSyncRecord, CourseMaterial, CourseSession, FlashcardProgress, GradeItem, MasteryScore, Notification, QuizAttempt, SavedSite
 from agent import views
-from agent.services import ask, storage
+from agent.services import ask, material_files, storage
 
 
 @pytest.fixture
@@ -30,6 +30,28 @@ def _seed_syllabus(course_id, user):
     }, user)
 
 
+def _seed_recommendation_material(course_id, user):
+    key = material_files.object_storage.save(user, course_id, ".pdf", b"%PDF-test")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename="course-syllabus.pdf",
+        material_type=CourseMaterial.TYPE_SYLLABUS, source_key="syllabus",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_CONFIRMED,
+        storage_key=key, size_bytes=9, content_type="application/pdf",
+        extracted_data={"course_id": course_id, "course_name": "Test", "dates": [], "grading": [], "topics": ["A"]},
+    )
+    storage.write_notes(course_id, "recommendation-a", {
+        "lecture_id": "recommendation-a", "topics": ["A"],
+        "chunks": [{"id": "a", "topic": "A", "text": "Processed course content for A."}],
+    }, user)
+    notes_key = material_files.object_storage.save(user, course_id, ".docx", b"course-content")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename="course-notes.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="recommendation-a",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=notes_key, size_bytes=14,
+    )
+
+
 def test_profile_get_uses_display_name_and_settings(api_client):
     api_client.user.first_name = "Jordan Lee"
     api_client.user.email = "jordan@example.com"
@@ -41,6 +63,7 @@ def test_profile_get_uses_display_name_and_settings(api_client):
     assert response.data["display_name"] == "Jordan Lee"
     assert response.data["email"] == "jordan@example.com"
     assert response.data["notifications_enabled"] is False
+    assert response.data["study_reminder_time"] == "09:00"
 
 
 def test_profile_patch_updates_name_username_and_notifications(api_client):
@@ -63,11 +86,13 @@ def test_profile_patch_validates_and_persists_study_preferences(api_client):
     response = api_client.patch("/api/profile/", {
         "timezone": "America/Los_Angeles", "preferred_session_minutes": 60,
         "available_study_days": [1, 3, 5], "reminder_lead_minutes": 30,
+        "study_reminder_time": "18:30",
     }, format="json")
 
     assert response.status_code == 200
     assert response.data["timezone"] == "America/Los_Angeles"
     assert response.data["available_study_days"] == [1, 3, 5]
+    assert response.data["study_reminder_time"] == "18:30"
 
 
 def test_profile_patch_rejects_invalid_timezone_and_duplicate_days(api_client):
@@ -452,6 +477,20 @@ def test_guided_study_plan_api_returns_owned_note_and_reference_grounding(isolat
         "reference_id": "reference-a", "title": "Reference for A",
         "source_filename": "reference.txt", "text": "Supporting material for topic A.",
     }, api_client.user)
+    notes_key = material_files.object_storage.save(api_client.user, "cs101", ".docx", b"course-notes")
+    CourseMaterial.objects.create(
+        user=api_client.user, course_id="cs101", original_filename="lecture-a.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="lecture-a",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=notes_key, size_bytes=12,
+    )
+    reference_key = material_files.object_storage.save(api_client.user, "cs101", ".pdf", b"%PDF-reference")
+    CourseMaterial.objects.create(
+        user=api_client.user, course_id="cs101", original_filename="reference-a.pdf",
+        material_type=CourseMaterial.TYPE_REFERENCE, source_key="reference-a",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=reference_key, size_bytes=14,
+    )
 
     response = api_client.get(
         "/api/courses/cs101/study/plan/",
@@ -461,7 +500,9 @@ def test_guided_study_plan_api_returns_owned_note_and_reference_grounding(isolat
     assert response.status_code == 200
     assert response.data["topic"] == "A"
     assert response.data["grounded"] is True
-    assert response.data["source_counts"] == {"notes": 1, "references": 1}
+    assert response.data["can_generate"] is True
+    assert response.data["has_course_materials"] is True
+    assert response.data["source_counts"] == {"notes": 1, "references": 1, "files": 2}
 
 
 def test_study_session_start_rejects_missing_owned_course_and_unconfirmed_topic(isolated_courses_dir, api_client):
@@ -519,6 +560,7 @@ def test_reminders_rejects_malformed_within_days(api_client):
 
 def test_recommendations_endpoint_returns_ranked_candidates(isolated_courses_dir, api_client):
     _seed_syllabus("cs101", api_client.user)
+    _seed_recommendation_material("cs101", api_client.user)
 
     response = api_client.get("/api/recommendations/")
 
@@ -530,6 +572,7 @@ def test_recommendations_endpoint_returns_ranked_candidates(isolated_courses_dir
 
 def test_recommendations_endpoint_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
     _seed_syllabus("cs101", api_client.user)
+    _seed_recommendation_material("cs101", api_client.user)
 
     other = django_user_model.objects.create_user(username="recommendations-other")
     other_client = APIClient()
@@ -543,6 +586,7 @@ def test_recommendations_endpoint_is_owner_scoped(isolated_courses_dir, api_clie
 
 def test_recommendations_dismiss_hides_it_from_future_results(isolated_courses_dir, api_client):
     _seed_syllabus("cs101", api_client.user)
+    _seed_recommendation_material("cs101", api_client.user)
 
     dismiss_response = api_client.post(
         "/api/recommendations/dismiss/", {"course_id": "cs101", "topic": "A"}, format="json",
@@ -775,6 +819,8 @@ def test_notifications_endpoint_generates_overdue_deadline_once(isolated_courses
 
     assert mark_read.status_code == 200
     assert mark_read.data["unread_count"] == 0
+    assert mark_read.data["notifications"] == []
+    assert api_client.get("/api/notifications/").data["notifications"] == []
 
 
 def test_notifications_endpoint_never_returns_another_users_rows(api_client, django_user_model):

@@ -53,8 +53,10 @@
       {% include "agent/partials/toast_region.html" %}
     </div>
   </x-dc>
+  {% include "agent/partials/action_dialog.html" %}
   {% if not modern_shell %}<script type="text/x-dc" data-dc-script>
 {% include "agent/partials/app_logic.html" %}
   </script>{% endif %}
+  <script type="module" src="{% static 'agent/js/core/dialogs.js' %}?v=20260901-1"></script>
 </body>
 </html>

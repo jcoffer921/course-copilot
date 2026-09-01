@@ -1,6 +1,7 @@
 import pytest
 
-from agent.services import dashboard, mastery, storage
+from agent.models import CourseMaterial
+from agent.services import dashboard, material_files, mastery, storage
 
 pytestmark = pytest.mark.django_db
 
@@ -19,13 +20,21 @@ def user(django_user_model):
 
 
 def _seed_course(course_id, topics, grading, dates, user, notes_count=0):
-    storage.write_syllabus(course_id, {
+    syllabus = {
         "course_id": course_id,
         "course_name": course_id.upper(),
         "dates": dates,
         "grading": grading,
         "topics": topics,
-    }, user)
+    }
+    storage.write_syllabus(course_id, syllabus, user)
+    key = material_files.object_storage.save(user, course_id, ".pdf", b"%PDF-test")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename=f"{course_id}-syllabus.pdf",
+        material_type=CourseMaterial.TYPE_SYLLABUS, source_key="syllabus",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_CONFIRMED,
+        storage_key=key, size_bytes=9, content_type="application/pdf", extracted_data=syllabus,
+    )
     for i in range(notes_count):
         lecture_id = f"lecture{i + 1:02d}"
         storage.write_notes(course_id, lecture_id, {
@@ -234,6 +243,17 @@ def test_build_dashboard_today_plan_never_fabricates_an_effort_estimate(isolated
 
 def test_build_dashboard_today_plan_fills_remaining_slots_with_recommendations(isolated_courses_dir, user):
     _seed_course("cs101", topics=["Recursion"], grading=[], dates=[], user=user)
+    storage.write_notes("cs101", "recursion-content", {
+        "lecture_id": "recursion-content", "topics": ["Recursion"],
+        "chunks": [{"id": "recursion", "topic": "Recursion", "text": "A base case ends recursion."}],
+    }, user)
+    key = material_files.object_storage.save(user, "cs101", ".docx", b"course-content")
+    CourseMaterial.objects.create(
+        user=user, course_id="cs101", original_filename="recursion.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="recursion-content",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=key, size_bytes=14,
+    )
 
     data = dashboard.build_dashboard(user=user)
 

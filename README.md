@@ -158,6 +158,75 @@ reuses that UUID, and the server atomically stores at most one user/assistant
 exchange for it. Unsupported questions remain `grounded: false` with an empty
 source list.
 
+## Notification and study-reminder email delivery
+
+The notification center includes overdue deadlines, personalized study
+recommendations, and deep links to saved Cora replies. Users opt into study
+reminders and email from Settings. One study reminder is generated per local
+calendar day and is based on that user's current ranked recommendation.
+Users choose the delivery time in Settings; it is interpreted in their saved
+timezone.
+
+Run this from a scheduler every five minutes so each user's chosen time is
+honored. Running it frequently is safe: the backend still sends at most one
+email per enabled user per calendar day in that user's timezone.
+
+```bash
+python manage.py send_notifications
+```
+
+Delivery is idempotent: missed days never produce a catch-up burst, and a
+failed send remains queued for another attempt that same day. Local
+development prints mail to the console. For production, configure the `DJANGO_EMAIL_*`,
+`DJANGO_DEFAULT_FROM_EMAIL`, and `ONTRACK_BASE_URL` values documented in
+`.env.example`.
+
+For a branded sender domain, publish SPF, DKIM, and DMARC records with your
+mail provider, set `ONTRACK_DKIM_SELECTOR`, and verify DNS before launch:
+
+```bash
+python manage.py check_email_domain
+```
+
+A personal Gmail sender remains usable for a closed local pilot, but the
+check deliberately warns until `DJANGO_DEFAULT_FROM_EMAIL` uses a domain
+you control.
+
+## Pilot operations
+
+Create a checksum-verified backup of SQLite and the private `courses/` tree:
+
+```bash
+python manage.py backup_ontrack --output-dir backups --keep 14
+```
+
+The daily scheduler should run that command with rolling retention. Test a
+restore before relying on it; `restore_ontrack` requires the exact typed
+confirmation and creates a recovery copy before replacing current data.
+
+`/health/` returns a public, secret-free health snapshot for uptime checks.
+Before a deploy or pilot session, run configuration and integration checks:
+
+```bash
+python manage.py pilot_smoke_check
+python manage.py pilot_smoke_check --live-smtp --live-ai
+```
+
+AI endpoints are protected by per-user burst and daily limits. Defaults are
+`8/min` and `100/day`; configure `ONTRACK_AI_BURST_RATE` and
+`ONTRACK_AI_DAILY_RATE` for the pilot population.
+
+Pilot users can send feedback from every app page. Product metrics record only
+small action events and safe scalar metadata—not note content, uploaded text,
+questions, answers, or Cora message text. The public disclosure is `/privacy/`.
+
+Feedback now lives at `/feedback/` and is anonymous by default: the database
+does not attach the account or page, no feedback metric is created, and the
+request logger suppresses the user ID. Users can opt into identified feedback
+when they want follow-up. Public support requests are available at `/contact/`,
+stored for operator review, protected by a per-IP hourly limit and honeypot,
+and emailed to `ONTRACK_SUPPORT_EMAIL` when configured.
+
 ## Test syllabi
 `test-syllabi/cs101_clean.txt` — well-structured, should extract cleanly.
 `test-syllabi/psyc201_messy.txt` — deliberately messy (vague weights, no

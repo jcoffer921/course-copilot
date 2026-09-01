@@ -40,6 +40,7 @@ class PreparedUpload:
 class MaterialObjectStorage(Protocol):
     def save(self, user, course_id: str, suffix: str, data: bytes) -> str: ...
     def read(self, user, course_id: str, storage_key: str) -> bytes: ...
+    def exists(self, user, course_id: str, storage_key: str) -> bool: ...
     def delete(self, user, course_id: str, storage_key: str) -> None: ...
 
 
@@ -140,6 +141,9 @@ class LocalMaterialObjectStorage:
 
     def read(self, user, course_id: str, storage_key: str) -> bytes:
         return self._path(user, course_id, storage_key).read_bytes()
+
+    def exists(self, user, course_id: str, storage_key: str) -> bool:
+        return self._path(user, course_id, storage_key).is_file()
 
     def delete(self, user, course_id: str, storage_key: str) -> None:
         path = self._path(user, course_id, storage_key)

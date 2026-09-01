@@ -3,10 +3,11 @@ review history. Session/activity ownership always flows through the
 authenticated user — never a course_id alone."""
 
 from datetime import datetime, timezone
+from pathlib import Path
 import re
 from django.db import transaction
 
-from . import recommendations, storage
+from . import material_files, recommendations, storage
 from .storage import _validate_course_id
 
 
@@ -36,6 +37,38 @@ def _topic_in_text(topic: str, value: str) -> bool:
     return bool(re.search(r"(?<!\w)" + re.escape(topic) + r"(?!\w)", value or "", flags=re.IGNORECASE))
 
 
+def _usable_course_materials(user, course_id: str) -> list:
+    """Actual, still-present uploads that can support a guided session."""
+    from agent.models import CourseMaterial
+
+    rows = CourseMaterial.objects.filter(
+        user=user, course_id=course_id, processing_status=CourseMaterial.STATUS_READY,
+    ).exclude(review_status=CourseMaterial.REVIEW_SUPERSEDED).order_by("-uploaded_at")
+    usable = []
+    for material in rows:
+        suffix = Path(material.original_filename).suffix.lower()
+        if suffix not in recommendations.GROUNDING_SUFFIXES or Path(material.storage_key).suffix.lower() != suffix:
+            continue
+        if material.material_type == CourseMaterial.TYPE_SYLLABUS and material.review_status != CourseMaterial.REVIEW_CONFIRMED:
+            continue
+        try:
+            if material_files.object_storage.exists(user, course_id, material.storage_key):
+                usable.append(material)
+        except (OSError, ValueError):
+            continue
+    return usable
+
+
+def _plan_source(material) -> dict:
+    return {
+        "kind": material.material_type,
+        "id": str(material.material_id),
+        "title": material.original_filename,
+        "file_type": Path(material.original_filename).suffix.lstrip(".").upper(),
+        "download_url": f"/api/courses/{material.course_id}/materials/{material.material_id}/download/",
+    }
+
+
 def build_grounded_plan(
     user, course_id: str, topic: str = "", duration_minutes: int = 15, mode: str = "mixed",
 ) -> dict:
@@ -60,11 +93,15 @@ def build_grounded_plan(
 
     notes = storage.read_notes(course_id, user)
     references = storage.read_references(course_id, user)
+    usable_materials = _usable_course_materials(user, course_id)
 
     def note_matches(note, candidate):
-        note_topics = [str(value) for value in note.get("topics", [])]
-        chunk_topics = [str(chunk.get("topic", "")) for chunk in note.get("chunks", []) if isinstance(chunk, dict)]
-        return any(_topic_in_text(candidate, value) for value in note_topics + chunk_topics)
+        return any(
+            isinstance(chunk, dict)
+            and str(chunk.get("text") or "").strip()
+            and str(chunk.get("topic", "")) == candidate
+            for chunk in note.get("chunks", [])
+        )
 
     def reference_matches(reference, candidate):
         haystack = " ".join([
@@ -90,26 +127,31 @@ def build_grounded_plan(
 
     matching_notes = [note for note in notes if not focus or note_matches(note, focus)]
     matching_references = [reference for reference in references if not focus or reference_matches(reference, focus)]
-    sources = [
-        {
-            "kind": "note",
-            "id": str(note.get("lecture_id") or f"note-{index + 1}"),
-            "title": str(note.get("title") or note.get("lecture_id") or f"Course notes {index + 1}").replace("_", " "),
-        }
-        for index, note in enumerate(matching_notes)
-    ] + [
-        {
-            "kind": "reference",
-            "id": str(reference.get("reference_id") or f"reference-{index + 1}"),
-            "title": str(reference.get("title") or reference.get("source_filename") or f"Reference {index + 1}"),
-        }
-        for index, reference in enumerate(matching_references)
+    recommendation = next((item for item in ranked if item["topic"] == focus), None)
+    recommended_ids = {
+        str(source.get("material_id")) for source in (recommendation or {}).get("sources", [])
+    }
+    matching_keys = {
+        str(note.get("lecture_id")) for note in matching_notes if note.get("lecture_id")
+    } | {
+        str(reference.get("reference_id")) for reference in matching_references if reference.get("reference_id")
+    }
+    matched_materials = [
+        material for material in usable_materials
+        if str(material.material_id) in recommended_ids or material.source_key in matching_keys
     ]
-    sources = sources[:6]
+    chunk_materials = [
+        material for material in usable_materials
+        if material.material_type in {"notes", "slides"} and material.source_key in matching_keys
+    ]
+    can_generate = bool(chunk_materials)
+    source_materials = matched_materials or usable_materials
+    sources = [_plan_source(material) for material in source_materials[:6]]
     targets = _session_targets(duration_minutes)
     note_count = len(matching_notes)
     reference_count = len(matching_references)
-    source_summary = f"{note_count} note{'s' if note_count != 1 else ''} and {reference_count} reference{'s' if reference_count != 1 else ''}"
+    file_count = len(source_materials)
+    source_summary = f"{file_count} course file{'s' if file_count != 1 else ''}"
 
     steps = []
     if mode in {"mixed", "flashcards"}:
@@ -121,7 +163,7 @@ def build_grounded_plan(
     if mode in {"mixed", "quiz"}:
         steps.append({
             "kind": "quiz", "title": "Check your understanding",
-            "detail": f"{targets['questions']} questions grounded in matching course notes",
+            "detail": f"{targets['questions']} questions grounded in {source_summary}",
             "count": f"{targets['questions']} questions",
         })
     steps.append({
@@ -130,22 +172,25 @@ def build_grounded_plan(
         "count": "Summary",
     })
 
-    recommendation = next((item for item in ranked if item["topic"] == focus), None)
-    if matching_notes:
+    if can_generate:
         rationale = f"{focus or 'This review'} is supported by {source_summary}."
         if recommendation:
             rationale += f" {recommendation['reason']}"
+    elif usable_materials:
+        rationale = f"This course has material, but no processed content chunks match {focus or 'this focus'}. Choose another topic or reprocess the relevant file."
     else:
-        rationale = "No matching course notes were found for this focus. Add or process notes before starting this guided session."
+        rationale = "No course materials are available yet. Upload and process a PDF, DOCX, or PPTX before starting this guided session."
 
     return {
         "course_id": course_id,
         "topic": focus,
         "duration_minutes": duration_minutes or 15,
         "mode": mode,
-        "grounded": bool(matching_notes),
+        "grounded": can_generate,
+        "can_generate": can_generate,
+        "has_course_materials": bool(usable_materials),
         "rationale": rationale,
-        "source_counts": {"notes": note_count, "references": reference_count},
+        "source_counts": {"notes": note_count, "references": reference_count, "files": file_count},
         "sources": sources,
         "steps": steps,
     }

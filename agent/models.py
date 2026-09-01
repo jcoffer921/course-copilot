@@ -1,6 +1,7 @@
 """Django ORM models for account data and mutable user progress."""
 
 import uuid
+from datetime import time
 
 from django.conf import settings
 from django.db import models
@@ -47,7 +48,65 @@ class UserSettings(models.Model):
     preferred_session_minutes = models.PositiveSmallIntegerField(default=45)
     available_study_days = models.JSONField(default=default_available_study_days, blank=True)
     reminder_lead_minutes = models.PositiveSmallIntegerField(default=15)
+    study_reminder_time = models.TimeField(default=time(9, 0))
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class ServiceHeartbeat(models.Model):
+    name = models.CharField(max_length=64, unique=True)
+    status = models.CharField(max_length=16, default="ok")
+    detail = models.CharField(max_length=255, blank=True)
+    checked_at = models.DateTimeField(auto_now=True)
+
+
+class PilotFeedback(models.Model):
+    CATEGORY_CHOICES = [
+        ("bug", "Something is broken"),
+        ("confusing", "Something is confusing"),
+        ("idea", "Idea or request"),
+        ("other", "Other"),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="pilot_feedback", null=True, blank=True)
+    category = models.CharField(max_length=16, choices=CATEGORY_CHOICES)
+    message = models.TextField(max_length=2000)
+    page = models.CharField(max_length=255, blank=True)
+    status = models.CharField(max_length=16, default="new")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def is_anonymous(self):
+        return self.user_id is None
+
+
+class ContactRequest(models.Model):
+    TOPIC_CHOICES = [
+        ("account", "Account or sign-in"),
+        ("technical", "Technical problem"),
+        ("privacy", "Privacy or data request"),
+        ("partnership", "Pilot or partnership"),
+        ("other", "Something else"),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, related_name="contact_requests", null=True, blank=True)
+    name = models.CharField(max_length=150)
+    email = models.EmailField()
+    topic = models.CharField(max_length=20, choices=TOPIC_CHOICES)
+    subject = models.CharField(max_length=160)
+    message = models.TextField(max_length=4000)
+    status = models.CharField(max_length=16, default="new")
+    request_id = models.CharField(max_length=80, blank=True)
+    emailed_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class ProductMetric(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="product_metrics")
+    event = models.CharField(max_length=64, db_index=True)
+    course_id = models.CharField(max_length=64, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["event", "created_at"], name="agent_metric_event_created_idx")]
 
 
 class CourseMaterial(models.Model):
@@ -266,6 +325,8 @@ class CustomEvent(models.Model):
 
 class Notification(models.Model):
     KIND_OVERDUE_DEADLINE = "overdue_deadline"
+    KIND_STUDY_REMINDER = "study_reminder"
+    KIND_CORA_MESSAGE = "cora_message"
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -280,7 +341,9 @@ class Notification(models.Model):
     deadline_id = models.CharField(max_length=64, null=True, blank=True)
     due_date = models.CharField(max_length=10, null=True, blank=True)
     category = models.CharField(max_length=32, blank=True)
+    action_url = models.CharField(max_length=1024, blank=True)
     read = models.BooleanField(default=False)
+    emailed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

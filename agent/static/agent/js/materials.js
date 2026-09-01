@@ -3,6 +3,7 @@ import { initCourseHeader } from "./core/course_header.js";
 import { apiRequest } from "./core/api.js";
 import "./core/modal.js";
 import "./core/toast.js";
+import { confirmDialog, promptDialog } from "./core/dialogs.js?v=20260901-1";
 initNavigation();
 
 const root = document.querySelector("[data-page-section='materials']");
@@ -340,7 +341,7 @@ async function submitUpload(form, endpoint, busyLabel, successLabel, onSuccess) 
 }
 
 async function deleteMaterial(materialId, filename) {
-  const confirmation = window.prompt(`Type DELETE to remove “${filename}”.`);
+  const confirmation = await promptDialog({ kicker: "Permanent action", title: `Delete “${filename}”?`, message: "This material and its processed content will be permanently removed.", inputLabel: "Type DELETE to confirm", requiredValue: "DELETE", confirmLabel: "Delete material", danger: true });
   if (confirmation === null) return;
   try {
     await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/materials/${materialId}/`, {
@@ -356,7 +357,7 @@ async function deleteMaterial(materialId, filename) {
 }
 
 async function discardReview() {
-  if (!reviewMaterialId || !window.confirm("Discard this extraction? Your currently confirmed course data will remain unchanged.")) return;
+  if (!reviewMaterialId || !(await confirmDialog({ title: "Discard this extraction?", message: "Your currently confirmed course data will remain unchanged.", confirmLabel: "Discard extraction", danger: true }))) return;
   try {
     await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/materials/${reviewMaterialId}/`, { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE" }) });
     closeReviewPanel(); reviewMaterialId = null; reviewCandidate = null;

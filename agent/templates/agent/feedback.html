@@ -1,0 +1,28 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<section class="support-page" data-page-section="feedback">
+  <header class="support-page-heading">
+    <div><p class="support-eyebrow">Help shape OnTrack</p><h1>Send feedback</h1><p>Tell us what is working, what feels confusing, or what would make studying easier.</p></div>
+    <a class="btn btn-secondary" href="{% url 'contact-page' %}">Need a response? Contact us</a>
+  </header>
+  <div class="support-layout">
+    <article id="feedback-form-panel" class="support-form-card">
+      <div class="support-card-heading"><span class="support-card-number">01</span><div><h2>What should we know?</h2><p>Specific examples are the most useful.</p></div></div>
+      <form id="feedback-page-form">
+        <fieldset class="feedback-category"><legend>Choose a category</legend><div>
+          <label><input type="radio" name="category" value="bug" checked><span><strong>Something broke</strong><small>A feature did not work as expected</small></span></label>
+          <label><input type="radio" name="category" value="confusing"><span><strong>Something was confusing</strong><small>The flow or wording was unclear</small></span></label>
+          <label><input type="radio" name="category" value="idea"><span><strong>I have an idea</strong><small>A feature or improvement request</small></span></label>
+          <label><input type="radio" name="category" value="other"><span><strong>Something else</strong><small>Anything that does not fit above</small></span></label>
+        </div></fieldset>
+        <label class="support-field">Your feedback<textarea name="message" rows="8" maxlength="2000" required placeholder="What happened? What were you trying to do? What would have felt better?"></textarea><small>Up to 2,000 characters. Please do not include passwords or sensitive personal information.</small></label>
+        <label class="feedback-privacy-choice"><input id="feedback-anonymous" type="checkbox" checked><span><strong>Submit without attaching my account</strong><small id="feedback-privacy-copy"></small></span></label>
+        <p id="feedback-page-error" class="support-form-error" role="alert"></p>
+        <div class="support-form-actions"><a href="{% url 'dashboard-page' %}" class="btn btn-secondary">Cancel</a><button class="btn btn-primary" type="submit">Send feedback</button></div>
+      </form>
+    </article>
+    <aside class="support-side-card"><p class="support-eyebrow">What happens next</p><h2>Every note is reviewed.</h2><ol><li><span>1</span><div><strong>We categorize it</strong><small>Bugs, usability issues, and ideas are tracked separately.</small></div></li><li><span>2</span><div><strong>We look for patterns</strong><small>Repeated friction gets prioritized during the pilot.</small></div></li><li><span>3</span><div><strong>We follow up only if invited</strong><small>Anonymous submissions are stored without your account.</small></div></li></ol><a href="{% url 'privacy-page' %}">Read the pilot privacy notice →</a></aside>
+    <article id="feedback-success-panel" class="support-success-card"><div class="support-success-mark">✓</div><p class="support-eyebrow">Feedback received</p><h2>Thank you for helping improve OnTrack.</h2><p>Your note has been added to the pilot review queue.</p><a class="btn btn-primary" href="{% url 'dashboard-page' %}">Return to dashboard</a></article>
+  </div>
+</section>
+{% endblock %}

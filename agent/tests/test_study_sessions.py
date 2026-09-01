@@ -2,7 +2,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from agent.services import storage, study_sessions
+from agent.models import CourseMaterial
+from agent.services import material_files, storage, study_sessions
 
 pytestmark = pytest.mark.django_db
 
@@ -19,6 +20,17 @@ def owner(django_user_model, isolated_courses_dir):
     for course_id in ("cs101", "cs202"):
         storage.write_syllabus(course_id, {"course_id": course_id, "course_name": course_id, "dates": [], "grading": [], "topics": ["Recursion", "Sorting"]}, user)
     return user
+
+
+def _seed_upload(user, course_id, filename, material_type, source_key):
+    suffix = "." + filename.rsplit(".", 1)[-1]
+    key = material_files.object_storage.save(user, course_id, suffix, b"course-material")
+    return CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename=filename,
+        material_type=material_type, source_key=source_key,
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=key, size_bytes=15,
+    )
 
 
 def test_start_session_records_a_session_started_activity(isolated_courses_dir, owner):
@@ -46,28 +58,50 @@ def test_grounded_plan_selects_a_recommended_topic_that_has_notes_and_references
         "source_filename": "chapter.pdf",
         "text": "Sorting algorithms include merge sort and quicksort.",
     }, owner)
+    _seed_upload(owner, "cs101", "sorting-notes.docx", CourseMaterial.TYPE_NOTES, "lecture-2")
+    _seed_upload(owner, "cs101", "sorting-chapter.pdf", CourseMaterial.TYPE_REFERENCE, "sorting-chapter")
 
     plan = study_sessions.build_grounded_plan(owner, "cs101", duration_minutes=20, mode="mixed")
 
     assert plan["topic"] == "Sorting"
     assert plan["grounded"] is True
-    assert plan["source_counts"] == {"notes": 1, "references": 1}
-    assert {source["kind"] for source in plan["sources"]} == {"note", "reference"}
+    assert plan["can_generate"] is True
+    assert plan["source_counts"] == {"notes": 1, "references": 1, "files": 2}
+    assert {source["kind"] for source in plan["sources"]} == {"notes", "reference"}
+    assert all(source["download_url"].startswith("/api/courses/cs101/materials/") for source in plan["sources"])
     assert [step["kind"] for step in plan["steps"]] == ["flashcards", "quiz", "summary"]
     assert plan["steps"][0]["count"] == "10 cards"
     assert plan["steps"][1]["count"] == "5 questions"
 
 
-def test_grounded_plan_falls_back_to_course_outline_when_topic_has_no_matching_sources(isolated_courses_dir, owner):
+def test_grounded_plan_uses_course_wide_material_without_showing_a_missing_material_warning(isolated_courses_dir, owner):
+    storage.write_notes("cs101", "sorting-only", {
+        "lecture_id": "sorting-only", "topics": ["Sorting"],
+        "chunks": [{"id": "sorting", "topic": "Sorting", "text": "Comparison sorting."}],
+    }, owner)
+    _seed_upload(owner, "cs101", "sorting-only.pptx", CourseMaterial.TYPE_SLIDES, "sorting-only")
     plan = study_sessions.build_grounded_plan(
         owner, "cs101", topic="Recursion", duration_minutes=15, mode="quiz",
     )
 
     assert plan["topic"] == "Recursion"
     assert plan["grounded"] is False
-    assert plan["sources"] == []
+    assert plan["can_generate"] is False
+    assert plan["has_course_materials"] is True
+    assert plan["sources"][0]["title"] == "sorting-only.pptx"
     assert [step["kind"] for step in plan["steps"]] == ["quiz", "summary"]
-    assert "Add or process notes" in plan["rationale"]
+    assert "no processed content chunks match Recursion" in plan["rationale"]
+    assert "No course materials" not in plan["rationale"]
+
+
+def test_grounded_plan_warns_only_when_course_has_no_usable_material(isolated_courses_dir, owner):
+    plan = study_sessions.build_grounded_plan(owner, "cs101", topic="Recursion")
+
+    assert plan["grounded"] is False
+    assert plan["can_generate"] is False
+    assert plan["has_course_materials"] is False
+    assert plan["sources"] == []
+    assert "No course materials are available yet" in plan["rationale"]
 
 
 def test_start_session_rejects_invalid_mode(isolated_courses_dir, owner):

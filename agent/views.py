@@ -9,6 +9,7 @@ from django.http import HttpResponse
 from django.utils.http import content_disposition_header
 from rest_framework import status
 from rest_framework.response import Response
+from .throttles import AIUserBurstThrottle, AIUserDailyThrottle
 
 from .serializers import (
     AddGradeItemRequestSerializer,
@@ -35,6 +36,7 @@ from .serializers import (
     IngestReferenceRequestSerializer,
     MaterialDeleteSerializer,
     NotificationReadSerializer,
+    PilotFeedbackSerializer,
     NavigateInteractiveFlashcardRequestSerializer,
     RecordAttemptRequestSerializer,
     RecordStudyActivityRequestSerializer,
@@ -52,10 +54,14 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import accounts, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, mastery, material_files, materials, notifications, quiz, recommendations, reminders, sessions, storage, study_sessions
+from .services import accounts, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, mastery, material_files, materials, metrics, notifications, quiz, recommendations, reminders, sessions, storage, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
+
+
+class AIAPIView(APIView):
+    throttle_classes = [AIUserBurstThrottle, AIUserDailyThrottle]
 
 
 def _positive_int_query_param(request, name: str, default: int):
@@ -95,6 +101,7 @@ def _profile_payload(user):
         "preferred_session_minutes": settings.preferred_session_minutes,
         "available_study_days": settings.available_study_days,
         "reminder_lead_minutes": settings.reminder_lead_minutes,
+        "study_reminder_time": settings.study_reminder_time.strftime("%H:%M"),
     }
 
 
@@ -130,7 +137,7 @@ class UserProfileView(APIView):
             changed = []
             for field in (
                 "notifications_enabled", "timezone", "preferred_session_minutes",
-                "available_study_days", "reminder_lead_minutes",
+                "available_study_days", "reminder_lead_minutes", "study_reminder_time",
             ):
                 if field in data:
                     setattr(settings_obj, field, data[field])
@@ -169,7 +176,7 @@ class AccountExportView(APIView):
         return response
 
 
-class ExtractSyllabusView(APIView):
+class ExtractSyllabusView(AIAPIView):
     """
     POST /api/courses/<course_id>/syllabus/extract/
     Stages an upload for human review. Extraction never replaces the current
@@ -361,7 +368,7 @@ class CourseOverviewView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
-class ChunkNotesView(APIView):
+class ChunkNotesView(AIAPIView):
     """
     POST /api/courses/<course_id>/notes/chunk/
     multipart/form-data: file=<notes PDF/PPTX/DOCX/TXT/MD>,
@@ -570,7 +577,7 @@ class SyllabusReviewView(APIView):
         )
 
 
-class MaterialRetryView(APIView):
+class MaterialRetryView(AIAPIView):
     """POST .../materials/<material_id>/retry/ — re-run processing on an
     already-failed material's stored file in place, no re-upload needed."""
 
@@ -624,7 +631,7 @@ class MaterialDownloadView(APIView):
         return response
 
 
-class DomainSuggestionsView(APIView):
+class DomainSuggestionsView(AIAPIView):
     """
     POST /api/courses/<course_id>/domains/suggest/ — read-only. Asks Claude
     to propose candidate trusted domains from this course's syllabus. Never
@@ -951,7 +958,7 @@ class MasteryRebuildView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
-class QuizGenerateView(APIView):
+class QuizGenerateView(AIAPIView):
     """
     POST /api/courses/<course_id>/quiz/generate/
     body: {"topic": "<optional>", "chunk_id": "<optional>"}
@@ -997,7 +1004,7 @@ class QuizGenerateView(APIView):
         return Response(q, status=status.HTTP_200_OK)
 
 
-class FlashcardsGenerateView(APIView):
+class FlashcardsGenerateView(AIAPIView):
     """
     POST /api/courses/<course_id>/flashcards/generate/
     body: {"topic": "<optional>", "chunk_id": "<optional>", "count": 1..12, "regenerate": false}
@@ -1213,6 +1220,10 @@ class StudySessionsView(APIView):
         except ValueError as e:
             return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+        await sync_to_async(metrics.record)(
+            request.user, "study_started", course_id=course_id,
+            metadata={"mode": d["mode"], "duration_minutes": d["duration_minutes"]},
+        )
         return Response(session, status=status.HTTP_201_CREATED)
 
 
@@ -1293,6 +1304,10 @@ class StudySessionCompleteView(APIView):
         except study_sessions.InvalidStudySessionStateError as e:
             return Response({"detail": str(e)}, status=status.HTTP_409_CONFLICT)
 
+        await sync_to_async(metrics.record)(
+            request.user, "study_completed", course_id=course_id,
+            metadata={"duration_minutes": detail.get("duration_minutes")},
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -1494,7 +1509,7 @@ class ExamPlanView(APIView):
         return Response(plan, status=status.HTTP_200_OK)
 
 
-class ExamStudyGuideView(APIView):
+class ExamStudyGuideView(AIAPIView):
     """
     POST /api/courses/<course_id>/exams/<event_id>/study-guide/
     Generates a study guide from only the plan's currently-included topics
@@ -1707,6 +1722,25 @@ class NotificationsReadView(APIView):
         return Response(data, status=status.HTTP_200_OK)
 
 
+class PilotFeedbackView(APIView):
+    async def post(self, request):
+        serializer = PilotFeedbackSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        from agent.models import PilotFeedback
+        data = dict(serializer.validated_data)
+        anonymous = data.pop("anonymous", True)
+        if anonymous:
+            data["page"] = ""
+            request._request._ontrack_anonymous_feedback = True
+        feedback = await sync_to_async(PilotFeedback.objects.create)(
+            user=None if anonymous else request.user, **data,
+        )
+        if not anonymous:
+            await sync_to_async(metrics.record)(request.user, "feedback_submitted", metadata={"status": "new"})
+        return Response({"id": feedback.pk, "status": "received"}, status=status.HTTP_201_CREATED)
+
+
 class CustomEventCalendarSyncView(APIView):
     """POST /api/deadlines/<event_id>/calendar-sync/ — push a custom event
     to the signed-in user's real Google Calendar. 404 if the event doesn't
@@ -1754,7 +1788,7 @@ class SyllabusDetailView(APIView):
         return Response(data)
 
 
-class AskView(APIView):
+class AskView(AIAPIView):
     """
     POST /api/courses/<course_id>/ask/
     body: {"question": "...", "session_id": "<optional>"}
@@ -1803,6 +1837,15 @@ class AskView(APIView):
         except ValueError as e:
             return Response({"detail": f"ask failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
 
+        if session_id:
+            await sync_to_async(notifications.create_cora_message_notification)(
+                request.user, course_id, session_id, result.get("answer", ""),
+                request_id=request_id,
+            )
+        await sync_to_async(metrics.record)(
+            request.user, "cora_answered", course_id=course_id,
+            metadata={"grounded": bool(result.get("grounded"))},
+        )
         return Response(result, status=status.HTTP_200_OK)
 
 
@@ -1987,7 +2030,7 @@ class SourcePreviewView(APIView):
         return Response({"source": source}, status=status.HTTP_200_OK)
 
 
-class PracticeAttemptsView(APIView):
+class PracticeAttemptsView(AIAPIView):
     """Create or resume the user's active practice attempt for an owned exam."""
 
     async def post(self, request, course_id, quiz_id):

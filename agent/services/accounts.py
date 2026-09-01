@@ -47,6 +47,7 @@ def export_account_data(user) -> dict:
             "preferred_session_minutes": preferences.preferred_session_minutes,
             "available_study_days": preferences.available_study_days,
             "reminder_lead_minutes": preferences.reminder_lead_minutes,
+            "study_reminder_time": preferences.study_reminder_time.strftime("%H:%M"),
         },
         "connections": {
             "google_identity_connected": hasattr(user, "google_account"),

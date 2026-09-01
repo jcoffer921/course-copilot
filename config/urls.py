@@ -10,7 +10,9 @@ from agent.auth_views import (
     google_login_start,
     google_logout,
 )
+from agent.health_views import health
 urlpatterns = [
+    path("health/", health, name="health"),
     path("admin/", admin.site.urls),
     path("accounts/login/", google_login_page, name="google-login"),
     path("accounts/login/start/", google_login_start, name="google-login-start"),

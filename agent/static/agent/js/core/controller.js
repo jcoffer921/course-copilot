@@ -1096,10 +1096,10 @@ return class Component extends DCLogic {
     this.setState({ sourceDrawerOpen: false, sourceDrawerLoading: false, sourceDrawerError: null, sourceDrawerCitation: null, sourceDrawerData: null });
   }
 
-  renameChatSession(courseId, sessionId, currentTitle, event) {
+  async renameChatSession(courseId, sessionId, currentTitle, event) {
     if (event && event.stopPropagation) event.stopPropagation();
-    const title = window.prompt('Rename conversation', currentTitle || 'New chat');
-    if (title === null || !title.trim()) return;
+    const title = await window.OnTrackDialogs.prompt({ kicker: 'Cora conversation', title: 'Rename conversation', message: 'Choose a title that will be easy to find later.', inputLabel: 'Conversation title', defaultValue: currentTitle || 'New chat', confirmLabel: 'Save title' });
+    if (!title) return;
     fetch(`/api/courses/${courseId}/sessions/${sessionId}/`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
@@ -1110,9 +1110,9 @@ return class Component extends DCLogic {
     }).catch(error => this.setState({ chatSessionsError: 'Network error: ' + error.message }));
   }
 
-  deleteChatSession(courseId, sessionId, title, event) {
+  async deleteChatSession(courseId, sessionId, title, event) {
     if (event && event.stopPropagation) event.stopPropagation();
-    if (!window.confirm(`Delete “${title || 'this conversation'}”? This cannot be undone.`)) return;
+    if (!(await window.OnTrackDialogs.confirm({ kicker: 'Permanent action', title: `Delete “${title || 'this conversation'}”?`, message: 'This conversation cannot be recovered. Your course materials will remain.', confirmLabel: 'Delete conversation', danger: true }))) return;
     fetch(`/api/courses/${courseId}/sessions/${sessionId}/`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
@@ -1741,8 +1741,8 @@ return class Component extends DCLogic {
     this.setState({ gradesNotice: null });
   }
 
-  deleteGradeItem(itemId) {
-    if (!confirm('Delete this grade? This cannot be undone.')) return;
+  async deleteGradeItem(itemId) {
+    if (!(await window.OnTrackDialogs.confirm({ kicker: 'Permanent action', title: 'Delete this grade?', message: 'This grade item cannot be recovered.', confirmLabel: 'Delete grade', danger: true }))) return;
     const courseId = this.state.course;
     fetch(`/api/courses/${courseId}/grades/items/${itemId}/`, {
       method: 'DELETE', headers: { 'X-CSRFToken': getCookie('csrftoken') }

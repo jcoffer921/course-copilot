@@ -57,6 +57,10 @@ const state = {
   quizAsked: 0,
   quizAskedQuestions: [],
   currentQuestion: null,
+  sessionTransitioning: false,
+  questionRequestId: 0,
+  questionLoading: false,
+  answerSubmitting: false,
 };
 
 let planRequest = 0;
@@ -92,10 +96,11 @@ function renderGroundedPlan(plan) {
   }));
 
   sourceList.replaceChildren(...plan.sources.map(source => {
-    const chip = document.createElement("span");
+    const chip = document.createElement(source.download_url ? "a" : "span");
     chip.className = "guided-source-chip " + source.kind;
-    chip.textContent = source.title;
-    chip.title = source.kind === "note" ? "Course note" : "Reference";
+    chip.textContent = `${source.file_type ? `${source.file_type} · ` : ""}${source.title}`;
+    chip.title = "Course material used for this plan";
+    if (source.download_url) chip.href = source.download_url;
     return chip;
   }));
   sources.hidden = plan.sources.length === 0;
@@ -242,9 +247,11 @@ function updateProgressLabel(text) {
 
 async function startSession(event) {
   event.preventDefault();
+  if (state.sessionTransitioning) return;
   clearAlert();
   const courseId = byId("guided-session-course").value;
   if (!courseId) { showAlert("Choose a course first.", true); return; }
+  state.sessionTransitioning = true;
   const selectedTopic = byId("guided-session-topic").value;
   const durationMinutes = Number(byId("guided-session-duration").value);
   const mode = byId("guided-session-mode").value;
@@ -254,7 +261,7 @@ async function startSession(event) {
   enforceUi();
   try {
     const plan = await loadGroundedPlan({ throwOnError: true });
-    if (!plan?.grounded) throw new Error(plan?.rationale || "Add course notes before starting this session.");
+    if (!plan?.can_generate) throw new Error(plan?.rationale || "Choose a topic with processed course content.");
     const topic = selectedTopic || plan?.topic || "";
     const session = await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/study/sessions/`, {
       method: "POST",
@@ -279,6 +286,7 @@ async function startSession(event) {
     showAlert(errorMessage(error), true);
     ui.setupHidden = false;
   } finally {
+    state.sessionTransitioning = false;
     ui.loadingHidden = true;
     enforceUi();
   }
@@ -289,7 +297,9 @@ async function resumeSession() {
   const sessionId = params.get("resume");
   const courseId = params.get("course");
   if (!sessionId || !courseId || window.ONTRACK_INITIAL_TAB !== "session") return;
-  ui.loadingHidden = false; enforceUi();
+  if (state.sessionTransitioning) return;
+  state.sessionTransitioning = true;
+  ui.loadingHidden = false; ui.setupHidden = true; enforceUi();
   try {
     const session = await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/study/sessions/${encodeURIComponent(sessionId)}/`);
     if (session.status !== "in_progress") throw new Error("This study session is no longer active.");
@@ -300,8 +310,8 @@ async function resumeSession() {
     state.quizAskedQuestions = [];
     ui.setupHidden = true; ui.activeHidden = false; enforceUi();
     if (session.mode === "quiz") await beginQuizPhase("multiple_choice"); else await beginFlashcardPhase();
-  } catch (error) { showAlert(errorMessage(error), true); }
-  finally { ui.loadingHidden = true; enforceUi(); }
+  } catch (error) { showAlert(errorMessage(error), true); ui.setupHidden = false; }
+  finally { state.sessionTransitioning = false; ui.loadingHidden = true; enforceUi(); }
 }
 
 async function recordActivity(kind, payload) {
@@ -386,6 +396,8 @@ async function finishFlashcardPhase() {
 }
 
 async function beginQuizPhase(questionType) {
+  state.questionRequestId += 1;
+  state.questionLoading = false;
   state.quizPhase = questionType;
   state.quizAsked = 0;
   ui.step = "guided-session-quiz-step";
@@ -394,11 +406,19 @@ async function beginQuizPhase(questionType) {
 }
 
 async function loadNextQuestion() {
+  if (state.questionLoading || !state.session) return;
+  state.questionLoading = true;
+  const requestId = ++state.questionRequestId;
+  const sessionId = state.session.session_id;
+  const questionType = state.quizPhase;
   const target = state.quizPhase === "multiple_choice" ? state.targets.mcTarget : state.targets.recallTarget;
   updateProgressLabel(`${state.quizPhase === "multiple_choice" ? "Quiz" : "Short recall"} · ${state.quizAsked} / ${target}`);
   ui.feedbackHidden = true;
   ui.openAnswerHidden = state.quizPhase !== "open_ended";
   enforceUi();
+  state.currentQuestion = null;
+  byId("guided-session-question").textContent = "Cora is preparing your next question…";
+  byId("guided-session-choices").replaceChildren();
   byId("guided-session-open-answer").value = "";
 
   try {
@@ -410,11 +430,18 @@ async function loadNextQuestion() {
         previous_questions: state.quizAskedQuestions,
       }),
     });
+    if (
+      requestId !== state.questionRequestId
+      || state.session?.session_id !== sessionId
+      || state.quizPhase !== questionType
+    ) return;
     state.currentQuestion = question;
     byId("guided-session-question").textContent = question.question;
     renderChoices(question);
   } catch (error) {
-    showAlert(errorMessage(error), true);
+    if (requestId === state.questionRequestId) showAlert(errorMessage(error), true);
+  } finally {
+    if (requestId === state.questionRequestId) state.questionLoading = false;
   }
 }
 
@@ -434,7 +461,8 @@ function renderChoices(question) {
 
 async function submitAnswer(answer) {
   const question = state.currentQuestion;
-  if (!question || !answer.trim()) return;
+  if (!question || !answer.trim() || state.answerSubmitting) return;
+  state.answerSubmitting = true;
   clearAlert();
   try {
     const result = await apiRequest(`/api/courses/${encodeURIComponent(state.session.course_id)}/quiz/record/`, {
@@ -449,11 +477,14 @@ async function submitAnswer(answer) {
       }),
     });
     await recordActivity("quiz_answered", { correct: result.correct, question_type: question.question_type });
+    if (state.currentQuestion !== question) return;
     showFeedback(result, question);
     state.quizAskedQuestions.push(question.question);
     state.quizAsked += 1;
   } catch (error) {
     showAlert(errorMessage(error), true);
+  } finally {
+    state.answerSubmitting = false;
   }
 }
 
@@ -480,6 +511,7 @@ function showFeedback(result, question) {
 }
 
 async function nextQuestion() {
+  if (state.questionLoading || state.answerSubmitting) return;
   const target = state.quizPhase === "multiple_choice" ? state.targets.mcTarget : state.targets.recallTarget;
   if (state.quizAsked >= target) {
     if (state.quizPhase === "multiple_choice") {
@@ -523,6 +555,9 @@ function showSummary(summary) {
 }
 
 function resetToSetup() {
+  state.questionRequestId += 1;
+  state.questionLoading = false;
+  state.answerSubmitting = false;
   state.session = null;
   Object.assign(ui, {
     setupHidden: false, loadingHidden: true, activeHidden: true, step: null,

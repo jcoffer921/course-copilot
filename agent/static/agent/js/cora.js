@@ -3,6 +3,7 @@ import { initNavigation } from "./core/navigation.js";
 import { showToast } from "./core/toast.js";
 import { restoreFocus } from "./core/modal.js";
 import { renderMarkdown } from "./core/markdown.js";
+import { confirmDialog, promptDialog } from "./core/dialogs.js?v=20260901-1";
 
 initNavigation();
 
@@ -49,11 +50,9 @@ function createThinkingIndicator() {
 
   const bubble = document.createElement("div");
   bubble.className = "cora-message-bubble cora-thinking-bubble";
-  const avatar = document.querySelector(".cora-header-avatar")?.cloneNode(true);
-  if (avatar) {
-    avatar.className = "cora-thinking-avatar";
-    avatar.alt = "";
-  }
+  const mark = document.createElement("span");
+  mark.className = "cora-thinking-mark";
+  mark.setAttribute("aria-hidden", "true");
   const activity = document.createElement("div");
   activity.className = "cora-thinking-activity";
   const dots = document.createElement("span");
@@ -75,8 +74,7 @@ function createThinkingIndicator() {
   }, 1800);
 
   activity.append(dots, status);
-  if (avatar) bubble.append(avatar);
-  bubble.append(activity);
+  bubble.append(mark, activity);
   article.append(meta, bubble);
   return {
     element: article,
@@ -197,7 +195,7 @@ async function loadSessions(preferredSession, push = false) {
 }
 async function selectCourse(id, { preferredSession = null, push = true, focusComposer = true } = {}) {
   const course = state.courses.find(item => item.id === id); if (!course) return;
-  const draft = els.input.value; if (state.course && state.course.id !== id && draft.trim() && !confirm("Switch courses and discard this unsent draft?")) { els.course.value = state.course.id; return; }
+  const draft = els.input.value; if (state.course && state.course.id !== id && draft.trim() && !(await confirmDialog({ title: "Switch courses?", message: "Your unsent draft will be discarded.", confirmLabel: "Switch course" }))) { els.course.value = state.course.id; return; }
   state.course = course; state.session = null; state.messages = []; els.input.value = ""; closeSource();
   els.breadcrumb.textContent = course.name; els.title.textContent = `Cora · ${course.name}`; els.grounding.textContent = `${course.name} course materials`;
   els.input.placeholder = `Ask a question about ${course.name}…`; els.course.value = course.id; els.notice.hidden = true;
@@ -248,8 +246,8 @@ async function openSource(citation, messageIndex, citationIndex, trigger) {
 async function menuAction(action) {
   els.menu.hidden = true; els.menuButton.setAttribute("aria-expanded", "false"); if (!state.session) return;
   if (action === "copy-link") { await navigator.clipboard.writeText(location.href); return showToast("Conversation link copied.", "success"); }
-  if (action === "rename") { const title = prompt("Rename conversation", state.session.title); if (!title?.trim()) return; await apiRequest(`/api/courses/${state.course.id}/sessions/${state.session.session_id}/`, { method: "PATCH", body: JSON.stringify({ title: title.trim() }) }); await loadSessions(state.session.session_id); }
-  if (action === "delete" && confirm(`Delete “${state.session.title}”? This is permanent and does not delete course materials.`)) { const deletedId = state.session.session_id; await apiRequest(`/api/courses/${state.course.id}/sessions/${deletedId}/`, { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE" }) }); state.session = null; state.sessions = state.sessions.filter(item => item.session_id !== deletedId); await loadSessions(state.sessions[0]?.session_id, true); }
+  if (action === "rename") { const title = await promptDialog({ kicker: "Cora conversation", title: "Rename conversation", message: "Choose a title that will be easy to find later.", inputLabel: "Conversation title", defaultValue: state.session.title, confirmLabel: "Save title" }); if (!title) return; await apiRequest(`/api/courses/${state.course.id}/sessions/${state.session.session_id}/`, { method: "PATCH", body: JSON.stringify({ title }) }); await loadSessions(state.session.session_id); }
+  if (action === "delete" && await confirmDialog({ kicker: "Permanent action", title: `Delete “${state.session.title}”?`, message: "This conversation will be permanently removed. Your course materials will not be deleted.", confirmLabel: "Delete conversation", danger: true })) { const deletedId = state.session.session_id; await apiRequest(`/api/courses/${state.course.id}/sessions/${deletedId}/`, { method: "DELETE", body: JSON.stringify({ confirmation: "DELETE" }) }); state.session = null; state.sessions = state.sessions.filter(item => item.session_id !== deletedId); await loadSessions(state.sessions[0]?.session_id, true); }
 }
 
 els.form.addEventListener("submit", event => { event.preventDefault(); const question = els.input.value.trim(); if (question && !state.sending) send(question); });

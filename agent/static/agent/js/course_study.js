@@ -49,14 +49,24 @@ function renderDue(cards) {
 
 function renderRecommendation(items, topics) {
   recommendation = items.find(item => item.course_id === courseId) || null;
-  const topic = recommendation?.topic || topics[0] || "Course foundations";
-  byId("study-rec-topic").textContent = `${topic} review`;
-  byId("study-rec-reason").textContent = recommendation?.reason || (topics.length ? "A useful starter session from your confirmed course topics." : "Upload and confirm course material to unlock grounded study tools.");
+  const topic = recommendation?.topic || "";
+  byId("study-rec-topic").textContent = recommendation ? `${topic} review` : "Add course material for a recommendation";
+  byId("study-rec-reason").textContent = recommendation?.reason || "Upload a PDF, DOCX, or PPTX with relevant course content so Cora can recommend a session with evidence.";
+  const evidence = byId("study-rec-evidence"); const sourceList = byId("study-rec-sources");
+  evidence.hidden = !recommendation; sourceList.replaceChildren(...(recommendation?.sources || []).map(source => {
+    const link = document.createElement("a"); link.className = "recommendation-source"; link.href = source.download_url;
+    const badge = document.createElement("span"); badge.className = "recommendation-file-type"; badge.textContent = source.file_type;
+    const copy = document.createElement("span"); copy.className = "recommendation-source-copy";
+    const name = document.createElement("strong"); name.textContent = source.filename;
+    const excerpt = document.createElement("span"); excerpt.textContent = `${source.page ? `Page ${source.page} · ` : ""}${source.excerpt}`;
+    copy.append(name, excerpt); link.append(badge, copy); return link;
+  }));
   const duration = Number(document.querySelector("input[name='duration']:checked")?.value || 45);
   const steps = duration <= 15 ? [["Flashcard review", `${duration} min`]] : duration <= 30 ? [["Flashcards", "10 min"], ["Practice quiz", `${duration - 10} min`]] : [["Flashcards", "10 min"], ["Practice quiz", "20 min"], ["Short recall", `${duration - 30} min`]];
   byId("study-rec-steps").replaceChildren(...steps.map(([name, time]) => { const li = document.createElement("li"); li.innerHTML = `<strong>${name}</strong><span>${time}</span>`; return li; }));
   byId("study-rec-time").textContent = `${duration} min`;
-  setTopicLinks(topic);
+  byId("start-recommended").disabled = !recommendation;
+  if (topic) setTopicLinks(topic);
 }
 
 async function start(topic, duration, mode) {

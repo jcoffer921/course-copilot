@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path("profile/", views.UserProfileView.as_view(), name="profile"),
     path("profile/export/", views.AccountExportView.as_view(), name="profile-export"),
+    path("feedback/", views.PilotFeedbackView.as_view(), name="pilot-feedback"),
     path("courses/overview/", views.CoursesOverviewView.as_view(), name="courses-overview"),
     # slug converter ([-a-zA-Z0-9_]+) rejects "/" and ".." in course_id at the
     # routing layer, before it can reach storage.py as a path segment.

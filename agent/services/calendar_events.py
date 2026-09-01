@@ -9,11 +9,14 @@ API consumers.
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import date, datetime, timedelta
 
 from django.db.utils import DatabaseError
 
 from . import storage
+
+logger = logging.getLogger(__name__)
 
 
 OVERDUE_CATEGORIES = {"hw", "project", "test_quiz"}
@@ -109,6 +112,10 @@ def _syllabus_event(user, course_id: str, raw: dict, material_id: str | None, sy
     try:
         event_date = datetime.strptime(raw["date"], "%Y-%m-%d").date()
     except (KeyError, TypeError, ValueError):
+        logger.warning(
+            "Skipping malformed syllabus date for course '%s' (user %s): title=%r date=%r",
+            course_id, getattr(user, "pk", None), raw.get("title"), raw.get("date"),
+        )
         return None
 
     event_type = storage.normalize_date_type(raw.get("type", "other"))
@@ -255,7 +262,13 @@ def calendar_snapshot(user) -> dict:
         material_id = _confirmed_syllabus_material_id(user, course_id)
         for raw in syllabus.get("dates", []):
             event = _syllabus_event(user, course_id, raw, material_id, sync_cache)
-            if event is not None and event["key"] not in replaced_keys:
+            if event is None:
+                warnings.append({
+                    "scope": course_id,
+                    "detail": f"'{raw.get('title') or 'a deadline'}' has an invalid date and was skipped.",
+                })
+                continue
+            if event["key"] not in replaced_keys:
                 events.append(event)
 
     course_names = {course["id"]: course["name"] for course in courses}
@@ -278,8 +291,9 @@ def upcoming_events(
     course_ids: list[str] | None = None,
     include_incomplete_overdue: bool = False,
     include_general: bool = False,
+    today: date | None = None,
 ) -> list[dict]:
-    today = date.today()
+    today = today or date.today()
     cutoff = today + timedelta(days=within_days) if within_days is not None else None
     result = []
     for event in all_events(user, course_ids=course_ids, include_general=include_general):
@@ -298,6 +312,56 @@ def upcoming_events(
             continue
         result.append(event)
     return result
+
+
+def _time_range(date_str: str, time_str: str | None, end_time_str: str | None):
+    """Returns (start, end) datetimes for a timed event, defaulting a missing
+    end_time to a 1-hour duration (same convention custom_events.sync_event_to_calendar
+    uses when pushing a timed event to Google Calendar). Returns None for an
+    all-day event (time_str is None/empty) — an all-day entry has no time
+    range to overlap against, so it never participates in conflict checks."""
+    if not time_str:
+        return None
+    start = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+    if end_time_str:
+        end = datetime.strptime(f"{date_str} {end_time_str}", "%Y-%m-%d %H:%M")
+    else:
+        end = start + timedelta(hours=1)
+    return start, end
+
+
+def detect_conflicts(
+    user,
+    date_str: str,
+    time_str: str | None,
+    end_time_str: str | None = None,
+    exclude_event_id: str | None = None,
+) -> list[dict]:
+    """Returns existing events (any course, plus general events) whose time
+    range overlaps a candidate [time_str, end_time_str) on date_str.
+
+    All-day candidates (time_str absent) never conflict — there's no time
+    range to compare. exclude_event_id skips the event being moved/updated
+    against its own prior self. This function only reports overlaps; it
+    never blocks, mutates, or auto-resolves anything — per this project's
+    plan-then-pause rule, only the caller (after showing the student) decides
+    what happens next."""
+    candidate_range = _time_range(date_str, time_str, end_time_str)
+    if candidate_range is None:
+        return []
+    candidate_start, candidate_end = candidate_range
+
+    conflicts = []
+    for event in all_events(user, include_general=True):
+        if event["id"] == exclude_event_id or event["date"] != date_str:
+            continue
+        existing_range = _time_range(event["date"], event.get("time"), event.get("end_time"))
+        if existing_range is None:
+            continue
+        existing_start, existing_end = existing_range
+        if candidate_start < existing_end and existing_start < candidate_end:
+            conflicts.append(event)
+    return conflicts
 
 
 def validate_syllabus_replacement(user, course_id: str | None, deadline_key: str) -> None:

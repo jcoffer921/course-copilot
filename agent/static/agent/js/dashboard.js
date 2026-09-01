@@ -103,10 +103,22 @@ async function completePlanItem(item, checkbox) {
 function renderRecommendation(rec) {
   const has = !!rec; ui.recommendationEmptyHidden = has; ui.recommendationBadgeHidden = !has; ui.recommendationActionsHidden = !has; ui.recommendationFactsHidden = true;
   byId("dash-recommendation-title").hidden = !has; byId("dash-recommendation-reason").hidden = !has; state.currentRecommendation = rec;
+  const evidence = byId("dash-recommendation-evidence");
+  const sourceList = byId("dash-recommendation-sources");
+  sourceList.replaceChildren(); evidence.hidden = !has;
   if (!has) return enforceUi();
   byId("dash-recommendation-title").textContent = `Review ${rec.topic}`; byId("dash-recommendation-reason").textContent = rec.reason;
+  sourceList.replaceChildren(...(rec.sources || []).map(source => {
+    const link = document.createElement("a"); link.className = "recommendation-source"; link.href = source.download_url;
+    const badge = document.createElement("span"); badge.className = "recommendation-file-type"; badge.textContent = source.file_type;
+    const copy = document.createElement("span"); copy.className = "recommendation-source-copy";
+    const name = document.createElement("strong"); name.textContent = source.filename;
+    const excerpt = document.createElement("span"); excerpt.textContent = `${source.page ? `Page ${source.page} · ` : ""}${source.excerpt}`;
+    copy.append(name, excerpt); link.append(badge, copy); return link;
+  }));
   byId("dash-recommendation-start").href = `${routes.study}?view=session&course=${encodeURIComponent(rec.course_id)}&topic=${encodeURIComponent(rec.topic)}`;
-  byId("dash-recommendation-facts").textContent = `Mastery gap ${Math.round(rec.gap * 100)}% · Deadline urgency ${Math.round(rec.urgency * 100)}% · Importance ${Math.round(rec.importance * 100)}% · Recency ${Math.round(rec.recency * 100)}%`;
+  const sourceCount = (rec.sources || []).length;
+  byId("dash-recommendation-facts").textContent = `${sourceCount} supporting course file${sourceCount === 1 ? "" : "s"} · Mastery gap ${Math.round(rec.gap * 100)}% · Deadline urgency ${Math.round(rec.urgency * 100)}% · Importance ${Math.round(rec.importance * 100)}% · Recency ${Math.round(rec.recency * 100)}%`;
   enforceUi();
 }
 function renderCourses(data) {
@@ -150,11 +162,11 @@ function renderNotifications(data) {
   byId("dash-notifications-read").hidden = !data.unread_count;
   byId("dash-notifications-list").replaceChildren(...items.map(item => {
     const li = document.createElement("li"); if (!item.read) li.classList.add("unread");
-    const icon = document.createElement("span"); icon.className = "dash-notification-item-icon"; icon.append(svgIcon("calendar"));
+    const icon = document.createElement("span"); icon.className = "dash-notification-item-icon"; icon.append(svgIcon(item.kind === "cora_message" ? "cora" : item.kind === "study_reminder" ? "study" : "calendar"));
     const copy = document.createElement("div"); copy.className = "dash-notification-copy";
     const title = document.createElement("strong"); title.textContent = item.title; const body = document.createElement("span"); body.textContent = item.body;
-    const meta = document.createElement("small"); meta.textContent = item.due_date ? `Due ${formatDateShort(item.due_date)} · ${daysUntilLabel(item.due_date)}` : "OnTrack update";
-    const view = document.createElement("a"); view.className = "dash-notification-view"; view.href = routes.calendar; view.textContent = "View in calendar"; copy.append(title, body, meta, view); li.append(icon, copy);
+    const meta = document.createElement("small"); meta.textContent = item.due_date ? `Due ${formatDateShort(item.due_date)} · ${daysUntilLabel(item.due_date)}` : item.kind === "cora_message" ? "Cora message" : item.kind === "study_reminder" ? "Study reminder" : "OnTrack update";
+    const view = document.createElement("a"); view.className = "dash-notification-view"; view.href = item.action_url || routes.calendar; view.textContent = item.kind === "cora_message" ? "Open conversation" : item.kind === "study_reminder" ? "Start studying" : "View in calendar"; copy.append(title, body, meta, view); li.append(icon, copy);
     if (!item.read) { const read = document.createElement("button"); read.type = "button"; read.className = "dash-notification-read-one"; read.dataset.notificationId = item.id; read.setAttribute("aria-label", `Mark ${item.title} as read`); read.textContent = "Mark read"; li.append(read); }
     return li;
   }));

@@ -7,5 +7,17 @@ this dev machine; harmless no-op everywhere else).
 """
 
 import truststore
+import pytest
+from django.core.cache import caches
 
 truststore.inject_into_ssl()
+
+
+@pytest.fixture(autouse=True)
+def isolate_django_cache():
+    """Prevent throttle and login counters from leaking between tests."""
+    for cache in caches.all():
+        cache.clear()
+    yield
+    for cache in caches.all():
+        cache.clear()

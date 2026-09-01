@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from django.urls import reverse
 
@@ -296,6 +298,19 @@ def test_study_session_view_renders_guided_session_panel_visibly(client, django_
     assert 'src="/static/agent/js/study.js"' in html
 
 
+def test_guided_quiz_centers_copy_and_ignores_stale_question_responses():
+    root = Path(__file__).resolve().parents[2]
+    controller = (root / "agent/static/agent/js/study.js").read_text(encoding="utf-8")
+    styles = (root / "agent/static/agent/css/guided_study.css").read_text(encoding="utf-8")
+
+    assert "questionRequestId" in controller
+    assert "requestId !== state.questionRequestId" in controller
+    assert "state.questionLoading || !state.session" in controller
+    assert "state.sessionTransitioning" in controller
+    assert ".guided-quiz-step{align-items:center}" in styles
+    assert ".guided-step-copy{width:min(760px,100%);margin-inline:auto;text-align:center}" in styles
+
+
 @pytest.mark.django_db
 def test_unsafe_query_course_is_not_embedded_as_application_state(client, django_user_model):
     client.force_login(django_user_model.objects.create_user(username="safe-course-user"))
@@ -342,6 +357,8 @@ def test_exam_and_settings_pages_use_native_runtime_and_accessible_dialogs(clien
     assert 'role="dialog" aria-modal="true"' in exam_html
     assert 'id="delete-dialog" class="settings-dialog-backdrop" hidden' in settings_html
     assert 'href="/api/profile/export/"' in settings_html
+    assert 'id="notifications-form"' in settings_html
+    assert 'id="settings-reminder-time" type="time"' in settings_html
     for icon_name in ("profile", "clock", "bell", "link", "shield"):
         assert f'href="#ot-icon-{icon_name}"' in settings_html
 

@@ -1,5 +1,6 @@
 import { apiRequest } from "./core/api.js";
 import { initNavigation } from "./core/navigation.js";
+import { confirmDialog } from "./core/dialogs.js?v=20260901-1";
 
 initNavigation();
 const root = document.querySelector(".practice-page");
@@ -206,7 +207,7 @@ async function next() {
   const message = unanswered
     ? `Submit this practice quiz with ${unanswered} unanswered question${unanswered === 1 ? "" : "s"}?`
     : "Submit this practice quiz? You will not be able to change answers afterward.";
-  if (!window.confirm(message)) return;
+  if (!(await confirmDialog({ title: "Submit practice quiz?", message, confirmLabel: "Submit quiz" }))) return;
   busy = true;
   try {
     state = await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/study/quizzes/attempts/${attemptId}/finalize/`, { method: "POST" });
