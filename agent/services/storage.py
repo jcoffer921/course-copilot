@@ -62,6 +62,12 @@ LECTURE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 # same safe charset under a new name.
 REFERENCE_ID_RE = LECTURE_ID_RE
 
+# image_id becomes a filename under courses/<course_id>/images/<lecture_id>/ —
+# same defense as LECTURE_ID_RE.
+IMAGE_ID_RE = LECTURE_ID_RE
+
+VALID_IMAGE_MATCH_METHODS = {"proximity"}
+
 
 class SyllabusStorageError(Exception):
     """Raised when an existing syllabus.json on disk is corrupt/unreadable."""
@@ -85,6 +91,15 @@ class InvalidReferenceIdError(ValueError):
 
 class ReferencesStorageError(Exception):
     """Raised when an existing references/<reference_id>.json on disk is corrupt/unreadable."""
+
+
+class InvalidImageIdError(ValueError):
+    """Raised when image_id isn't a safe filesystem path segment."""
+
+
+class ImageManifestStorageError(Exception):
+    """Raised when images/<lecture_id>/manifest.json on disk is corrupt/unreadable,
+    or a set of extracted manifest entries fails schema validation before a write."""
 
 
 class TrustedDomainsStorageError(Exception):
@@ -179,6 +194,31 @@ def _reference_path(course_id: str, reference_id: str, user) -> Path:
     path = (references_dir / f"{reference_id}.json").resolve()
     if path.parent != references_dir.resolve():
         raise InvalidReferenceIdError(f"invalid reference_id: {reference_id!r}")
+    return path
+
+
+def _lecture_images_dir(course_id: str, lecture_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>/images/<lecture_id>/, guarding
+    against path traversal via lecture_id the same way _lecture_path does."""
+    if not LECTURE_ID_RE.fullmatch(lecture_id):
+        raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
+    images_dir = _course_dir(course_id, user) / "images"
+    path = (images_dir / lecture_id).resolve()
+    if path.parent != images_dir.resolve():
+        raise InvalidLectureIdError(f"invalid lecture_id: {lecture_id!r}")
+    return path
+
+
+def lecture_image_path(course_id: str, lecture_id: str, image_id: str, user) -> Path:
+    """Resolves courses/<user.pk>/<course_id>/images/<lecture_id>/<image_id>.png,
+    guarding against path traversal via image_id the same way _reference_path
+    does for reference_id."""
+    if not IMAGE_ID_RE.fullmatch(image_id):
+        raise InvalidImageIdError(f"invalid image_id: {image_id!r}")
+    lecture_dir = _lecture_images_dir(course_id, lecture_id, user)
+    path = (lecture_dir / f"{image_id}.png").resolve()
+    if path.parent != lecture_dir.resolve():
+        raise InvalidImageIdError(f"invalid image_id: {image_id!r}")
     return path
 
 
@@ -294,6 +334,66 @@ def validate_notes(data: dict) -> list:
         seen_ids.add(c["id"])
         if not isinstance(c["text"], str) or not c["text"].strip():
             errors.append(f"chunks[{i}].text is empty — divider/heading-only chunks should be dropped, not written")
+
+        # "page" and "image_ids" are optional, additive fields — absent means
+        # no figure-extraction pass has run for this lecture yet, which is a
+        # normal state, not an error. extract_figures.py is what populates
+        # them (proximity-matched page number, and the figures linked to it).
+        if "page" in c and c["page"] is not None:
+            page = c["page"]
+            if not isinstance(page, int) or isinstance(page, bool) or page < 1:
+                errors.append(f"chunks[{i}].page must be a positive integer or null: {page!r}")
+        if "image_ids" in c:
+            image_ids = c["image_ids"]
+            if not isinstance(image_ids, list) or not all(
+                isinstance(image_id, str) and image_id.strip() for image_id in image_ids
+            ):
+                errors.append(f"chunks[{i}].image_ids must be a list of non-empty strings")
+
+    return errors
+
+
+def validate_image_manifest(entries: list) -> list:
+    """Returns a list of error strings for an images/<lecture_id>/manifest.json
+    entry list — see extract_figures.py for how entries are produced. An
+    empty list means the data is valid. No non-blocking WARNING entries here,
+    same as validate_reference: an entry either has a real, safely-named
+    figure and a positive source page or it doesn't."""
+    if not isinstance(entries, list):
+        return ["manifest must be a list"]
+
+    errors = []
+    seen_ids = set()
+    for i, entry in enumerate(entries):
+        if not isinstance(entry, dict):
+            errors.append(f"entries[{i}] is not an object")
+            continue
+
+        image_id = entry.get("image_id")
+        if not isinstance(image_id, str) or not image_id.strip():
+            errors.append(f"entries[{i}].image_id must be a non-empty string")
+        elif not IMAGE_ID_RE.fullmatch(image_id):
+            errors.append(f"entries[{i}].image_id is not a safe identifier: {image_id!r}")
+        elif image_id in seen_ids:
+            errors.append(f"entries[{i}].image_id is a duplicate: {image_id!r}")
+        else:
+            seen_ids.add(image_id)
+
+        source_page = entry.get("source_page")
+        if not isinstance(source_page, int) or isinstance(source_page, bool) or source_page < 1:
+            errors.append(f"entries[{i}].source_page must be a positive integer: {source_page!r}")
+
+        chunk_ids = entry.get("chunk_ids")
+        if not isinstance(chunk_ids, list) or not all(
+            isinstance(chunk_id, str) and chunk_id.strip() for chunk_id in chunk_ids
+        ):
+            errors.append(f"entries[{i}].chunk_ids must be a list of non-empty strings")
+
+        if entry.get("match_method") not in VALID_IMAGE_MATCH_METHODS:
+            errors.append(
+                f"entries[{i}].match_method must be one of {VALID_IMAGE_MATCH_METHODS}: "
+                f"{entry.get('match_method')!r}"
+            )
 
     return errors
 
@@ -589,6 +689,65 @@ def delete_reference(course_id: str, reference_id: str, user) -> None:
     path = _reference_path(course_id, reference_id, user)
     if path.exists():
         path.unlink()
+
+
+def read_image_manifest(course_id: str, lecture_id: str, user):
+    """Returns the parsed images/<lecture_id>/manifest.json list, or None if
+    this lecture's figures have never been extracted — a normal state, same
+    "doesn't exist yet" convention as read_syllabus."""
+    path = _lecture_images_dir(course_id, lecture_id, user) / "manifest.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ImageManifestStorageError(f"manifest.json for '{course_id}/{lecture_id}' is corrupt: {e}")
+    errors = validate_image_manifest(data)
+    if errors:
+        raise ImageManifestStorageError(
+            f"manifest.json for '{course_id}/{lecture_id}' failed validation: {errors}"
+        )
+    return data
+
+
+def write_image_manifest(course_id: str, lecture_id: str, entries: list, user, overwrite: bool = False) -> Path:
+    """Writes images/<lecture_id>/manifest.json. Raises ImageManifestStorageError
+    if entries fail schema validation — callers must validate before writing,
+    never persist unvalidated extracted data. Raises FileExistsError if the
+    manifest already exists and overwrite=False — same plan-then-pause
+    contract as write_notes/write_syllabus."""
+    errors = validate_image_manifest(entries)
+    if errors:
+        raise ImageManifestStorageError(f"manifest entries failed validation: {errors}")
+
+    lecture_dir = _lecture_images_dir(course_id, lecture_id, user)
+    out_path = lecture_dir / "manifest.json"
+    if out_path.exists() and not overwrite:
+        raise FileExistsError(str(out_path))
+
+    lecture_dir.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(entries, indent=2), encoding="utf-8")
+    return out_path
+
+
+def write_lecture_image(course_id: str, lecture_id: str, image_id: str, png_bytes: bytes, user, overwrite: bool = False) -> Path:
+    """Writes one extracted figure PNG under images/<lecture_id>/<image_id>.png.
+    Raises FileExistsError if it already exists and overwrite=False."""
+    out_path = lecture_image_path(course_id, lecture_id, image_id, user)
+    if out_path.exists() and not overwrite:
+        raise FileExistsError(str(out_path))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(png_bytes)
+    return out_path
+
+
+def delete_lecture_images(course_id: str, lecture_id: str, user) -> None:
+    """Deletes images/<lecture_id>/ entirely (manifest + every PNG), if
+    present — used to clean-slate re-extract a lecture's figures rather than
+    trying to reconcile individual file adds/removes."""
+    lecture_dir = _lecture_images_dir(course_id, lecture_id, user)
+    if lecture_dir.exists():
+        shutil.rmtree(lecture_dir)
 
 
 def read_trusted_domains(course_id: str, user) -> list:

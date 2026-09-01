@@ -53,6 +53,11 @@ course-copilot/
       materials.py          # owned upload/status/review lifecycle shared by API and CLI
       syllabus_extraction.py # syllabus text/pdf -> syllabus.json
       chunk_notes.py         # notes (pdf/txt/md) or slides (.pptx) -> notes/<lecture_id>.json
+      extract_figures.py     # lecture PDF/PPTX -> images/<lecture_id>/*.png + manifest.json,
+                             # proximity-linked to notes/<lecture_id>.json chunks; no LLM call,
+                             # never generates/fabricates an image — see the module docstring
+                             # for its known v1 limitations (proximity matching, no PPTX
+                             # rasterization fallback)
       references.py          # reference doc (pdf/txt/md) -> references/<reference_id>.json, no LLM call
       ask.py                    # grounded Q&A, stateless or multi-turn via session_id
       domain_suggestions.py     # LLM-suggested trusted domains for a course's restricted web search, read-only
@@ -121,6 +126,8 @@ course-copilot/
     management/commands/
       extract_syllabus.py  # CLI wrapper — no server needed
       chunk_notes.py         # CLI wrapper, handles both notes files and .pptx decks
+      extract_figures.py     # CLI wrapper around extract_figures.py (--force to skip the
+                             # re-extraction confirmation prompt)
       references.py           # CLI wrapper around references.py
       ask.py                 # CLI wrapper around ask.py, optional --session
       domains.py               # CLI wrapper around domain_suggestions.py (--suggest / --approve)
@@ -175,6 +182,15 @@ course-copilot/
         syllabus.json       # extracted dates, topics, grading breakdown
         notes/
           <lecture_id>.json # chunked notes/slides, one file per lecture — see schema below
+        images/
+          <lecture_id>/
+            <image_id>.png   # figures extracted from that lecture's source PDF/PPTX by
+                             # extract_figures.py — real embedded images or, for a PDF page
+                             # with no embedded image object, a full-page rasterization;
+                             # never generated. Absent until extract_figures runs for that
+                             # lecture.
+            manifest.json    # proximity links from each figure to notes chunk(s) — see
+                             # schema below
         references/
           <reference_id>.json # uploaded reference material, one file per doc — see schema below
         quiz_history.json   # append-only event log: every attempt, questions asked, correct/incorrect
@@ -260,9 +276,18 @@ category," the same "absence is a normal state" convention `trusted_domains.json
   "source": "notes|slides",
   "date": "YYYY-MM-DD",
   "topics": ["string"],
-  "chunks": [{"id": "string", "topic": "string", "text": "string"}]
+  "chunks": [{"id": "string", "topic": "string", "text": "string", "page": "integer|null", "image_ids": ["string", ...]}]
 }
 ```
+
+`page` and `image_ids` on a chunk are optional, additive fields — absent (the state every
+chunk_notes.py-produced chunk starts in) means no figure-extraction pass has run for this
+lecture yet. `extract_figures.py` is the only thing that populates them: `page` is its
+proximity-matched best-guess source page/slide for that chunk (word-token overlap against the
+same source PDF/PPTX's per-page text — see that module's docstring for why this is a known-
+imprecise v1 heuristic, not ground truth), and `image_ids` are the figures from
+`images/<lecture_id>/manifest.json` whose `source_page` matched. citations.py already reads
+`chunk["page"]` for source previews regardless of whether extract_figures has run.
 
 "source" records whether this lecture came from raw notes (pdf/txt/md) or a slide
 deck (.pptx) — chunk_notes.py runs the same LLM chunking core on both after
@@ -290,6 +315,23 @@ its own "chunks".
 No `chunks`/`topics` — unlike notes, references aren't quizzed or mastery-tracked, so there's no need
 to chunk by topic. The whole `text` gets stuffed into ask.py's context every time, same as syllabus
 and notes.
+
+**images/<lecture_id>/manifest.json**
+```json
+[
+  {"image_id": "string", "source_page": 0, "chunk_ids": ["string", ...], "match_method": "proximity"}
+]
+```
+
+Written by `extract_figures.py`; absent until it runs for that lecture, same "doesn't exist yet =
+normal state" convention as `trusted_domains.json`. `source_page` is the 1-based PDF page or PPTX
+slide number the figure at `images/<lecture_id>/<image_id>.png` came from. `chunk_ids` may be empty
+— a real figure is never dropped just because no chunk's text proximity-matched its page.
+`match_method` is always `"proximity"` in v1 (the only method implemented); a future vision-based
+captioning pass would need a new value here, not a silent redefinition of what `"proximity"` means.
+`ask.py`'s resolved citations (via `citations.py`) attach a matched chunk's `image_ids` as an
+`"images"` array of `{"image_id", "path"}` — omitted entirely when the chunk has none, or when a
+listed image_id's PNG is no longer on disk.
 
 **trusted_domains.json**
 ```json
@@ -587,6 +629,8 @@ accepted from the browser. The matching flashcard route is
 8. `calendar_sync.py` — Calendar sync for syllabus deadlines, one event at a time
 9. `custom_events.py` + the Deadlines tab — manually-added deadlines/events, full CRUD,
    merged with syllabus deadlines into one unbounded, cross-course list
+10. `extract_figures.py` — real diagrams/images from a lecture's PDF/PPTX, proximity-linked
+    to notes chunks; ask.py surfaces a grounding chunk's linked figures as file paths
 
 **Deferred, not yet built:**
 
@@ -611,6 +655,12 @@ accepted from the browser. The matching flashcard route is
   topic once mastery data existed).
 
 ## Open decisions (revisit before scaling past one course)
+
+- `extract_figures.py` is CLI-only so far (no DRF view/serializer/urls wiring, unlike every
+  other service in the "Each script/service ... becomes both a management command and a
+  service function" convention above) — out of scope for the pass that added it. The service
+  function (`build_extraction_plan`/`commit_extraction_plan`) is already async-view-ready
+  (plain sync I/O, no LLM call to await) whenever that wiring gets built.
 
 - Retrieval/chunk-routing — still full-context stuffing (all of a course's notes/slides
   into every ask.py call). Only becomes necessary once a course's material is too large to

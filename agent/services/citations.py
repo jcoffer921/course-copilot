@@ -73,8 +73,32 @@ def _active_material(rows, material_type: str, source_key: str = ""):
     return None
 
 
-def _base(material_id, material_type, title, *, lecture_id=None, chunk_id=None, page=None, url=None, excerpt=""):
-    return {
+def _chunk_images(user, course_id: str, lecture_id: str, chunk) -> list[dict]:
+    """Resolves a note chunk's image_ids (set by extract_figures.py) to real,
+    still-present figure files. Never claims an image that isn't actually on
+    disk — an image_id whose PNG was deleted out from under the manifest is
+    silently skipped here rather than surfaced as a broken reference."""
+    if not isinstance(chunk, dict):
+        return []
+    image_ids = chunk.get("image_ids")
+    if not isinstance(image_ids, list):
+        return []
+    images = []
+    for image_id in image_ids:
+        try:
+            path = storage.lecture_image_path(course_id, lecture_id, image_id, user)
+        except storage.InvalidImageIdError:
+            continue
+        if path.exists():
+            images.append({"image_id": image_id, "path": str(path)})
+    return images
+
+
+def _base(
+    material_id, material_type, title, *,
+    lecture_id=None, chunk_id=None, page=None, url=None, excerpt="", images=None,
+):
+    citation = {
         "material_id": str(material_id),
         "material_type": material_type,
         "title": str(title or material_id),
@@ -84,6 +108,12 @@ def _base(material_id, material_type, title, *, lecture_id=None, chunk_id=None, 
         "url": url,
         "excerpt": _excerpt(excerpt),
     }
+    # Omitted entirely (not even an empty list) when the grounding chunk has
+    # no linked figures — same "absence is a normal state, don't pad every
+    # record with an empty field" convention as CourseSession's sources/grounded.
+    if images:
+        citation["images"] = images
+    return citation
 
 
 def _syllabus_citation(user, course_id, rows, question, answer):
@@ -115,7 +145,7 @@ def _notes_citation(user, course_id, rows, source_label, question, answer):
     if note is None:
         return None
     candidates = [
-        {"text": chunk.get("text", ""), "chunk_id": chunk.get("id"), "page": chunk.get("page")}
+        {"text": chunk.get("text", ""), "chunk_id": chunk.get("id"), "page": chunk.get("page"), "chunk": chunk}
         for chunk in note.get("chunks", []) if isinstance(chunk, dict) and chunk.get("text")
     ]
     selected = _best(candidates, question, answer)
@@ -137,6 +167,7 @@ def _notes_citation(user, course_id, rows, source_label, question, answer):
             else None
         ),
         excerpt=selected.get("text", ""),
+        images=_chunk_images(user, course_id, source_label, selected.get("chunk")),
     )
 
 
@@ -188,6 +219,7 @@ def citation_for_chunk(user, course_id: str, lecture_id: str, chunk_id: str):
         chunk_id=chunk.get("id"),
         page=page if isinstance(page, int) and not isinstance(page, bool) and page > 0 else None,
         excerpt=chunk.get("text", ""),
+        images=_chunk_images(user, course_id, lecture_id, chunk),
     )
 
 
@@ -425,6 +457,11 @@ def preview_source(user, course_id: str, citation: dict) -> dict:
             else:
                 resolved["chunk_id"] = chunk["id"]
                 resolved["excerpt"] = _excerpt(chunk.get("text", ""))
+                images = _chunk_images(user, course_id, lecture_id, chunk)
+                if images:
+                    resolved["images"] = images
+                else:
+                    resolved.pop("images", None)
     else:
         source_key = ""
         row = next((item for item in rows if str(item.material_id) == material_id), None)
