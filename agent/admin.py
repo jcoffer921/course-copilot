@@ -1,6 +1,17 @@
 from django.contrib import admin
 
-from .models import ContactRequest, PilotFeedback
+from .models import ContactRequest, PilotFeedback, UserSettings
+
+
+@admin.register(UserSettings)
+class UserSettingsAdmin(admin.ModelAdmin):
+    list_display = ("user", "email", "access_status", "tier", "cohort")
+    list_filter = ("access_status", "tier", "cohort")
+    search_fields = ("user__email", "user__username")
+
+    @admin.display(description="Email", ordering="user__email")
+    def email(self, obj):
+        return obj.user.email
 
 
 @admin.register(PilotFeedback)

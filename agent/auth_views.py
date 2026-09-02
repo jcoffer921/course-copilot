@@ -7,6 +7,7 @@ JSON API, so it doesn't belong in agent/views.py alongside the APIViews.
 import logging
 import os
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login, logout
 from django.contrib.auth.decorators import login_required
@@ -44,7 +45,10 @@ def _redirect_uri(request) -> str:
 
 
 def _calendar_redirect_uri(request) -> str:
-    return request.build_absolute_uri("/accounts/calendar/callback/")
+    # Calendar OAuth must use one stable URI that exactly matches the Google
+    # Cloud client configuration. Do not derive it from the incoming Host
+    # header (localhost vs 127.0.0.1, proxy hosts, and ports would drift).
+    return f"{settings.ONTRACK_BASE_URL}/accounts/calendar/callback/"
 
 
 def google_login_page(request):
@@ -56,6 +60,20 @@ def google_login_page(request):
     if request.user.is_authenticated:
         return redirect("dashboard-page")
     return render(request, "agent/login.html")
+
+
+@login_required
+def pending_access_page(request):
+    """GET /accounts/pending/ — where a signed-in, not-yet-active user
+    lands (see AccessStatusMiddleware). An already-active user hitting this
+    URL directly is sent straight to the app instead of seeing a stale
+    pending message."""
+    from .authentication import user_access_status
+    from .models import UserSettings
+
+    if user_access_status(request.user) == UserSettings.ACCESS_ACTIVE:
+        return redirect("dashboard-page")
+    return render(request, "agent/pending.html")
 
 
 def google_login_start(request):
@@ -113,12 +131,21 @@ def google_callback(request):
     if not claims.get("email_verified"):
         return HttpResponseBadRequest("Google account email is not verified")
 
-    if not google_oauth.is_email_allowed(email):
-        logger.warning("Google sign-in denied by admission policy", extra={"google_sub": google_sub})
-        messages.error(request, "That Google account isn't on OnTrack's approved list yet. Try a different account, or contact whoever manages this OnTrack instance.")
-        return redirect("google-login")
-
     user = google_oauth.get_or_create_account(google_sub, email, name=claims.get("name"))
+
+    from .models import UserSettings
+
+    # Bootstrap path only: an email on the admission list gets an
+    # already-active row the moment its account is first created, so the
+    # developer and any pre-approved accounts still work with no manual
+    # admin step. Everyone else gets UserSettings' pending default. This
+    # only ever applies on first creation — a returning user's row (active,
+    # pending, or suspended) is never touched here.
+    UserSettings.objects.get_or_create(
+        user=user,
+        defaults={"access_status": UserSettings.ACCESS_ACTIVE} if google_oauth.is_email_allowed(email) else {},
+    )
+
     login(request, user)
     return redirect("dashboard-page")
 
@@ -130,7 +157,6 @@ def google_calendar_connect(request):
     auth_url, state = flow.authorization_url(
         access_type="offline",
         prompt="consent",
-        include_granted_scopes="true",
     )
     request.session["google_calendar_oauth_state"] = state
     request.session["google_calendar_oauth_code_verifier"] = flow.code_verifier
@@ -153,11 +179,20 @@ def google_calendar_callback(request):
     try:
         flow.fetch_token(code=request.GET.get("code"))
         google_calendar_oauth.save_connection(request.user, flow.credentials)
-    except Exception:
-        logger.warning("Google Calendar OAuth connection failed")
-        return HttpResponseBadRequest("could not connect Google Calendar")
+    except Exception as exc:
+        # Do not log the exception message: OAuth errors can contain sensitive
+        # response details. The class is enough to diagnose the failure safely.
+        logger.warning(
+            "Google Calendar OAuth connection failed",
+            extra={"oauth_error_type": type(exc).__name__},
+        )
+        messages.error(
+            request,
+            "Google Calendar couldn't be connected. Please try again.",
+        )
+        return redirect("settings-apps-page")
     messages.success(request, "Google Calendar connected.")
-    return redirect("settings-page")
+    return redirect("settings-apps-page")
 
 
 @require_POST
@@ -165,7 +200,7 @@ def google_calendar_callback(request):
 def google_calendar_disconnect(request):
     google_calendar_oauth.disconnect(request.user)
     messages.success(request, "Google Calendar disconnected.")
-    return redirect("settings-page")
+    return redirect("settings-apps-page")
 
 
 @require_POST

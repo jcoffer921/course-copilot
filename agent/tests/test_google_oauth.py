@@ -1,6 +1,12 @@
 import pytest
 
-from agent.services import google_oauth
+from agent.services import google_oauth, reminders, storage
+
+
+@pytest.fixture
+def isolated_courses_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(storage, "COURSES_DIR", tmp_path)
+    return tmp_path
 
 
 def test_sign_in_scopes_are_identity_only():
@@ -80,6 +86,17 @@ def test_get_or_create_account_returns_existing_user_on_second_login():
 
     assert first.pk == second.pk
     assert GoogleAccount.objects.filter(google_sub="sub-123").count() == 1
+
+
+@pytest.mark.django_db
+def test_reauthentication_preserves_user_scoped_courses(isolated_courses_dir):
+    first = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
+    storage.write_course_draft("cs101", "Computer Science", first)
+
+    reauthenticated = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
+
+    assert reauthenticated.pk == first.pk
+    assert [course["course_id"] for course in reminders.list_draft_courses(reauthenticated)] == ["cs101"]
 
 
 def test_build_flow_carries_a_passed_in_code_verifier(monkeypatch):

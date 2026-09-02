@@ -63,6 +63,8 @@ def get_credentials(connection) -> Credentials:
         try:
             credentials.refresh(GoogleAuthRequest())
         except RefreshError as e:
+            connection.grant_failed_at = timezone.now()
+            connection.save(update_fields=["grant_failed_at", "updated_at"])
             raise CalendarAuthError(
                 "Could not connect to Google Calendar — try signing out and back in."
             ) from e
@@ -72,7 +74,11 @@ def get_credentials(connection) -> Credentials:
         connection.token_expiry = (
             new_expiry.replace(tzinfo=dt_timezone.utc) if new_expiry.tzinfo is None else new_expiry
         )
-        connection.save(update_fields=["access_token", "token_expiry", "updated_at"])
+        update_fields = ["access_token", "token_expiry", "updated_at"]
+        if connection.grant_failed_at is not None:
+            connection.grant_failed_at = None
+            update_fields.append("grant_failed_at")
+        connection.save(update_fields=update_fields)
 
     return credentials
 

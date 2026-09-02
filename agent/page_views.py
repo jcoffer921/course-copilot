@@ -69,6 +69,19 @@ def _identity_context(user):
     return {"display_name": display_name, "first_name": first_name, "user_initials": initials}
 
 
+def _enabled_features(user):
+    """The signed-in user's tier-resolved feature set — lets nav templates
+    hide a tab the backend would reject instead of hardcoding one. The API
+    (UserProfileView's `_profile_payload`) exposes the same set from the
+    same entitlements.features_for_tier() call; only what a tab links to
+    changes here, not the gate itself."""
+    from .models import UserSettings
+    from .services import entitlements
+
+    settings_row, _ = UserSettings.objects.get_or_create(user=user)
+    return entitlements.features_for_tier(settings_row.tier)
+
+
 def _render_page(request, template_name, *, page_name, page_title, initial_tab, course_id=None, **context):
     modern_page_names = {
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
@@ -87,14 +100,16 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
             "initial_course_id": _safe_initial_course(request, course_id),
             "page_script": PAGE_SCRIPTS[page_name],
             "page_asset_version": (
-                "calendar-20260826-4" if page_name == "calendar"
+                "calendar-20260902-1" if page_name == "calendar"
                 else "courses-20260826-2" if page_name == "courses"
                 else "workspace-20260826-3" if page_name in ("materials", "course-detail", "course-study", "course-mastery", "course-grades", "study-dashboard")
                 else "quiz-loading-20260831-1" if page_name == "practice-quiz-setup"
                 else "interactive-20260831-4" if page_name in ("practice-attempt", "interactive-flashcards")
+                else "settings-20260901-1" if page_name == "settings"
                 else ""
             ),
             "course_id": course_id,
+            "enabled_features": _enabled_features(request.user),
             **_identity_context(request.user),
             **context,
         },
@@ -288,10 +303,10 @@ def interactive_flashcards_page(request, course_id, deck_id):
 
 
 @login_required
-def settings_page(request):
+def settings_page(request, section="profile"):
     return _render_page(
         request, "agent/settings.html", page_name="settings", page_title="Settings", initial_tab="dashboard",
-        timezone_choices=sorted(available_timezones()),
+        timezone_choices=sorted(available_timezones()), settings_section=section,
     )
 
 

@@ -89,3 +89,48 @@ def test_profile_export_endpoint_is_current_user_scoped(isolated_courses_dir, dj
 
     assert response.status_code == 200
     assert b"private" not in response.content
+
+
+@pytest.mark.django_db
+def test_profile_summary_counts_only_authenticated_users_courses(isolated_courses_dir, django_user_model):
+    from rest_framework.test import APIClient
+
+    owner = django_user_model.objects.create_user(username="summary-owner")
+    other = django_user_model.objects.create_user(username="summary-other")
+    storage.write_course_draft("mine", "Mine", owner)
+    storage.write_course_draft("theirs", "Theirs", other)
+    client = APIClient()
+    client.force_authenticate(user=owner)
+
+    response = client.get("/api/profile/")
+
+    assert response.status_code == 200
+    assert response.data["courses_enrolled"] == 1
+    assert response.data["quizzes_completed"] == 0
+    assert response.data["material_file_count"] == 0
+    assert response.data["material_storage_bytes"] == 0
+
+
+@pytest.mark.django_db
+def test_notification_channel_patch_is_current_user_scoped(django_user_model):
+    from agent.models import UserSettings
+    from rest_framework.test import APIClient
+
+    owner = django_user_model.objects.create_user(username="notification-owner")
+    other = django_user_model.objects.create_user(username="notification-other")
+    UserSettings.objects.create(user=other, notifications_enabled=False, email_notifications_enabled=False)
+    client = APIClient()
+    client.force_authenticate(user=owner)
+
+    response = client.patch(
+        "/api/profile/",
+        {"notifications_enabled": True, "email_notifications_enabled": True},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert UserSettings.objects.get(user=owner).notifications_enabled is True
+    assert UserSettings.objects.get(user=owner).email_notifications_enabled is True
+    other_settings = UserSettings.objects.get(user=other)
+    assert other_settings.notifications_enabled is False
+    assert other_settings.email_notifications_enabled is False

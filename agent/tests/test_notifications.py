@@ -66,7 +66,7 @@ def test_study_reminder_waits_for_users_local_time(user, monkeypatch):
 )
 def test_study_email_is_sent_once_and_contains_action_link(user):
     UserSettings.objects.create(
-        user=user, notifications_enabled=True, timezone="America/New_York",
+        user=user, notifications_enabled=True, email_notifications_enabled=True, timezone="America/New_York",
     )
     now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
     today = now.astimezone(notifications.ZoneInfo("America/New_York")).date().isoformat()
@@ -94,7 +94,7 @@ def test_study_email_is_sent_once_and_contains_action_link(user):
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 def test_daily_email_does_not_send_missed_days_in_a_burst(user):
     UserSettings.objects.create(
-        user=user, notifications_enabled=True, timezone="America/New_York",
+        user=user, notifications_enabled=True, email_notifications_enabled=True, timezone="America/New_York",
     )
     Notification.objects.create(
         user=user, notification_key="study_reminder:2026-08-30",
@@ -127,12 +127,41 @@ def test_cora_notification_links_to_saved_conversation_and_deduplicates(user):
 
 
 def test_email_preference_disables_delivery(user):
-    UserSettings.objects.create(user=user, notifications_enabled=False)
+    UserSettings.objects.create(user=user, notifications_enabled=True, email_notifications_enabled=False)
     Notification.objects.create(
         user=user, notification_key="study:disabled", kind=Notification.KIND_STUDY_REMINDER,
         title="Time to study", action_url="/study/",
     )
     assert notifications.send_pending_notification_emails(user) == 0
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+def test_in_app_and_email_study_reminders_are_independent(user, monkeypatch):
+    preferences = UserSettings.objects.create(
+        user=user, notifications_enabled=False, email_notifications_enabled=True,
+        timezone="America/New_York",
+    )
+    monkeypatch.setattr(notifications.recommendations, "rank_recommendations", lambda *args, **kwargs: [{
+        "course_id": "cs101", "topic": "Recursion", "reason": "Review it.",
+    }])
+    now = datetime(2026, 8, 31, 14, 0, tzinfo=timezone.utc)
+
+    assert notifications.generate_study_reminder_notification(user, now=now) == 1
+    assert notifications.list_notifications(user)["notifications"] == []
+    assert notifications.send_pending_notification_emails(user, now=now) == 1
+
+    preferences.notifications_enabled = True
+    preferences.email_notifications_enabled = False
+    preferences.save(update_fields=["notifications_enabled", "email_notifications_enabled"])
+    result = notifications.list_notifications(user)
+    assert result["notifications"] == []
+    assert notifications.generate_study_reminder_notification(
+        user, now=datetime(2026, 9, 2, 14, 0, tzinfo=timezone.utc),
+    ) == 1
+    result = notifications.list_notifications(user)
+    assert len(result["notifications"]) == 1
+    assert result["notifications"][0]["kind"] == "study_reminder"
+    assert notifications.send_pending_notification_emails(user, now=now) == 0
 
 
 def test_read_notifications_disappear_but_are_retained(user):

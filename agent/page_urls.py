@@ -23,5 +23,13 @@ urlpatterns = [
     path("cora/", page_views.cora_page, name="cora-page"),
     path("study/", page_views.study_page, name="study-page"),
     path("settings/", page_views.settings_page, name="settings-page"),
+    path("settings/profile/", page_views.settings_page, {"section": "profile"}, name="settings-profile-page"),
+    path("settings/account/", page_views.settings_page, {"section": "account"}, name="settings-account-page"),
+    path("settings/preferences/", page_views.settings_page, {"section": "preferences"}, name="settings-preferences-page"),
+    path("settings/notifications/", page_views.settings_page, {"section": "notifications"}, name="settings-notifications-page"),
+    path("settings/privacy/", page_views.settings_page, {"section": "privacy"}, name="settings-privacy-page"),
+    path("settings/apps/", page_views.settings_page, {"section": "apps"}, name="settings-apps-page"),
+    path("settings/subscription/", page_views.settings_page, {"section": "subscription"}, name="settings-subscription-page"),
+    path("settings/data/", page_views.settings_page, {"section": "data"}, name="settings-data-page"),
     path("feedback/", page_views.feedback_page, name="feedback-page"),
 ]

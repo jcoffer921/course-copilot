@@ -33,6 +33,7 @@ class GoogleCalendarConnection(models.Model):
     access_token = models.TextField()
     refresh_token = models.TextField()
     token_expiry = models.DateTimeField()
+    grant_failed_at = models.DateTimeField(null=True, blank=True)
     connected_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -42,8 +43,28 @@ def default_available_study_days():
 
 
 class UserSettings(models.Model):
+    ACCESS_PENDING = "pending"
+    ACCESS_ACTIVE = "active"
+    ACCESS_SUSPENDED = "suspended"
+    ACCESS_STATUS_CHOICES = [
+        (ACCESS_PENDING, "Pending"),
+        (ACCESS_ACTIVE, "Active"),
+        (ACCESS_SUSPENDED, "Suspended"),
+    ]
+
+    TIER_PILOT = "pilot"
+    TIER_FULL = "full"
+    TIER_CHOICES = [
+        (TIER_PILOT, "Pilot"),
+        (TIER_FULL, "Full"),
+    ]
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="settings")
+    access_status = models.CharField(max_length=16, choices=ACCESS_STATUS_CHOICES, default=ACCESS_PENDING, db_index=True)
+    tier = models.CharField(max_length=16, choices=TIER_CHOICES, default=TIER_PILOT)
+    cohort = models.CharField(max_length=100, blank=True, default="")
     notifications_enabled = models.BooleanField(default=False)
+    email_notifications_enabled = models.BooleanField(default=False)
     timezone = models.CharField(max_length=64, default="America/New_York")
     preferred_session_minutes = models.PositiveSmallIntegerField(default=45)
     available_study_days = models.JSONField(default=default_available_study_days, blank=True)
@@ -559,6 +580,27 @@ class RecommendationDismissal(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "course_id", "topic"], name="unique_recommendation_dismissal")
         ]
+
+
+class LlmUsage(models.Model):
+    """One row per user per calendar day, counting Anthropic-calling
+    requests (not tokens — see agent/services/llm_usage.py) so a daily cap
+    can be enforced and inspected without an extra Google/Anthropic
+    round-trip."""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="llm_usage",
+    )
+    date = models.DateField()
+    count = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "date"], name="unique_llm_usage_per_user_day")
+        ]
+        indexes = [models.Index(fields=["user", "date"])]
 
 
 class ExamPlan(models.Model):

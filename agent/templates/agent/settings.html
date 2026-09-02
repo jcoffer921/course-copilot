@@ -1,43 +1,123 @@
 {% extends "agent/app_base.html" %}
 {% block page_content %}
-<section class="settings-page settings-native" data-page-section="settings">
-  <header class="settings-heading"><h1>Settings</h1><p>Manage your profile, privacy, and OnTrack preferences.</p></header>
+<section class="settings-page settings-native" data-page-section="settings" data-settings-section="{{ settings_section }}">
+  <header class="settings-heading">
+    <p class="settings-eyebrow">Your workspace</p>
+    <h1>Settings</h1>
+    <p>Manage your account, preferences, and data.</p>
+  </header>
+
   <div id="settings-loading" class="shared-state" role="status">Loading settings…</div>
-  <div id="settings-error" class="shared-state shared-state-error" hidden><h2>Couldn't load settings</h2><p></p><button id="settings-retry" class="btn btn-secondary" type="button">Try again</button></div>
-  <div id="settings-content" class="settings-layout" hidden>
-    <nav class="settings-section-nav" aria-label="Settings sections">
-      <a href="#profile" class="active"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-profile"/></svg><span>Profile</span></a>
-      <a href="#study-preferences"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-clock"/></svg><span>Study preferences</span></a>
-      <a href="#notifications"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-bell"/></svg><span>Notifications</span></a>
-      <a href="#connections"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-link"/></svg><span>Connections</span></a>
-      <a href="#privacy"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><span>Privacy &amp; data</span></a>
-    </nav>
-    <div class="settings-cards">
-      <section id="profile" class="settings-card"><h2>Profile</h2><form id="profile-form">
-        <div class="settings-profile-row"><div class="settings-avatar">{{ user_initials }}</div><label>Display name<input id="settings-display-name" name="display_name" class="input" maxlength="150" required></label><button id="settings-edit" class="btn btn-secondary" type="button">Edit</button></div>
-        <div class="settings-row"><span><small>Google account</small><strong id="settings-email"></strong></span></div>
-        <label class="settings-row"><span><small>Timezone</small><strong>Used for exam countdowns and reminders</strong></span><select id="settings-timezone" name="timezone">{% for zone in timezone_choices %}<option value="{{ zone }}">{{ zone }}</option>{% endfor %}</select></label>
-        <p class="app-inline-error" id="profile-error" hidden></p><button class="btn btn-primary" type="submit">Save changes</button>
-      </form></section>
-      <section id="study-preferences" class="settings-card"><h2>Study preferences</h2><form id="preferences-form">
-        <label class="settings-row"><span><strong>Preferred session length</strong><small>How long you want each study session to be.</small></span><select id="settings-duration"><option value="15">15 minutes</option><option value="25">25 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option><option value="90">90 minutes</option></select></label>
-        <fieldset class="settings-days"><legend>Available study days</legend><small>Choose at least one day.</small><div>{% for day in "MTWTFSS" %}<label><input type="checkbox" value="{{ forloop.counter0 }}"><span>{{ day }}</span></label>{% endfor %}</div></fieldset>
-        <label class="settings-row"><span><strong>Reminder lead time</strong><small>When OnTrack should remind you.</small></span><select id="settings-reminder"><option value="0">At start</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="1440">1 day</option></select></label>
-        <p class="app-inline-error" id="preferences-error" hidden></p><button class="btn btn-primary" type="submit">Save preferences</button>
-      </form></section>
-      <section id="connections" class="settings-card"><h2>Connections</h2>
-        <div class="settings-row"><span><strong>Google sign-in connected</strong><small>Identity only; Calendar access is separate.</small></span><span class="settings-status connected">Connected</span></div>
-        <div class="settings-row"><span><strong id="calendar-state">Calendar not connected — optional</strong><small>Connect your calendar to sync events.</small></span><a id="calendar-connect" class="btn btn-secondary" href="/accounts/calendar/connect/">Connect calendar</a><form id="calendar-disconnect" action="/accounts/calendar/disconnect/" method="post" hidden>{% csrf_token %}<button class="btn btn-secondary" type="submit">Disconnect</button></form></div>
-      </section>
-      <section id="notifications" class="settings-card"><h2>Notifications</h2><form id="notifications-form"><label class="settings-row"><span><strong>Daily study reminder &amp; email</strong><small>Get one personalized study reminder every day in OnTrack and at your Google account email.</small></span><input id="settings-notifications" type="checkbox"></label><label class="settings-row"><span><strong>Reminder time</strong><small>Sent at this time in your selected timezone.</small></span><input id="settings-reminder-time" type="time" step="300" required></label><p class="app-inline-error" id="notifications-error" hidden></p><button class="btn btn-primary" type="submit">Save notification settings</button></form></section>
-      <section id="privacy" class="settings-card"><h2>Privacy &amp; data</h2>
-        <div class="settings-row"><span><strong>Pilot privacy notice</strong><small>See what OnTrack stores, sends to AI providers, measures, and how to remove it.</small></span><a class="btn btn-secondary" href="{% url 'privacy-page' %}">Read notice</a></div>
-        <div class="settings-row"><span><strong>Download my data</strong><small>Export your profile, courses, materials, plans, and study history.</small></span><a class="btn btn-secondary" href="/api/profile/export/" download>Download data</a></div>
-        <div class="settings-row settings-delete-row"><span><strong>Delete account</strong><small>Permanently delete your account and associated data.</small></span><button id="delete-open" class="btn settings-danger-button" type="button">Delete account</button></div>
-      </section>
-    </div>
+  <div id="settings-error" class="shared-state shared-state-error" hidden>
+    <h2>Couldn't load settings</h2><p></p><button id="settings-retry" class="btn btn-secondary" type="button">Try again</button>
   </div>
-  <div id="delete-dialog" class="settings-dialog-backdrop" hidden><section role="dialog" aria-modal="true" aria-labelledby="delete-title" class="settings-dialog"><h2 id="delete-title">Delete your OnTrack account?</h2><p>This permanently removes your profile, courses, materials, study history, plans, and connections. This cannot be undone.</p><form data-account-delete-form><label>Type <strong>DELETE MY ACCOUNT</strong> to confirm<input class="input" name="confirmation" autocomplete="off" required></label><p class="app-inline-error" data-account-delete-error hidden></p><div><button id="delete-cancel" class="btn btn-secondary" type="button">Cancel</button><button class="btn settings-danger-button" type="submit">Delete account</button></div></form></section></div>
+
+  <div id="settings-content" class="settings-workspace" hidden>
+    <nav class="settings-section-nav" aria-label="Settings sections">
+      <a href="{% url 'settings-profile-page' %}"{% if settings_section == 'profile' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-profile"/></svg><span><strong>Profile</strong><small>Personal information</small></span></a>
+      <a href="{% url 'settings-account-page' %}"{% if settings_section == 'account' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><span><strong>Account</strong><small>Login and security</small></span></a>
+      <a href="{% url 'settings-preferences-page' %}"{% if settings_section == 'preferences' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-clock"/></svg><span><strong>Preferences</strong><small>App and study preferences</small></span></a>
+      <a href="{% url 'settings-notifications-page' %}"{% if settings_section == 'notifications' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-bell"/></svg><span><strong>Notifications</strong><small>Email and in-app settings</small></span></a>
+      <a href="{% url 'settings-privacy-page' %}"{% if settings_section == 'privacy' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><span><strong>Privacy</strong><small>Data and privacy controls</small></span></a>
+      <a href="{% url 'settings-apps-page' %}"{% if settings_section == 'apps' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-link"/></svg><span><strong>Connected apps</strong><small>Manage integrations</small></span></a>
+      <a href="{% url 'settings-subscription-page' %}"{% if settings_section == 'subscription' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-sparkle"/></svg><span><strong>Subscription</strong><small>Plan and billing</small></span></a>
+      <a href="{% url 'settings-data-page' %}"{% if settings_section == 'data' %} class="active" aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-archive"/></svg><span><strong>Data &amp; storage</strong><small>Manage your data</small></span></a>
+    </nav>
+
+    <main class="settings-main" aria-labelledby="settings-view-title">
+      {% if settings_section == 'profile' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Profile information</h2><p>Update your personal details and how you appear on OnTrack.</p></header>
+      <div class="settings-content-grid">
+        <div class="settings-primary-column">
+          <section class="settings-card settings-profile-card">
+            <div class="settings-identity">
+              <div class="settings-avatar" aria-hidden="true">{{ user_initials }}</div>
+              <div><strong id="profile-identity-name">{{ display_name }}</strong><span id="profile-identity-email">{{ user.email }}</span></div>
+              <button class="btn btn-secondary" type="button" disabled title="Profile photos are not supported yet">Change photo</button>
+            </div>
+            <p class="settings-availability-note">Profile photos will be available when secure image storage is supported.</p>
+            <form id="profile-form" class="settings-form">
+              <div class="settings-form-grid">
+                <label>Full name<input id="settings-display-name" name="display_name" class="input" maxlength="150" autocomplete="name" required></label>
+                <label>Email address<input id="settings-email-input" class="input" type="email" autocomplete="email" readonly aria-describedby="email-help"><small id="email-help">Managed by your verified Google account.</small></label>
+                <label class="settings-field-wide">Timezone<select id="settings-timezone" name="timezone">{% for zone in timezone_choices %}<option value="{{ zone }}">{{ zone }}</option>{% endfor %}</select><small>Used for reminders and deadline times.</small></label>
+              </div>
+              <p class="app-inline-error" id="profile-error" role="alert" hidden></p>
+              <footer class="settings-form-actions"><button id="profile-cancel" class="btn btn-secondary" type="button" disabled>Cancel</button><button id="profile-save" class="btn btn-primary" type="submit" disabled>Save changes</button></footer>
+            </form>
+          </section>
+          <section class="settings-quick-section" aria-labelledby="quick-actions-title"><h3 id="quick-actions-title">Quick actions</h3><div class="settings-quick-grid">
+            <a href="{% url 'settings-account-page' %}#password"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><span><strong>Change password</strong><small>Review login security</small></span><b aria-hidden="true">→</b></a>
+            <a href="{% url 'settings-data-page' %}#export"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-archive"/></svg><span><strong>Download my data</strong><small>Get an account copy</small></span><b aria-hidden="true">→</b></a>
+            <a class="danger" href="{% url 'settings-account-page' %}#delete-account"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-close"/></svg><span><strong>Delete account</strong><small>Permanent removal</small></span><b aria-hidden="true">→</b></a>
+          </div></section>
+        </div>
+        <aside class="settings-context-column">
+          <section class="settings-context-card"><h3>Account summary</h3><dl><div><dt>Member since</dt><dd id="summary-member">—</dd></div><div><dt>Courses enrolled</dt><dd id="summary-courses">—</dd></div><div><dt>Quizzes completed</dt><dd id="summary-quizzes">—</dd></div><div><dt>Current streak</dt><dd id="summary-streak">—</dd></div></dl><a href="{% url 'study-page' %}" class="settings-text-link">View my activity <span aria-hidden="true">→</span></a></section>
+          <section class="settings-help-card"><h3>Need help?</h3><p>Contact the OnTrack team for account or product support.</p><button class="btn btn-secondary" type="button" disabled>Help center unavailable</button><a class="settings-text-link" href="{% url 'contact-page' %}">Contact support</a></section>
+        </aside>
+      </div>
+
+      {% elif settings_section == 'account' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Account &amp; security</h2><p>Manage your login details and protect your account.</p></header>
+      <div class="settings-stack">
+        <section class="settings-card settings-action-card"><div><span class="settings-card-kicker">Email address</span><h3 id="account-email">—</h3><p>Your email is verified and managed through Google Sign-In.</p></div><button class="btn btn-secondary" type="button" disabled>Change email</button></section>
+        <section id="password" class="settings-card settings-action-card" tabindex="-1"><div><span class="settings-card-kicker">Password</span><h3>Google-managed sign-in</h3><p>OnTrack does not store a password for this account. Change your password with Google.</p></div><button class="btn btn-secondary" type="button" disabled>Change password</button></section>
+        <section class="settings-card"><span class="settings-card-kicker">Active sessions</span><h3>Session management</h3><p class="settings-muted">Device-level session controls are not supported yet. Signing out ends this browser session.</p><form action="{% url 'google-logout' %}" method="post">{% csrf_token %}<button class="btn btn-secondary" type="submit">Sign out of this session</button></form></section>
+        <section class="settings-card settings-security-card"><span class="settings-card-kicker">Security</span><h3><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-check"/></svg> Verified Google identity</h3><p>Identity access is separate from optional Calendar access. Two-factor authentication is managed by Google.</p></section>
+        <section id="delete-account" class="settings-card settings-danger-zone" tabindex="-1"><div><span class="settings-card-kicker">Danger zone</span><h3>Delete account</h3><p>Permanently remove your profile, courses, materials, study history, plans, and connections. This cannot be undone.</p></div><button id="delete-open" class="btn settings-danger-button" type="button">Delete account</button></section>
+      </div>
+
+      {% elif settings_section == 'preferences' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Preferences</h2><p>Customize how OnTrack works for you.</p></header>
+      <form id="preferences-form" class="settings-stack">
+        <section class="settings-card"><span class="settings-card-kicker">Study sessions</span><h3>Preferred session length</h3><p class="settings-muted">OnTrack uses this when suggesting focused study sessions.</p><div class="settings-choice-grid" id="duration-options"><label><input type="radio" name="duration" value="15"><span>15 min</span></label><label><input type="radio" name="duration" value="25"><span>25 min</span></label><label><input type="radio" name="duration" value="30"><span>30 min</span></label><label><input type="radio" name="duration" value="45"><span>45 min</span></label><label><input type="radio" name="duration" value="60"><span>60 min</span></label><label><input type="radio" name="duration" value="90"><span>90 min</span></label></div></section>
+        <section class="settings-card"><span class="settings-card-kicker">Study schedule</span><h3>Available study days</h3><p class="settings-muted">Choose at least one day for recommendations.</p><fieldset class="settings-days"><legend class="sr-only">Available study days</legend><div>{% for day in "MTWTFSS" %}<label><input type="checkbox" value="{{ forloop.counter0 }}"><span>{{ day }}</span></label>{% endfor %}</div></fieldset><label class="settings-inline-field"><span><strong>Reminder lead time</strong><small>How early OnTrack should remind you.</small></span><select id="settings-reminder"><option value="0">At start</option><option value="5">5 minutes</option><option value="10">10 minutes</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="60">1 hour</option><option value="1440">1 day</option></select></label></section>
+        <p class="app-inline-error" id="preferences-error" role="alert" hidden></p><footer class="settings-form-actions"><button id="preferences-cancel" class="btn btn-secondary" type="button" disabled>Cancel</button><button id="preferences-save" class="btn btn-primary" type="submit" disabled>Save preferences</button></footer>
+      </form>
+
+      {% elif settings_section == 'notifications' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Notifications</h2><p>Choose what OnTrack should notify you about.</p></header>
+      <form id="notifications-form" class="settings-stack">
+        <section class="settings-card"><div class="notification-matrix-head"><span>Notification type</span><span>In-app</span><span>Email</span></div><div class="notification-matrix-row"><span><strong>Daily study reminder</strong><small>A personalized recommendation based on your courses.</small></span><input id="settings-notifications" type="checkbox" aria-label="Daily study reminder in app"><input id="settings-notifications-email" type="checkbox" aria-label="Daily study reminder by email"></div><div class="notification-matrix-row disabled"><span><strong>More notification controls</strong><small>Assignment, exam, streak, and product channels are not configurable yet.</small></span><span>Coming soon</span><span>Coming soon</span></div></section>
+        <section class="settings-card"><span class="settings-card-kicker">Reminder timing</span><h3>Daily reminder</h3><div class="settings-form-grid"><label>Reminder time<input id="settings-reminder-time" type="time" step="300" required></label><label>Timezone<select id="settings-notification-timezone" disabled>{% for zone in timezone_choices %}<option value="{{ zone }}">{{ zone }}</option>{% endfor %}</select><small>Change this in Profile.</small></label></div></section>
+        <p class="app-inline-error" id="notifications-error" role="alert" hidden></p><footer class="settings-form-actions"><button id="notifications-cancel" class="btn btn-secondary" type="button" disabled>Cancel</button><button id="notifications-save" class="btn btn-primary" type="submit" disabled>Save notification settings</button></footer>
+      </form>
+
+      {% elif settings_section == 'privacy' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Privacy</h2><p>Understand and control how your information is used within OnTrack.</p></header>
+      <div class="settings-stack">
+        <section class="settings-card settings-explainer"><span class="settings-card-icon"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg></span><div><h3>Your coursework stays scoped to you</h3><p>Course files, study history, generated content, and account operations are resolved from your authenticated OnTrack account.</p></div></section>
+        <section class="settings-card"><span class="settings-card-kicker">Cora context</span><h3>Grounded in your confirmed materials</h3><p>Cora can use course information and confirmed materials owned by your account to provide relevant answers. It does not use another student's private course data.</p></section>
+        <section class="settings-card settings-action-card"><div><span class="settings-card-kicker">Privacy notice</span><h3>How OnTrack handles data</h3><p>Read what OnTrack stores, sends to providers, measures, and how to remove it.</p></div><a class="btn btn-secondary" href="{% url 'privacy-page' %}">Read privacy notice</a></section>
+      </div>
+
+      {% elif settings_section == 'apps' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Connected apps</h2><p>Connect OnTrack with the tools you already use.</p></header>
+      <div class="settings-stack">
+        <section class="settings-card integration-card"><span class="integration-logo">G</span><div><h3>Google Sign-In</h3><p>Your verified identity for securely signing in to OnTrack.</p><span id="google-identity-state" class="settings-status">Checking…</span></div><span id="google-account-label" class="integration-account">—</span></section>
+        <section class="settings-card integration-card"><span class="integration-logo calendar">31</span><div><h3>Google Calendar</h3><p>Sync owned course deadlines and OnTrack events to your calendar.</p><span id="calendar-state" class="settings-status">Checking…</span></div><div class="integration-actions"><a id="calendar-connect" class="btn btn-primary" href="/accounts/calendar/connect/">Connect</a><form id="calendar-disconnect" action="/accounts/calendar/disconnect/" method="post" hidden>{% csrf_token %}<button class="btn btn-secondary" type="submit">Disconnect</button></form></div></section>
+        <section class="settings-card integration-card disabled"><span class="integration-logo muted">+</span><div><h3>More integrations</h3><p>Additional learning and productivity integrations have not been enabled.</p></div><span class="settings-status">Coming soon</span></section>
+      </div>
+
+      {% elif settings_section == 'subscription' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Subscription</h2><p>Manage your OnTrack plan and billing.</p></header>
+      <section class="settings-card plan-card"><span class="settings-card-kicker">Plan and billing</span><div class="plan-heading"><div><h3>Subscription management isn't enabled</h3><p>OnTrack does not currently expose plans, prices, payment methods, invoices, or billing actions.</p></div><span class="settings-status">Unavailable</span></div><div class="settings-availability-note">No subscription data is being inferred or displayed for your account.</div></section>
+
+      {% elif settings_section == 'data' %}
+      <header class="settings-view-heading"><h2 id="settings-view-title">Data &amp; storage</h2><p>Manage your OnTrack data and storage.</p></header>
+      <div class="settings-content-grid">
+        <div class="settings-primary-column settings-stack">
+          <section class="settings-card settings-action-card"><div><span class="settings-card-kicker">Course materials</span><h3><span id="material-count">—</span> uploaded files</h3><p>Manage syllabi, notes, slides, and reference documents from their course workspace.</p></div><a class="btn btn-secondary" href="{% url 'courses-page' %}">Manage course materials →</a></section>
+          <section id="export" class="settings-card" tabindex="-1"><span class="settings-card-kicker">Export your data</span><h3>Download a copy of your OnTrack account data</h3><p>Your JSON export includes profile details, settings, courses, materials metadata, plans, and study history. Credentials are excluded.</p><a id="export-download" class="btn btn-primary" href="/api/profile/export/" download>Download my data</a></section>
+          <section class="settings-card"><span class="settings-card-kicker">Generated study data</span><h3>Clear generated content</h3><p class="settings-muted">Selective clearing is not available because the backend does not yet define safe, complete deletion semantics.</p><button class="btn btn-secondary" type="button" disabled>Clear generated data</button></section>
+        </div>
+        <aside class="settings-context-column"><section class="settings-context-card"><h3>Storage summary</h3><p class="storage-total" id="storage-total">—</p><p>Uploaded course materials tracked by OnTrack.</p><div class="storage-bar" aria-hidden="true"><span></span></div><small>Generated JSON content is not included in this figure.</small></section></aside>
+      </div>
+      {% endif %}
+    </main>
+  </div>
+
   <div id="settings-status" class="sr-only" role="status" aria-live="polite"></div>
 </section>
 {% endblock %}

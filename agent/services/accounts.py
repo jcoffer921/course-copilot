@@ -43,6 +43,7 @@ def export_account_data(user) -> dict:
         "profile": {"display_name": user.get_full_name(), "username": user.username, "email": user.email},
         "preferences": {
             "notifications_enabled": preferences.notifications_enabled,
+            "email_notifications_enabled": preferences.email_notifications_enabled,
             "timezone": preferences.timezone,
             "preferred_session_minutes": preferences.preferred_session_minutes,
             "available_study_days": preferences.available_study_days,

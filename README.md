@@ -87,6 +87,10 @@ export ALLOWED_GOOGLE_EMAILS=you@example.com,teammate@example.com
 # endpoints return code=calendar_not_connected until connected separately from
 # Settings. The connect flow requests Calendar access only; disconnecting does
 # not sign the user out of OnTrack.
+# In the Google Cloud Console OAuth web client, register both callbacks using
+# the exact ONTRACK_BASE_URL origin (scheme, host, and port must match):
+# http://127.0.0.1:8000/accounts/callback/
+# http://127.0.0.1:8000/accounts/calendar/callback/
 
 # Required only to run the 9 CLI dev-tool commands (extract_syllabus, ask,
 # quiz, etc.) — they're dev/debug tools, never used by real students, and
@@ -161,8 +165,8 @@ source list.
 ## Notification and study-reminder email delivery
 
 The notification center includes overdue deadlines, personalized study
-recommendations, and deep links to saved Cora replies. Users opt into study
-reminders and email from Settings. One study reminder is generated per local
+recommendations, and deep links to saved Cora replies. Users opt into in-app
+study reminders and reminder emails independently from Settings. One study reminder is generated per local
 calendar day and is based on that user's current ranked recommendation.
 Users choose the delivery time in Settings; it is interpreted in their saved
 timezone.

@@ -6,6 +6,7 @@ API — a fake client records what ask_async would have sent it.
 """
 
 import json
+from datetime import date
 
 import pytest
 from asgiref.sync import sync_to_async
@@ -163,6 +164,94 @@ def test_deadline_intent_matches_across_multiple_lines():
 def test_deadline_intent_matches_generic_add_to_calendar_phrasing():
     assert ask._looks_like_deadline_request("Can you add this to my calendar?")
     assert ask._looks_like_deadline_request("please put this on my calendar")
+
+
+@pytest.mark.parametrize("message", [
+    "CMPSC 469 Monday / Wednesday / Friday 3:35 PM - 4:25 PM Class",
+    "CMPSC 469 MWF 3:35 PM–4:25 PM",
+    "Monday and Wednesday from 15:35 to 16:25",
+])
+def test_deadline_intent_matches_unlabeled_recurring_schedule_shapes(message):
+    assert ask._looks_like_deadline_request(message)
+
+
+def test_deadline_intent_does_not_treat_one_incidental_day_and_time_as_a_schedule():
+    assert not ask._looks_like_deadline_request("Explain the reading before Monday at 3:35 PM")
+
+
+def test_recurring_schedule_proposal_is_deterministic_and_future_only():
+    result = ask._recurring_schedule_proposal(
+        "CMPSC 469 Monday / Wednesday / Friday 3:35 PM - 4:25 PM Class",
+        "cmpsc469",
+        date(2026, 9, 1),
+    )
+
+    assert result["missing"] == []
+    assert result["deadlines"][0] == {
+        "action": "create", "event_id": None, "title": "CMPSC 469 Class", "course_id": "cmpsc469",
+        "date": "2026-09-02", "time": "15:35", "end_time": "16:25", "type": "class",
+    }
+    assert all(item["date"] >= "2026-09-01" for item in result["deadlines"])
+
+
+@pytest.mark.django_db
+async def test_recurring_schedule_does_not_depend_on_model_tool_compliance(
+    isolated_courses_dir, monkeypatch, django_user_model,
+):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="deterministic-schedule")
+    _seed_course("cmpsc469", user)
+    fake_client = _FakeClient(_FakeResponse("I cannot write to a calendar."))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async(
+        "cmpsc469",
+        "CMPSC 469 Monday / Wednesday / Friday 3:35 PM - 4:25 PM Class",
+        user=user,
+    )
+
+    assert result["pending_deadlines"]
+    assert result["pending_deadlines"][0]["time"] == "15:35"
+    assert fake_client.messages.calls == []
+
+
+@pytest.mark.django_db
+async def test_calendar_request_uses_confirmed_syllabus_meeting_pattern_without_model(
+    isolated_courses_dir, monkeypatch, django_user_model,
+):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="syllabus-schedule")
+    storage.write_syllabus("cmpsc469", {
+        "course_id": "cmpsc469", "course_name": "Formal Languages", "dates": [], "grading": [], "topics": [],
+        "meeting_patterns": [{
+            "title": "Formal Languages Class", "days": [0, 2, 4], "start_time": "15:35", "end_time": "16:25",
+            "start_date": "2099-08-24", "end_date": "2099-12-11",
+        }],
+    }, user)
+    fake_client = _FakeClient(_FakeResponse("I cannot write to a calendar."))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("cmpsc469", "Add my class schedule from the syllabus to the calendar", user=user)
+
+    assert result["pending_deadlines"]
+    assert {item["time"] for item in result["pending_deadlines"]} == {"15:35"}
+    assert {item["end_time"] for item in result["pending_deadlines"]} == {"16:25"}
+    assert {item["title"] for item in result["pending_deadlines"]} == {"Formal Languages Class"}
+    assert fake_client.messages.calls == []
+
+
+def test_calendar_request_does_not_shift_an_expired_syllabus_schedule_to_current_term():
+    result = ask._recurring_schedule_proposal(
+        "Add my class schedule from the syllabus to the calendar",
+        "cmpsc469",
+        date(2026, 9, 2),
+        {"meeting_patterns": [{
+            "title": "Class", "days": [0, 2, 4], "start_time": "11:15", "end_time": "12:05",
+            "start_date": "2024-08-26", "end_date": "2024-12-13",
+        }]},
+    )
+
+    assert result["deadlines"] == []
+    assert result["missing"] == ["date"]
+    assert "ended on 2024-12-13" in result["message"]
 
 
 @pytest.mark.django_db

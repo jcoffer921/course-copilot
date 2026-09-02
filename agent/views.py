@@ -54,7 +54,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import accounts, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, mastery, material_files, materials, metrics, notifications, quiz, recommendations, reminders, sessions, storage, study_sessions
+from .services import accounts, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, material_files, materials, metrics, notifications, quiz, recommendations, reminders, sessions, storage, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,10 @@ logger = logging.getLogger(__name__)
 
 class AIAPIView(APIView):
     throttle_classes = [AIUserBurstThrottle, AIUserDailyThrottle]
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+        llm_usage.check_and_increment(request.user)
 
 
 def _positive_int_query_param(request, name: str, default: int):
@@ -88,20 +92,40 @@ def _display_name_for(user):
 
 
 def _profile_payload(user):
-    from agent.models import UserSettings
+    from django.db.models import Count, Sum
+    from agent.models import CourseMaterial, QuizAttempt, UserSettings
+    from agent.services import course_catalog, entitlements, streak
 
     settings, _ = UserSettings.objects.get_or_create(user=user)
+    material_totals = CourseMaterial.objects.filter(user=user).aggregate(
+        file_count=Count("pk"), storage_bytes=Sum("size_bytes"),
+    )
     return {
         "email": user.email,
         "username": user.username,
         "display_name": _display_name_for(user),
+        "access_status": settings.access_status,
+        "tier": settings.tier,
+        "features": sorted(entitlements.features_for_tier(settings.tier)),
         "notifications_enabled": settings.notifications_enabled,
-        "calendar_connected": hasattr(user, "google_calendar_connection"),
+        "email_notifications_enabled": settings.email_notifications_enabled,
+        "google_identity_connected": hasattr(user, "google_account"),
+        "calendar_connected": (
+            hasattr(user, "google_calendar_connection")
+            and bool(user.google_calendar_connection.refresh_token)
+            and user.google_calendar_connection.grant_failed_at is None
+        ),
         "timezone": settings.timezone,
         "preferred_session_minutes": settings.preferred_session_minutes,
         "available_study_days": settings.available_study_days,
         "reminder_lead_minutes": settings.reminder_lead_minutes,
         "study_reminder_time": settings.study_reminder_time.strftime("%H:%M"),
+        "member_since": user.date_joined.date().isoformat(),
+        "courses_enrolled": course_catalog.count_active_courses(user),
+        "quizzes_completed": QuizAttempt.objects.filter(user=user).count(),
+        "current_streak": streak.current_streak(user=user),
+        "material_file_count": material_totals["file_count"] or 0,
+        "material_storage_bytes": material_totals["storage_bytes"] or 0,
     }
 
 
@@ -136,7 +160,7 @@ class UserProfileView(APIView):
             settings_obj, _ = UserSettings.objects.get_or_create(user=user)
             changed = []
             for field in (
-                "notifications_enabled", "timezone", "preferred_session_minutes",
+                "notifications_enabled", "email_notifications_enabled", "timezone", "preferred_session_minutes",
                 "available_study_days", "reminder_lead_minutes", "study_reminder_time",
             ):
                 if field in data:

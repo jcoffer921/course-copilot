@@ -334,7 +334,7 @@ def test_calendar_page_uses_page_owned_runtime_only(client, django_user_model):
 
     html = client.get(reverse("calendar-page")).content.decode()
 
-    assert 'src="/static/agent/js/calendar.js?v=calendar-20260826-4"' in html
+    assert 'src="/static/agent/js/calendar.js?v=calendar-20260902-1"' in html
     assert 'src="/static/agent/support.js"' not in html
     assert "class Component extends window.createOnTrackComponent(DCLogic)" not in html
     assert "{{ deadlineDate }}" not in html
@@ -348,19 +348,52 @@ def test_exam_and_settings_pages_use_native_runtime_and_accessible_dialogs(clien
     client.force_login(user)
 
     exam_html = client.get(reverse("exam-detail-page", kwargs={"course_id": "cs101", "exam_id": "midterm"})).content.decode()
-    settings_html = client.get(reverse("settings-page")).content.decode()
+    settings_html = client.get(reverse("settings-profile-page")).content.decode()
 
     for html in (exam_html, settings_html):
         assert 'src="/static/agent/support.js"' not in html
         assert "data-dc-script" not in html
     assert 'id="exam-topics-dialog" class="settings-dialog-backdrop" hidden' in exam_html
     assert 'role="dialog" aria-modal="true"' in exam_html
-    assert 'id="delete-dialog" class="settings-dialog-backdrop" hidden' in settings_html
-    assert 'href="/api/profile/export/"' in settings_html
-    assert 'id="notifications-form"' in settings_html
-    assert 'id="settings-reminder-time" type="time"' in settings_html
+    assert 'id="ontrack-action-dialog"' in settings_html
+    assert 'id="profile-form"' in settings_html
+    assert 'aria-current="page"' in settings_html
     for icon_name in ("profile", "clock", "bell", "link", "shield"):
         assert f'href="#ot-icon-{icon_name}"' in settings_html
+
+    notification_html = client.get(reverse("settings-notifications-page")).content.decode()
+    assert 'id="notifications-form"' in notification_html
+    assert 'id="settings-reminder-time" type="time"' in notification_html
+
+    data_html = client.get(reverse("settings-data-page")).content.decode()
+    assert 'href="/api/profile/export/"' in data_html
+    assert 'id="export"' in data_html
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("route_name,heading", [
+    ("settings-profile-page", "Profile information"),
+    ("settings-account-page", "Account &amp; security"),
+    ("settings-preferences-page", "Preferences"),
+    ("settings-notifications-page", "Notifications"),
+    ("settings-privacy-page", "Privacy"),
+    ("settings-apps-page", "Connected apps"),
+    ("settings-subscription-page", "Subscription"),
+    ("settings-data-page", "Data &amp; storage"),
+])
+def test_settings_nested_routes_require_auth_and_render_active_view(client, django_user_model, route_name, heading):
+    url = reverse(route_name)
+    anonymous = client.get(url)
+    assert anonymous.status_code == 302
+    assert anonymous.url.startswith("/accounts/login/")
+
+    client.force_login(django_user_model.objects.create_user(username=f"user-{route_name}"))
+    response = client.get(url)
+    assert response.status_code == 200
+    html = response.content.decode()
+    assert heading in html
+    assert 'class="active" aria-current="page"' in html
+    assert 'class="app-nav-link active" aria-current="page"' in html
 
 
 @pytest.mark.django_db
@@ -374,7 +407,23 @@ def test_calendar_page_renders_week_month_filters_and_accessible_dialogs(client,
     assert 'id="cal-event-modal" hidden' in html
     assert 'id="cal-delete-modal" hidden' in html
     assert 'data-calendar-api="/api/calendar/"' in html
-    assert 'src="/static/agent/js/calendar.js?v=calendar-20260826-4"' in html
+    assert 'src="/static/agent/js/calendar.js?v=calendar-20260902-1"' in html
+
+    controller = (Path(__file__).parents[1] / "static/agent/js/calendar.js").read_text(encoding="utf-8")
+    assert '$("#cal-week").hidden = state.view !== "week"' in controller
+    assert '$("#cal-month").hidden = state.view !== "month"' in controller
+
+
+@pytest.mark.django_db
+def test_calendar_page_renders_hidden_reconnect_banner(client, django_user_model):
+    """The banner exists but stays hidden until calendar.js's profile fetch
+    finds calendar_connected is false — see loadCalendarConnectionBanner()."""
+    client.force_login(django_user_model.objects.create_user(username="calendar-banner-user"))
+
+    html = client.get(reverse("calendar-page")).content.decode()
+
+    assert 'id="cal-reconnect-banner" hidden' in html
+    assert 'href="/accounts/calendar/connect/"' in html
 
 
 @pytest.mark.django_db

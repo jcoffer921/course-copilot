@@ -15,6 +15,7 @@ class UserProfileUpdateSerializer(serializers.Serializer):
     display_name = serializers.CharField(required=False, allow_blank=False, max_length=150)
     username = serializers.CharField(required=False, allow_blank=False, max_length=150)
     notifications_enabled = serializers.BooleanField(required=False)
+    email_notifications_enabled = serializers.BooleanField(required=False)
     timezone = serializers.CharField(required=False, max_length=64)
     preferred_session_minutes = serializers.ChoiceField(required=False, choices=[15, 25, 30, 45, 60, 90])
     available_study_days = serializers.ListField(

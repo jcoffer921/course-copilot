@@ -12,6 +12,10 @@
       <button class="cal-button cal-button-primary" id="cal-add" type="button"><span aria-hidden="true">＋</span> Add event</button>
     </div>
   </header>
+  <div class="cal-banner cal-banner-reconnect" id="cal-reconnect-banner" hidden>
+    <span>Google Calendar isn't connected, so synced deadlines won't reach your calendar.</span>
+    <a href="{% url 'google-calendar-connect' %}">Reconnect Google Calendar</a>
+  </div>
   <div class="cal-layout">
     <aside class="cal-utility" id="cal-utility" aria-label="Calendar filters">
       <section class="cal-side-card" aria-labelledby="mini-month-title">

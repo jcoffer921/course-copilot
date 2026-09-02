@@ -55,6 +55,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "agent.middleware.AccessStatusMiddleware",
     "agent.middleware.RequestLoggingMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -112,7 +113,10 @@ REST_FRAMEWORK = {
         "rest_framework.parsers.MultiPartParser",
         "rest_framework.parsers.FormParser",
     ],
-    "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticated"],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+        "agent.authentication.ActiveAccessPermission",
+    ],
     "DEFAULT_AUTHENTICATION_CLASSES": ["agent.authentication.SessionAuthenticationWith401"],
     "DEFAULT_THROTTLE_RATES": {
         "ai_burst": os.environ.get("ONTRACK_AI_BURST_RATE", "8/min"),

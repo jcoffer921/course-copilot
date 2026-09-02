@@ -1,6 +1,12 @@
 import pytest
 
-from agent.services.syllabus_extraction import _normalize_extracted_syllabus, _parse_model_json, extract_text_from_bytes
+from agent.services import storage
+from agent.services.syllabus_extraction import (
+    _extract_meeting_patterns,
+    _normalize_extracted_syllabus,
+    _parse_model_json,
+    extract_text_from_bytes,
+)
 
 
 def test_parse_model_json_uses_last_valid_object_after_self_correction():
@@ -59,6 +65,37 @@ def test_normalize_extracted_syllabus_maps_legacy_date_types():
     })
 
     assert [item["type"] for item in data["dates"]] == ["test_quiz", "hw", "class"]
+    assert data["meeting_patterns"] == []
+
+
+def test_extract_meeting_patterns_reads_compact_days_times_and_explicit_term_dates():
+    source = """Class Meeting Hours: MoWeFr 11:15AM - 12:05PM. Woodland Bldg 237
+Aug 26, 2024-
+Dec 13, 2024
+"""
+
+    assert _extract_meeting_patterns(source) == [{
+        "title": "Class",
+        "days": [0, 2, 4],
+        "start_time": "11:15",
+        "end_time": "12:05",
+        "start_date": "2024-08-26",
+        "end_date": "2024-12-13",
+    }]
+
+
+def test_validate_syllabus_accepts_valid_meeting_pattern_and_rejects_bad_time():
+    syllabus = {
+        "course_id": "cs101", "course_name": "CS 101", "dates": [], "grading": [], "topics": [],
+        "meeting_patterns": [{
+            "title": "Class", "days": [0, 2, 4], "start_time": "11:15", "end_time": "12:05",
+            "start_date": "2026-08-24", "end_date": "2026-12-11",
+        }],
+    }
+    assert storage.validate_syllabus(syllabus) == []
+
+    syllabus["meeting_patterns"][0]["start_time"] = "25:90"
+    assert any("start_time is not HH:MM" in error for error in storage.validate_syllabus(syllabus))
 
 
 def test_extract_text_from_bytes_reads_plain_text_formats():

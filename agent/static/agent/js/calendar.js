@@ -131,7 +131,7 @@ function renderUpcoming(events) {
 
 function render() {
   renderRange(); renderMiniCalendar(); renderFilters(); const events = filteredEvents(); const [start, end] = visibleRange(); const visible = events.filter((event) => event.date >= iso(start) && event.date <= iso(end));
-  $("#cal-week").hidden = state.view !== "week" || visible.length === 0; $("#cal-month").hidden = state.view !== "month" || visible.length === 0; $("#cal-empty").hidden = visible.length > 0; if (state.view === "week") renderWeek(events); else renderMonth(events); renderUpcoming(events);
+  $("#cal-week").hidden = state.view !== "week"; $("#cal-month").hidden = state.view !== "month"; $("#cal-empty").hidden = visible.length > 0; if (state.view === "week") renderWeek(events); else renderMonth(events); renderUpcoming(events);
 }
 
 function openPopover(event, trigger) {
@@ -192,6 +192,13 @@ async function loadCalendar() {
   finally { $("#cal-loading").hidden = true; }
 }
 
+async function loadCalendarConnectionBanner() {
+  try {
+    const profile = await apiRequest("/api/profile/");
+    $("#cal-reconnect-banner").hidden = !!profile.calendar_connected;
+  } catch (error) { /* non-fatal — the banner just stays hidden */ }
+}
+
 $("#cal-today").addEventListener("click", () => { state.anchor = new Date(); state.miniMonth = new Date(state.anchor.getFullYear(), state.anchor.getMonth(), 1); updateUrl(); render(); });
 $("#cal-prev").addEventListener("click", () => { state.anchor = state.view === "week" ? addDays(state.anchor, -7) : new Date(state.anchor.getFullYear(), state.anchor.getMonth() - 1, 1); state.miniMonth = new Date(state.anchor.getFullYear(), state.anchor.getMonth(), 1); updateUrl(); render(); });
 $("#cal-next").addEventListener("click", () => { state.anchor = state.view === "week" ? addDays(state.anchor, 7) : new Date(state.anchor.getFullYear(), state.anchor.getMonth() + 1, 1); state.miniMonth = new Date(state.anchor.getFullYear(), state.anchor.getMonth(), 1); updateUrl(); render(); });
@@ -220,3 +227,4 @@ window.addEventListener("popstate", () => location.reload());
 setModalOpen($("#cal-event-modal"), false);
 setModalOpen($("#cal-delete-modal"), false);
 loadCalendar();
+loadCalendarConnectionBanner();

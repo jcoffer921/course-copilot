@@ -1,5 +1,6 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 
 from agent.services import notifications, operations
 
@@ -10,7 +11,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         generated = sent = 0
         try:
-            users = get_user_model().objects.filter(settings__notifications_enabled=True).iterator()
+            users = get_user_model().objects.filter(
+                Q(settings__notifications_enabled=True) | Q(settings__email_notifications_enabled=True)
+            ).distinct().iterator()
             for user in users:
                 generated += notifications.refresh_notifications(user)
                 sent += notifications.send_pending_notification_emails(user)

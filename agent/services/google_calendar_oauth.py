@@ -56,6 +56,7 @@ def save_connection(user, credentials):
             "access_token": credentials.token,
             "refresh_token": refresh_token,
             "token_expiry": expiry,
+            "grant_failed_at": None,
         },
     )
     return connection

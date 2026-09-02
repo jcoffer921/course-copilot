@@ -121,6 +121,99 @@ def test_add_deadline_to_calendar_raises_calendar_auth_error_when_refresh_fails(
 
 
 @pytest.mark.django_db
+def test_add_deadline_to_calendar_records_grant_failed_at_when_refresh_fails(isolated_courses_dir, db):
+    from google.auth.exceptions import RefreshError
+
+    user = User.objects.create_user(username="sub-grant-fail", email="grantfail@example.com")
+    connection = GoogleCalendarConnection.objects.create(
+        user=user,
+        access_token="stale-access-token", refresh_token="revoked-refresh-token",
+        token_expiry=timezone.now() - timedelta(hours=1),
+    )
+
+    def _fake_refresh_failure(self, request):
+        raise RefreshError("invalid_grant: Token has been expired or revoked.")
+
+    with patch("google.oauth2.credentials.Credentials.refresh", _fake_refresh_failure):
+        with pytest.raises(calendar_sync.CalendarAuthError):
+            calendar_sync.add_deadline_to_calendar(user, "cs101", "2026-09-01", "Midterm", "exam")
+
+    connection.refresh_from_db()
+    assert connection.grant_failed_at is not None
+
+
+@pytest.mark.django_db
+def test_add_deadline_to_calendar_clears_grant_failed_at_on_successful_refresh(isolated_courses_dir, db):
+    user = User.objects.create_user(username="sub-grant-clear", email="grantclear@example.com")
+    connection = GoogleCalendarConnection.objects.create(
+        user=user,
+        access_token="stale-access-token", refresh_token="refresh-token-value",
+        token_expiry=timezone.now() - timedelta(hours=1),
+        grant_failed_at=timezone.now() - timedelta(days=1),
+    )
+
+    def _fake_refresh(self, request):
+        self.token = "refreshed-access-token"
+        self.expiry = datetime.now(UTC) + timedelta(hours=1)
+
+    with patch("agent.services.calendar_sync.build", return_value=_mock_calendar_build()), \
+         patch("google.oauth2.credentials.Credentials.refresh", _fake_refresh):
+        calendar_sync.add_deadline_to_calendar(user, "cs101", "2026-09-01", "Midterm", "exam")
+
+    connection.refresh_from_db()
+    assert connection.grant_failed_at is None
+
+
+@pytest.mark.django_db
+def test_profile_calendar_connected_false_when_never_connected(django_user_model):
+    from agent.views import _profile_payload
+
+    user = django_user_model.objects.create_user(username="never-connected")
+
+    payload = _profile_payload(user)
+
+    assert payload["calendar_connected"] is False
+
+
+@pytest.mark.django_db
+def test_profile_calendar_connected_false_when_grant_failed(django_user_model):
+    from agent.views import _profile_payload
+
+    user = django_user_model.objects.create_user(username="grant-failed-user")
+    GoogleCalendarConnection.objects.create(
+        user=user, access_token="a", refresh_token="r",
+        token_expiry=timezone.now() + timedelta(hours=1),
+        grant_failed_at=timezone.now(),
+    )
+
+    payload = _profile_payload(user)
+
+    assert payload["calendar_connected"] is False
+
+
+@pytest.mark.django_db
+def test_dashboard_and_grades_unaffected_by_revoked_calendar_grant(isolated_courses_dir, django_user_model):
+    """A revoked/expired Calendar grant must never break unrelated tabs —
+    the dashboard and grades summary don't touch Calendar at all."""
+    from rest_framework.test import APIClient
+
+    from agent.models import UserSettings
+
+    user = django_user_model.objects.create_user(username="revoked-grant-user")
+    UserSettings.objects.create(user=user, access_status=UserSettings.ACCESS_ACTIVE)
+    GoogleCalendarConnection.objects.create(
+        user=user, access_token="a", refresh_token="r",
+        token_expiry=timezone.now() + timedelta(hours=1),
+        grant_failed_at=timezone.now(),
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    assert client.get("/api/dashboard/").status_code == 200
+    assert client.get("/api/grades/summary/").status_code == 200
+
+
+@pytest.mark.django_db
 def test_add_deadline_to_calendar_raises_calendar_auth_error_on_lazy_refresh_failure_during_execute(
     isolated_courses_dir, user_with_valid_token,
 ):

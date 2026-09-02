@@ -184,6 +184,51 @@ def test_confirm_endpoint_creates_owned_event_after_user_confirmation(isolated_c
     assert [event["title"] for event in custom_events.list_events(user=user)] == ["Project 1"]
 
 
+def test_confirm_endpoint_create_update_delete_round_trip_through_calendar_api(isolated_courses_dir, user):
+    _seed_syllabus("cs101", user)
+    session_id = _seed_session("cs101", user)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    confirm_url = f"/api/courses/cs101/sessions/{session_id}/deadlines/confirm/"
+
+    created = client.post(
+        confirm_url,
+        {"actions": [{
+            "action": "create", "title": "Cora study block", "date": "2026-09-14",
+            "time": "14:00", "end_time": "15:00", "type": "other",
+        }]},
+        format="json",
+    )
+    assert created.status_code == 200
+
+    calendar = client.get("/api/calendar/")
+    assert calendar.status_code == 200
+    event = next(item for item in calendar.data["events"] if item["title"] == "Cora study block")
+    assert event["date"] == "2026-09-14"
+    assert event["time"] == "14:00"
+
+    updated = client.post(
+        confirm_url,
+        {"actions": [{
+            "action": "update", "event_id": event["id"], "date": "2026-09-16",
+            "time": "16:00", "end_time": "17:00",
+        }]},
+        format="json",
+    )
+    assert updated.status_code == 200
+    moved = next(item for item in client.get("/api/calendar/").data["events"] if item["id"] == event["id"])
+    assert moved["date"] == "2026-09-16"
+    assert moved["time"] == "16:00"
+
+    deleted = client.post(
+        confirm_url,
+        {"actions": [{"action": "delete", "event_id": event["id"]}]},
+        format="json",
+    )
+    assert deleted.status_code == 200
+    assert all(item["id"] != event["id"] for item in client.get("/api/calendar/").data["events"])
+
+
 def test_confirm_endpoint_cannot_touch_another_users_event(isolated_courses_dir, user, other_user):
     _seed_syllabus("cs101", user)
     _seed_syllabus("cs101", other_user)

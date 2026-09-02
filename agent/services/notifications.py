@@ -88,7 +88,7 @@ def generate_study_reminder_notification(user, now=None) -> int:
     if not getattr(user, "is_authenticated", False):
         return 0
     preferences = _user_settings(user)
-    if not preferences.notifications_enabled:
+    if not (preferences.notifications_enabled or preferences.email_notifications_enabled):
         return 0
     now = now or datetime.now(timezone.utc)
     try:
@@ -110,6 +110,7 @@ def generate_study_reminder_notification(user, now=None) -> int:
         body=f"Focus on {topic}. {item.get('reason', '')}".strip(),
         course_id=course_id, category="study",
         action_url=f"/study/?view=session&course={quote(course_id)}&topic={quote(topic)}",
+        read=not preferences.notifications_enabled,
     )
     return int(created)
 
@@ -144,6 +145,8 @@ def refresh_notifications(user, now=None) -> int:
 def list_notifications(user=None, limit: int = 20) -> dict:
     refresh_notifications(user=user)
     queryset = _owned_queryset(user)
+    if getattr(user, "is_authenticated", False) and not _user_settings(user).notifications_enabled:
+        queryset = queryset.exclude(kind="study_reminder")
     unread = queryset.filter(read=False)
     rows = unread.order_by("-created_at", "-id")[:limit]
     return {
@@ -165,7 +168,7 @@ def send_pending_notification_emails(user, now=None) -> int:
     if not getattr(user, "is_authenticated", False) or not user.email:
         return 0
     preferences = _user_settings(user)
-    if not preferences.notifications_enabled:
+    if not preferences.email_notifications_enabled:
         return 0
     now = now or datetime.now(timezone.utc)
     try:

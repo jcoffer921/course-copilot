@@ -20,7 +20,11 @@ OAUTH_SCOPES = [
 
 
 def is_email_allowed(email: str) -> bool:
-    """Apply the explicit open or allowlist admission policy."""
+    """Whether this email bootstraps its first-ever UserSettings row as
+    already-active. No longer a sign-in gate — every verified Google
+    identity can sign in; an email this returns False for still gets an
+    account, just with UserSettings' pending default (see
+    auth_views.google_callback)."""
     mode = os.environ.get("ONTRACK_ADMISSION_MODE", "allowlist").strip().lower()
     if mode == "open":
         return True

@@ -1,75 +1,175 @@
 import { apiRequest } from "./core/api.js";
+import { promptDialog } from "./core/dialogs.js";
 import { initNavigation } from "./core/navigation.js";
 import { showToast } from "./core/toast.js";
 
 initNavigation();
 const $ = id => document.getElementById(id);
-let profile;
-let lastFocus;
+let profile = null;
+let snapshot = null;
 
-function message(error) {
-  if (error?.data && typeof error.data === "object") return Object.values(error.data).flat().join(" ");
-  return error?.message || "Something went wrong.";
+function friendlyError(error) {
+  if (error?.status === 400) return "Check the highlighted settings and try again.";
+  if (error?.status === 409) return "That change conflicts with an existing account setting.";
+  return "We couldn't save your changes. Please try again.";
+}
+
+function formatBytes(bytes) {
+  if (!bytes) return "0 bytes";
+  const units = ["bytes", "KB", "MB", "GB"];
+  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** index);
+  return `${value.toFixed(index ? 1 : 0)} ${units[index]}`;
+}
+
+function setText(id, value) { if ($(id)) $(id).textContent = value; }
+function setValue(id, value) { if ($(id)) $(id).value = value ?? ""; }
+function selectedDays() { return [...document.querySelectorAll(".settings-days input:checked")].map(input => Number(input.value)); }
+function selectedDuration() { return Number(document.querySelector('input[name="duration"]:checked')?.value || profile?.preferred_session_minutes); }
+
+function currentState() {
+  return {
+    display_name: $("settings-display-name")?.value.trim(),
+    timezone: $("settings-timezone")?.value,
+    preferred_session_minutes: selectedDuration(),
+    available_study_days: selectedDays(),
+    reminder_lead_minutes: Number($("settings-reminder")?.value ?? profile?.reminder_lead_minutes),
+    notifications_enabled: $("settings-notifications")?.checked,
+    email_notifications_enabled: $("settings-notifications-email")?.checked,
+    study_reminder_time: $("settings-reminder-time")?.value,
+  };
+}
+
+function relevantState() {
+  const state = currentState();
+  if ($("profile-form")) return { display_name: state.display_name, timezone: state.timezone };
+  if ($("preferences-form")) return { preferred_session_minutes: state.preferred_session_minutes, available_study_days: state.available_study_days, reminder_lead_minutes: state.reminder_lead_minutes };
+  if ($("notifications-form")) return { notifications_enabled: state.notifications_enabled, email_notifications_enabled: state.email_notifications_enabled, study_reminder_time: state.study_reminder_time };
+  return {};
+}
+
+function updateDirtyState() {
+  if (!snapshot) return;
+  const dirty = JSON.stringify(relevantState()) !== JSON.stringify(snapshot);
+  const prefix = $("profile-form") ? "profile" : $("preferences-form") ? "preferences" : $("notifications-form") ? "notifications" : null;
+  if (!prefix) return;
+  $(`${prefix}-save`).disabled = !dirty;
+  $(`${prefix}-cancel`).disabled = !dirty;
 }
 
 function fill(data) {
   profile = data;
-  $("settings-display-name").value = data.display_name || "";
-  $("settings-email").textContent = data.email || "";
-  $("settings-timezone").value = data.timezone;
-  $("settings-duration").value = String(data.preferred_session_minutes);
-  $("settings-reminder").value = String(data.reminder_lead_minutes);
-  $("settings-reminder-time").value = data.study_reminder_time || "09:00";
-  $("settings-notifications").checked = data.notifications_enabled;
-  document.querySelectorAll(".settings-days input").forEach(input => { input.checked = data.available_study_days.includes(Number(input.value)); });
-  $("calendar-state").textContent = data.calendar_connected ? "Google Calendar connected" : "Calendar not connected — optional";
-  $("calendar-connect").hidden = data.calendar_connected;
-  $("calendar-disconnect").hidden = !data.calendar_connected;
+  setValue("settings-display-name", data.display_name);
+  setValue("settings-email-input", data.email);
+  setText("profile-identity-name", data.display_name);
+  setText("profile-identity-email", data.email);
+  setText("account-email", data.email);
+  setText("google-account-label", data.email);
+  setValue("settings-timezone", data.timezone);
+  setValue("settings-notification-timezone", data.timezone);
+  setValue("settings-reminder", data.reminder_lead_minutes);
+  setValue("settings-reminder-time", data.study_reminder_time || "09:00");
+  if ($("settings-notifications")) $("settings-notifications").checked = data.notifications_enabled;
+  if ($("settings-notifications-email")) $("settings-notifications-email").checked = data.email_notifications_enabled;
+  document.querySelectorAll('.settings-days input').forEach(input => { input.checked = data.available_study_days.includes(Number(input.value)); });
+  document.querySelector(`input[name="duration"][value="${data.preferred_session_minutes}"]`)?.click();
+
+  setText("summary-member", new Intl.DateTimeFormat(undefined, { month: "short", year: "numeric" }).format(new Date(`${data.member_since}T00:00:00`)));
+  setText("summary-courses", data.courses_enrolled);
+  setText("summary-quizzes", data.quizzes_completed);
+  setText("summary-streak", `${data.current_streak} ${data.current_streak === 1 ? "day" : "days"}`);
+  setText("material-count", data.material_file_count);
+  setText("storage-total", formatBytes(data.material_storage_bytes));
+  if ($("google-identity-state")) {
+    $("google-identity-state").textContent = data.google_identity_connected ? "Connected" : "Not connected";
+    $("google-identity-state").classList.toggle("connected", data.google_identity_connected);
+  }
+  if ($("calendar-state")) {
+    $("calendar-state").textContent = data.calendar_connected ? "Connected" : "Not connected";
+    $("calendar-state").classList.toggle("connected", data.calendar_connected);
+  }
+  if ($("calendar-connect")) $("calendar-connect").hidden = data.calendar_connected;
+  if ($("calendar-disconnect")) $("calendar-disconnect").hidden = !data.calendar_connected;
+  snapshot = relevantState();
+  updateDirtyState();
 }
 
 async function load() {
-  $("settings-loading").hidden = false; $("settings-error").hidden = true; $("settings-content").hidden = true;
-  try { fill(await apiRequest("/api/profile/")); $("settings-loading").hidden = true; $("settings-content").hidden = false; }
-  catch (error) { $("settings-loading").hidden = true; $("settings-error").hidden = false; $("settings-error").querySelector("p").textContent = message(error); }
+  $("settings-loading").hidden = false;
+  $("settings-error").hidden = true;
+  $("settings-content").hidden = true;
+  try {
+    fill(await apiRequest("/api/profile/"));
+    $("settings-loading").hidden = true;
+    $("settings-content").hidden = false;
+    const target = location.hash ? document.getElementById(location.hash.slice(1)) : null;
+    if (target) requestAnimationFrame(() => { target.scrollIntoView({ block: "center" }); target.focus({ preventScroll: true }); });
+  } catch (error) {
+    $("settings-loading").hidden = true;
+    $("settings-error").hidden = false;
+    $("settings-error").querySelector("p").textContent = "We couldn't load your settings. Please try again.";
+  }
 }
 
-async function save(body, errorId) {
-  const errorNode = $(errorId); errorNode.hidden = true;
+async function save(body, errorId, successMessage, submitButton) {
+  const errorNode = $(errorId);
+  errorNode.hidden = true;
+  const original = submitButton.textContent;
+  submitButton.disabled = true;
+  submitButton.textContent = "Saving…";
   try {
     fill(await apiRequest("/api/profile/", { method: "PATCH", body: JSON.stringify(body) }));
-    $("settings-status").textContent = "Settings saved."; showToast("Settings saved.");
-  } catch (error) { errorNode.textContent = message(error); errorNode.hidden = false; }
+    $("settings-status").textContent = successMessage;
+    showToast(successMessage);
+  } catch (error) {
+    errorNode.textContent = friendlyError(error);
+    errorNode.hidden = false;
+  } finally {
+    submitButton.textContent = original;
+    updateDirtyState();
+  }
 }
 
-$("profile-form")?.addEventListener("submit", event => { event.preventDefault(); save({ display_name: $("settings-display-name").value, timezone: $("settings-timezone").value }, "profile-error"); });
+$("profile-form")?.addEventListener("submit", event => {
+  event.preventDefault();
+  save({ display_name: $("settings-display-name").value.trim(), timezone: $("settings-timezone").value }, "profile-error", "Profile updated.", $("profile-save"));
+});
 $("preferences-form")?.addEventListener("submit", event => {
   event.preventDefault();
-  save({
-    preferred_session_minutes: Number($("settings-duration").value), reminder_lead_minutes: Number($("settings-reminder").value),
-    available_study_days: [...document.querySelectorAll(".settings-days input:checked")].map(input => Number(input.value)),
-  }, "preferences-error");
+  save({ preferred_session_minutes: selectedDuration(), reminder_lead_minutes: Number($("settings-reminder").value), available_study_days: selectedDays() }, "preferences-error", "Preferences saved.", $("preferences-save"));
 });
 $("notifications-form")?.addEventListener("submit", event => {
   event.preventDefault();
-  save({
-    notifications_enabled: $("settings-notifications").checked,
-    study_reminder_time: $("settings-reminder-time").value,
-  }, "notifications-error");
+  save({ notifications_enabled: $("settings-notifications").checked, email_notifications_enabled: $("settings-notifications-email").checked, study_reminder_time: $("settings-reminder-time").value }, "notifications-error", "Notification settings updated.", $("notifications-save"));
 });
+
+document.querySelectorAll(".settings-form input, .settings-form select, #preferences-form input, #preferences-form select, #notifications-form input, #notifications-form select").forEach(control => {
+  control.addEventListener("input", updateDirtyState);
+  control.addEventListener("change", updateDirtyState);
+});
+
+for (const prefix of ["profile", "preferences", "notifications"]) {
+  $(`${prefix}-cancel`)?.addEventListener("click", () => fill(profile));
+}
 $("settings-retry")?.addEventListener("click", load);
 
-function closeDialog() { $("delete-dialog").hidden = true; lastFocus?.focus(); }
-$("delete-open")?.addEventListener("click", event => { lastFocus = event.currentTarget; $("delete-dialog").hidden = false; $("delete-dialog").querySelector("input").focus(); });
-$("delete-cancel")?.addEventListener("click", closeDialog);
-$("delete-dialog")?.addEventListener("click", event => { if (event.target === $("delete-dialog")) closeDialog(); });
-document.addEventListener("keydown", event => { if (event.key === "Escape" && !$("delete-dialog")?.hidden) closeDialog(); });
-
-document.addEventListener("submit", async event => {
-  const form = event.target.closest("[data-account-delete-form]"); if (!form) return;
-  event.preventDefault(); const errorNode = form.querySelector("[data-account-delete-error]"); const button = form.querySelector("button[type='submit']");
-  errorNode.hidden = true; button.disabled = true;
-  try { await apiRequest("/api/profile/", { method: "DELETE", body: JSON.stringify({ confirmation: new FormData(form).get("confirmation") }) }); window.location.assign("/accounts/login/"); }
-  catch (error) { errorNode.textContent = message(error); errorNode.hidden = false; button.disabled = false; }
+$("delete-open")?.addEventListener("click", async () => {
+  const confirmation = await promptDialog({
+    kicker: "Permanent action",
+    title: "Delete your OnTrack account?",
+    message: "This permanently removes your profile, courses, materials, study history, plans, and connections. This cannot be undone.",
+    inputLabel: "Type DELETE MY ACCOUNT to confirm",
+    requiredValue: "DELETE MY ACCOUNT",
+    confirmLabel: "Delete my account",
+    danger: true,
+  });
+  if (!confirmation) return;
+  try {
+    await apiRequest("/api/profile/", { method: "DELETE", body: JSON.stringify({ confirmation }) });
+    window.location.assign("/accounts/login/");
+  } catch (error) {
+    showToast("We couldn't delete your account. Please try again.", "error");
+  }
 });
 
 load();

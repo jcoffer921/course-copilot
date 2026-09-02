@@ -126,6 +126,10 @@ def test_google_callback_rejects_missing_pkce_verifier(client):
 
 @pytest.mark.django_db
 def test_google_callback_creates_account_and_logs_in_allowed_email(client, monkeypatch):
+    """A bootstrap (allow-listed) email's first sign-in gets an
+    already-active UserSettings row, so it reaches the app immediately."""
+    from agent.models import UserSettings
+
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
@@ -141,8 +145,42 @@ def test_google_callback_creates_account_and_logs_in_allowed_email(client, monke
 
     assert response.status_code == 302
     assert response.url == "/dashboard/"
-    assert GoogleAccount.objects.filter(google_sub="sub-123").exists()
+    account = GoogleAccount.objects.get(google_sub="sub-123")
     assert "_auth_user_id" in client.session
+    assert UserSettings.objects.get(user=account.user).access_status == UserSettings.ACCESS_ACTIVE
+
+    followup = client.get("/dashboard/")
+    assert followup.status_code == 200
+
+
+@pytest.mark.django_db
+def test_google_callback_leaves_existing_access_status_unchanged(client, monkeypatch):
+    """A returning user's UserSettings row is never touched by the OAuth
+    callback — signing in again can't silently re-activate a suspended
+    account or reset an already-active one."""
+    from agent.models import GoogleAccount as GoogleAccountModel
+    from agent.models import UserSettings
+    from django.contrib.auth.models import User
+
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
+    existing_user = User.objects.create_user(username="sub-123", email="jordan@example.com")
+    GoogleAccountModel.objects.create(user=existing_user, google_sub="sub-123", email="jordan@example.com")
+    UserSettings.objects.create(user=existing_user, access_status=UserSettings.ACCESS_SUSPENDED)
+
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-123", "email": "jordan@example.com", "email_verified": True}
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 302
+    assert UserSettings.objects.get(user=existing_user).access_status == UserSettings.ACCESS_SUSPENDED
 
 
 @pytest.mark.django_db
@@ -188,7 +226,12 @@ def test_google_callback_returns_400_when_verify_id_token_fails(client, monkeypa
 
 
 @pytest.mark.django_db
-def test_google_callback_rejects_disallowed_email_and_creates_no_account(client, monkeypatch):
+def test_google_callback_creates_pending_account_for_non_bootstrap_email(client, monkeypatch):
+    """An email not on ALLOWED_GOOGLE_EMAILS still signs in — it just lands
+    on the pending-approval page instead of the app, since its account's
+    UserSettings row defaults to access_status='pending'."""
+    from agent.models import UserSettings
+
     monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "jordan@example.com")
     session = client.session
     session["google_oauth_state"] = "expected-state"
@@ -203,12 +246,14 @@ def test_google_callback_rejects_disallowed_email_and_creates_no_account(client,
         response = client.get("/accounts/callback/?state=expected-state&code=abc")
 
     assert response.status_code == 302
-    assert response.url == "/accounts/login/"
-    assert not GoogleAccount.objects.filter(google_sub="sub-999").exists()
-    assert "_auth_user_id" not in client.session
+    assert response.url == "/dashboard/"
+    account = GoogleAccount.objects.get(google_sub="sub-999")
+    assert "_auth_user_id" in client.session
+    assert UserSettings.objects.get(user=account.user).access_status == UserSettings.ACCESS_PENDING
 
-    followup = client.get(response.url)
-    assert b"approved list" in followup.content
+    followup = client.get("/dashboard/")
+    assert followup.status_code == 302
+    assert followup.url == "/accounts/pending/"
 
 
 @pytest.mark.django_db

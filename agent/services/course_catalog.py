@@ -62,6 +62,18 @@ def _all_course_ids(user) -> list[str]:
     )
 
 
+def count_active_courses(user) -> int:
+    """Count readable, non-archived courses in the authenticated owner's catalog."""
+    count = 0
+    for course_id in _all_course_ids(user):
+        try:
+            if not _base_record(course_id, user)["archived"]:
+                count += 1
+        except (storage.CourseMetadataStorageError, storage.SyllabusStorageError, OSError, ValueError):
+            continue
+    return count
+
+
 def _legacy_created_at(course_id: str, user) -> str:
     course_dir = storage.COURSES_DIR / str(user.pk) / course_id
     candidates = [path for path in (course_dir / "course.json", course_dir / "syllabus.json") if path.exists()]

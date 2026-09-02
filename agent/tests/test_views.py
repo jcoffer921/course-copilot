@@ -63,6 +63,7 @@ def test_profile_get_uses_display_name_and_settings(api_client):
     assert response.data["display_name"] == "Jordan Lee"
     assert response.data["email"] == "jordan@example.com"
     assert response.data["notifications_enabled"] is False
+    assert response.data["email_notifications_enabled"] is False
     assert response.data["study_reminder_time"] == "09:00"
 
 
@@ -80,6 +81,27 @@ def test_profile_patch_updates_name_username_and_notifications(api_client):
     api_client.user.refresh_from_db()
     assert api_client.user.first_name == "Alex Rivera"
     assert api_client.user.username == "alex"
+
+
+def test_profile_patch_updates_notification_channels_independently(api_client):
+    response = api_client.patch(
+        "/api/profile/",
+        {"notifications_enabled": True, "email_notifications_enabled": False},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["notifications_enabled"] is True
+    assert response.data["email_notifications_enabled"] is False
+
+    response = api_client.patch(
+        "/api/profile/",
+        {"notifications_enabled": False, "email_notifications_enabled": True},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.data["notifications_enabled"] is False
+    assert response.data["email_notifications_enabled"] is True
 
 
 def test_profile_patch_validates_and_persists_study_preferences(api_client):

@@ -276,6 +276,40 @@ def validate_syllabus(data: dict) -> list:
         if not isinstance(t, str):
             errors.append(f"topics[{i}] is not a string: {t!r}")
 
+    meeting_patterns = data.get("meeting_patterns", [])
+    if not isinstance(meeting_patterns, list):
+        errors.append("meeting_patterns is not a list")
+    else:
+        for i, meeting in enumerate(meeting_patterns):
+            if not isinstance(meeting, dict):
+                errors.append(f"meeting_patterns[{i}] is not an object")
+                continue
+            days = meeting.get("days")
+            if not isinstance(days, list) or not days or any(
+                not isinstance(day, int) or isinstance(day, bool) or day < 0 or day > 6 for day in days
+            ) or len(days) != len(set(days)):
+                errors.append(f"meeting_patterns[{i}].days must contain unique weekday numbers 0 through 6")
+            for field in ("start_time", "end_time"):
+                value = meeting.get(field)
+                if field == "start_time" and not value:
+                    errors.append(f"meeting_patterns[{i}].start_time is required")
+                elif value:
+                    try:
+                        datetime.strptime(value, "%H:%M")
+                    except (TypeError, ValueError):
+                        errors.append(f"meeting_patterns[{i}].{field} is not HH:MM: {value!r}")
+            if meeting.get("start_time") and meeting.get("end_time") and meeting["end_time"] <= meeting["start_time"]:
+                errors.append(f"meeting_patterns[{i}].end_time must be later than start_time")
+            for field in ("start_date", "end_date"):
+                value = meeting.get(field)
+                if value:
+                    try:
+                        datetime.strptime(value, "%Y-%m-%d")
+                    except (TypeError, ValueError):
+                        errors.append(f"meeting_patterns[{i}].{field} is not YYYY-MM-DD: {value!r}")
+            if meeting.get("start_date") and meeting.get("end_date") and meeting["end_date"] < meeting["start_date"]:
+                errors.append(f"meeting_patterns[{i}].end_date must not precede start_date")
+
     total_weight = sum(
         g.get("weight_pct", 0) for g in data["grading"]
         if isinstance(g.get("weight_pct"), (int, float))

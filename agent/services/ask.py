@@ -163,6 +163,18 @@ DEADLINE_INTENT_RE = re.compile(
     r")",
     re.I,
 )
+SCHEDULE_WEEKDAY_RE = re.compile(
+    r"\b(mon(?:day)?s?|tue(?:sday)?s?|wed(?:nesday)?s?|thu(?:rsday)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?)\b",
+    re.I,
+)
+SCHEDULE_COMPACT_DAYS_RE = re.compile(r"\b(?:mwf|tth|tu/th|tues/thurs)\b", re.I)
+SCHEDULE_TIME_RE = re.compile(
+    r"\b(?:"
+    r"(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)"
+    r"|(?:[01]?\d|2[0-3]):[0-5]\d"
+    r")\b",
+    re.I,
+)
 SAVE_SITE_INTENT_RE = re.compile(r"\b(save|remember|store|add)\b.*\b(site|link|url|address|book|textbook)\b", re.I)
 URL_RE = re.compile(r"https?://[^\s<>()\"']+", re.I)
 
@@ -351,7 +363,117 @@ def _merge_allowed_domains(*domain_lists: list[str]) -> list[str]:
 
 
 def _looks_like_deadline_request(question: str) -> bool:
-    return bool(DEADLINE_INTENT_RE.search(question or ""))
+    text = question or ""
+    if DEADLINE_INTENT_RE.search(text):
+        return True
+
+    # Recurring class schedules are often pasted without an explicit command,
+    # for example: "CMPSC 469 Monday / Wednesday / Friday 3:35 PM–4:25 PM".
+    # Multiple named weekdays (or a compact MWF/TTh form) plus a clock time is
+    # specific enough to route to the proposal tool instead of ordinary Q&A.
+    if not SCHEDULE_TIME_RE.search(text):
+        return False
+    if SCHEDULE_COMPACT_DAYS_RE.search(text):
+        return True
+    weekdays = {match.group(1).lower()[:3] for match in SCHEDULE_WEEKDAY_RE.finditer(text)}
+    return len(weekdays) >= 2
+
+
+def _clock_time(value: str) -> str | None:
+    text = re.sub(r"[.\s]", "", value or "").lower()
+    match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", text)
+    if not match:
+        return None
+    hour, minute, period = int(match.group(1)), int(match.group(2) or 0), match.group(3)
+    if minute > 59 or (period and not 1 <= hour <= 12) or (not period and hour > 23):
+        return None
+    if period:
+        hour = hour % 12 + (12 if period == "pm" else 0)
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _recurring_schedule_proposal(question: str, course_id: str, today_date: date, syllabus: dict | None = None) -> dict | None:
+    """Build an unambiguous recurring class proposal without model output.
+
+    The model remains responsible for ambiguous one-off and edit/delete
+    requests. Multiple weekdays plus a clock time are structured enough for
+    OnTrack to calculate safely and deterministically.
+    """
+    text = question or ""
+    weekday_numbers = {
+        "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+    }
+    weekdays = {weekday_numbers[match.group(1).lower()[:3]] for match in SCHEDULE_WEEKDAY_RE.finditer(text)}
+    compact = SCHEDULE_COMPACT_DAYS_RE.search(text)
+    if compact:
+        compact_days = compact.group(0).lower()
+        weekdays.update({0, 2, 4} if compact_days == "mwf" else {1, 3})
+    times = [_clock_time(match.group(0)) for match in SCHEDULE_TIME_RE.finditer(text)]
+    times = [value for value in times if value]
+    start_date = end_date = None
+    meeting_title = None
+    if len(weekdays) >= 2 and times:
+        start_time = times[0]
+        end_time = times[1] if len(times) > 1 else None
+    else:
+        wants_syllabus_schedule = bool(
+            re.search(r"\b(add|put|schedule|calendar|create)\b", text, re.I)
+            and re.search(r"\b(class|course|meeting|schedule|syllabus)\b", text, re.I)
+        )
+        patterns = (syllabus or {}).get("meeting_patterns") or []
+        if not wants_syllabus_schedule or len(patterns) != 1:
+            return None
+        pattern = patterns[0]
+        weekdays = set(pattern.get("days") or [])
+        start_time = pattern.get("start_time")
+        end_time = pattern.get("end_time")
+        start_date = pattern.get("start_date")
+        end_date = pattern.get("end_date")
+        meeting_title = pattern.get("title")
+        if not weekdays or not start_time:
+            return None
+    if end_time and end_time <= start_time:
+        return None
+
+    course_match = re.search(r"\b([A-Za-z]{2,})\s*[- ]?\s*(\d{2,4})\b", text)
+    course_label = (
+        f"{course_match.group(1).upper()} {course_match.group(2)}"
+        if course_match else course_id.upper()
+    )
+
+    days_since_sunday = (today_date.weekday() + 1) % 7
+    schedule_start = date.fromisoformat(start_date) if start_date else today_date - timedelta(days=days_since_sunday)
+    schedule_end = date.fromisoformat(end_date) if end_date else schedule_start + timedelta(days=(CLASS_SCHEDULE_WEEKS * 7) - 1)
+    if schedule_end < today_date:
+        return {
+            "is_deadline_request": True,
+            "missing": ["date"],
+            "deadlines": [],
+            "message": f"The confirmed syllabus class schedule ended on {schedule_end.isoformat()}. Upload or provide the current schedule before adding meetings.",
+        }
+    actions = []
+    current = max(today_date, schedule_start)
+    while current <= schedule_end:
+        if current.weekday() in weekdays:
+            actions.append({
+                "action": "create",
+                "event_id": None,
+                "title": meeting_title or f"{course_label} Class",
+                "course_id": course_id,
+                "date": current.isoformat(),
+                "time": start_time,
+                "end_time": end_time,
+                "type": "class",
+            })
+        current += timedelta(days=1)
+    if not actions:
+        return None
+    return {
+        "is_deadline_request": True,
+        "missing": [],
+        "deadlines": actions,
+        "message": f"Add these {len(actions)} recurring {course_label} class meetings to your calendar?",
+    }
 
 
 def _normalize_pending_deadline(raw: dict, default_course_id: str) -> dict:
@@ -564,37 +686,39 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
         "allowed_categories": ["hw", "project", "test_quiz", "class", "other"],
         "existing_deadlines": existing_deadlines,
     }
-    response = await client.messages.create(
-        model=MODEL_HAIKU,
-        max_tokens=8000,
-        system=DEADLINE_EXTRACTION_PROMPT,
-        messages=[{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}],
-        tools=[_build_calendar_write_tool()],
-        tool_choice={"type": "tool", "name": CALENDAR_WRITE_TOOL_NAME},
-    )
-    tool_blocks = [
-        block for block in response.content
-        if getattr(block, "type", None) == "tool_use"
-        and getattr(block, "name", None) == CALENDAR_WRITE_TOOL_NAME
-    ]
-    if len(tool_blocks) > 1:
-        raise ValueError("Cora returned more than one calendar proposal.")
-    if tool_blocks:
-        data = getattr(tool_blocks[0], "input", None)
-        if not isinstance(data, dict):
-            raise ValueError("Cora returned an invalid calendar proposal.")
-    else:
-        # Compatibility with recorded responses created before the calendar
-        # tool contract. New production calls force tool use above.
-        raw = "".join(
-            block.text for block in response.content
-            if getattr(block, "type", None) == "text"
-        ).strip()
-        raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
-        try:
-            data = _parse_json_response(raw)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"calendar tool did not return valid input: {e}\n\nRaw output:\n{raw}")
+    data = _recurring_schedule_proposal(question, course_id, today_date, syllabus)
+    if data is None:
+        response = await client.messages.create(
+            model=MODEL_HAIKU,
+            max_tokens=8000,
+            system=DEADLINE_EXTRACTION_PROMPT,
+            messages=[{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}],
+            tools=[_build_calendar_write_tool()],
+            tool_choice={"type": "tool", "name": CALENDAR_WRITE_TOOL_NAME},
+        )
+        tool_blocks = [
+            block for block in response.content
+            if getattr(block, "type", None) == "tool_use"
+            and getattr(block, "name", None) == CALENDAR_WRITE_TOOL_NAME
+        ]
+        if len(tool_blocks) > 1:
+            raise ValueError("Cora returned more than one calendar proposal.")
+        if tool_blocks:
+            data = getattr(tool_blocks[0], "input", None)
+            if not isinstance(data, dict):
+                raise ValueError("Cora returned an invalid calendar proposal.")
+        else:
+            # Compatibility with recorded responses created before the calendar
+            # tool contract. New production calls force tool use above.
+            raw = "".join(
+                block.text for block in response.content
+                if getattr(block, "type", None) == "text"
+            ).strip()
+            raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
+            try:
+                data = _parse_json_response(raw)
+            except json.JSONDecodeError:
+                raise ValueError("Cora couldn't prepare that calendar change. Please rephrase it with a title, date, and time.")
 
     if not isinstance(data.get("missing", []), list):
         raise ValueError("Cora returned invalid missing calendar fields.")
