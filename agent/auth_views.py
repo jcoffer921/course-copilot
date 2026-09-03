@@ -14,6 +14,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import redirect, render
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_POST
 
 from .services import google_oauth
@@ -51,7 +52,17 @@ def _calendar_redirect_uri(request) -> str:
     return f"{settings.ONTRACK_BASE_URL}/accounts/calendar/callback/"
 
 
-def google_login_page(request):
+def _safe_next(request, candidate):
+    if candidate and url_has_allowed_host_and_scheme(
+        candidate,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    return ""
+
+
+def google_login_page(request, mode="login"):
     """GET /accounts/login/ — the branded landing page (LOGIN_URL points
     here, so @login_required lands anonymous visitors on this page). An
     already-authenticated visitor skips straight to the app. Django's
@@ -59,7 +70,14 @@ def google_login_page(request):
     email's callback (see google_callback below)."""
     if request.user.is_authenticated:
         return redirect("dashboard-page")
-    return render(request, "agent/login.html")
+    return render(request, "agent/login.html", {
+        "auth_mode": mode,
+        "next_destination": _safe_next(request, request.GET.get("next", "")),
+    })
+
+
+def google_signup_page(request):
+    return google_login_page(request, mode="signup")
 
 
 @login_required
@@ -78,6 +96,8 @@ def pending_access_page(request):
 
 def google_login_start(request):
     """GET /accounts/login/start/ — begin identity-only Google sign-in."""
+    if request.user.is_authenticated:
+        return redirect("dashboard-page")
     if _login_rate_limited(request):
         return HttpResponse("Too many sign-in attempts. Please try again later.", status=429)
     flow = google_oauth.build_flow(_redirect_uri(request))
@@ -88,6 +108,22 @@ def google_login_start(request):
     # a separate one — so the verifier must round-trip through the session
     # (alongside state) or Google's token endpoint rejects the exchange.
     request.session["google_oauth_code_verifier"] = flow.code_verifier
+    safe_next = _safe_next(request, request.GET.get("next", ""))
+    if safe_next:
+        request.session["google_oauth_next"] = safe_next
+    else:
+        request.session.pop("google_oauth_next", None)
+    # Signup-only pre-signup field (see agent/templates/agent/login.html).
+    # Stashed in the session the same way as state/next, since the browser
+    # goes to Google and back before google_callback can apply it — only
+    # used if this turns out to be a brand-new account (see UserSettings
+    # creation in google_callback below); a stale value from an abandoned
+    # attempt is never carried into an unrelated later sign-in.
+    cohort = request.GET.get("cohort", "").strip()[:100]
+    if cohort:
+        request.session["signup_cohort"] = cohort
+    else:
+        request.session.pop("signup_cohort", None)
     return redirect(auth_url)
 
 
@@ -138,16 +174,18 @@ def google_callback(request):
     # Bootstrap path only: an email on the admission list gets an
     # already-active row the moment its account is first created, so the
     # developer and any pre-approved accounts still work with no manual
-    # admin step. Everyone else gets UserSettings' pending default. This
-    # only ever applies on first creation — a returning user's row (active,
-    # pending, or suspended) is never touched here.
-    UserSettings.objects.get_or_create(
-        user=user,
-        defaults={"access_status": UserSettings.ACCESS_ACTIVE} if google_oauth.is_email_allowed(email) else {},
-    )
+    # admin step. Everyone else gets UserSettings' pending default. The
+    # cohort field (see google_login_start above) is likewise applied only
+    # here — get_or_create's defaults only take effect on first creation, so
+    # a returning user's row (access_status, tier, cohort — active, pending,
+    # or suspended) is never touched by signing in again.
+    defaults = {"cohort": request.session.pop("signup_cohort", "")}
+    if google_oauth.is_email_allowed(email):
+        defaults["access_status"] = UserSettings.ACCESS_ACTIVE
+    UserSettings.objects.get_or_create(user=user, defaults=defaults)
 
     login(request, user)
-    return redirect("dashboard-page")
+    return redirect(request.session.pop("google_oauth_next", None) or "dashboard-page")
 
 
 @login_required
@@ -209,4 +247,4 @@ def google_logout(request):
     POST-only (with CSRF protection from CsrfViewMiddleware) so a
     third-party page can't force a logout via e.g. an <img> tag."""
     logout(request)
-    return redirect("google-login")
+    return redirect("ontrack")

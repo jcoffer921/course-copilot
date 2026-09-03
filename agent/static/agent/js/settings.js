@@ -30,6 +30,11 @@ function selectedDuration() { return Number(document.querySelector('input[name="
 function currentState() {
   return {
     display_name: $("settings-display-name")?.value.trim(),
+    username: $("settings-username")?.value.trim(),
+    bio: $("settings-bio")?.value.trim(),
+    university: $("settings-university")?.value.trim(),
+    major: $("settings-major")?.value.trim(),
+    graduation_year: $("settings-graduation-year")?.value ? Number($("settings-graduation-year").value) : null,
     timezone: $("settings-timezone")?.value,
     preferred_session_minutes: selectedDuration(),
     available_study_days: selectedDays(),
@@ -42,7 +47,11 @@ function currentState() {
 
 function relevantState() {
   const state = currentState();
-  if ($("profile-form")) return { display_name: state.display_name, timezone: state.timezone };
+  if ($("profile-form")) return {
+    display_name: state.display_name, username: state.username, bio: state.bio,
+    university: state.university, major: state.major, graduation_year: state.graduation_year,
+    timezone: state.timezone,
+  };
   if ($("preferences-form")) return { preferred_session_minutes: state.preferred_session_minutes, available_study_days: state.available_study_days, reminder_lead_minutes: state.reminder_lead_minutes };
   if ($("notifications-form")) return { notifications_enabled: state.notifications_enabled, email_notifications_enabled: state.email_notifications_enabled, study_reminder_time: state.study_reminder_time };
   return {};
@@ -60,6 +69,11 @@ function updateDirtyState() {
 function fill(data) {
   profile = data;
   setValue("settings-display-name", data.display_name);
+  setValue("settings-username", data.username);
+  setValue("settings-bio", data.bio);
+  setValue("settings-university", data.university);
+  setValue("settings-major", data.major);
+  setValue("settings-graduation-year", data.graduation_year);
   setValue("settings-email-input", data.email);
   setText("profile-identity-name", data.display_name);
   setText("profile-identity-email", data.email);
@@ -69,6 +83,7 @@ function fill(data) {
   setValue("settings-notification-timezone", data.timezone);
   setValue("settings-reminder", data.reminder_lead_minutes);
   setValue("settings-reminder-time", data.study_reminder_time || "09:00");
+  setText("settings-bio-count", (data.bio || "").length);
   if ($("settings-notifications")) $("settings-notifications").checked = data.notifications_enabled;
   if ($("settings-notifications-email")) $("settings-notifications-email").checked = data.email_notifications_enabled;
   document.querySelectorAll('.settings-days input').forEach(input => { input.checked = data.available_study_days.includes(Number(input.value)); });
@@ -132,7 +147,15 @@ async function save(body, errorId, successMessage, submitButton) {
 
 $("profile-form")?.addEventListener("submit", event => {
   event.preventDefault();
-  save({ display_name: $("settings-display-name").value.trim(), timezone: $("settings-timezone").value }, "profile-error", "Profile updated.", $("profile-save"));
+  save({
+    display_name: $("settings-display-name").value.trim(),
+    username: $("settings-username").value.trim(),
+    bio: $("settings-bio").value.trim(),
+    university: $("settings-university").value.trim(),
+    major: $("settings-major").value.trim(),
+    graduation_year: $("settings-graduation-year").value ? Number($("settings-graduation-year").value) : null,
+    timezone: $("settings-timezone").value,
+  }, "profile-error", "Profile updated.", $("profile-save"));
 });
 $("preferences-form")?.addEventListener("submit", event => {
   event.preventDefault();
@@ -143,10 +166,11 @@ $("notifications-form")?.addEventListener("submit", event => {
   save({ notifications_enabled: $("settings-notifications").checked, email_notifications_enabled: $("settings-notifications-email").checked, study_reminder_time: $("settings-reminder-time").value }, "notifications-error", "Notification settings updated.", $("notifications-save"));
 });
 
-document.querySelectorAll(".settings-form input, .settings-form select, #preferences-form input, #preferences-form select, #notifications-form input, #notifications-form select").forEach(control => {
+document.querySelectorAll(".settings-form input, .settings-form select, .settings-form textarea, #preferences-form input, #preferences-form select, #notifications-form input, #notifications-form select").forEach(control => {
   control.addEventListener("input", updateDirtyState);
   control.addEventListener("change", updateDirtyState);
 });
+$("settings-bio")?.addEventListener("input", event => setText("settings-bio-count", event.target.value.length));
 
 for (const prefix of ["profile", "preferences", "notifications"]) {
   $(`${prefix}-cancel`)?.addEventListener("click", () => fill(profile));

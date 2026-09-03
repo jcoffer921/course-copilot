@@ -161,4 +161,4 @@ def test_pending_user_can_still_reach_logout(client, django_user_model):
     response = client.post("/accounts/logout/")
 
     assert response.status_code == 302
-    assert response.url == "/accounts/login/"
+    assert response.url == "/"

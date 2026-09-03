@@ -210,9 +210,11 @@ course-copilot/
 Browser pages are URL-addressable and remain separate from the JSON API:
 `/dashboard/`, `/calendar/`, `/courses/`, `/courses/<course_id>/`,
 `/courses/<course_id>/materials/`, `/courses/<course_id>/study/`,
-`/courses/<course_id>/mastery/`, `/cora/`, `/study/`,
+`/courses/<course_id>/mastery/`, `/cora/`, `/study/`, `/profile/`,
 `/courses/<course_id>/exams/<exam_id>/`, and `/settings/`. Authenticated `/`
-redirects to `/dashboard/`; anonymous page requests use the Google login flow.
+redirects to `/dashboard/`; anonymous `/` renders the public welcome page.
+`/login/` and `/signup/` both use the existing Google identity flow, with the
+latter explaining that first sign-in creates the account.
 `/study/?course=&topic=` and `/cora/?q=` prefill (never auto-submit) the guided-session
 setup and the Cora chat input respectively — `window.ONTRACK_INITIAL_TOPIC`/
 `_QUESTION`, both `|escapejs`-embedded free text capped at 255/500 chars server-side

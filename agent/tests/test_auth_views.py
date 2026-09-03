@@ -25,7 +25,26 @@ def test_google_login_page_renders_sign_in_button(client):
 
     assert response.status_code == 200
     assert b"/accounts/login/start/" in response.content
-    assert b"Sign in with Google" in response.content
+    assert b"Continue with Google" in response.content
+
+
+@pytest.mark.django_db
+def test_signup_page_uses_real_google_account_creation_flow(client):
+    response = client.get("/signup/")
+
+    assert response.status_code == 200
+    assert b"Create your account" in response.content
+    assert b"Create account with Google" in response.content
+    assert b"/accounts/login/start/" in response.content
+
+
+@pytest.mark.django_db
+def test_signup_page_renders_optional_cohort_field_login_page_does_not(client):
+    signup_html = client.get("/signup/").content
+    login_html = client.get("/accounts/login/").content
+
+    assert b'name="cohort"' in signup_html
+    assert b'name="cohort"' not in login_html
 
 
 @pytest.mark.django_db
@@ -55,6 +74,93 @@ def test_google_login_start_redirects_to_google_and_saves_state(client):
     assert client.session["google_oauth_state"] == "state-xyz"
     assert client.session["google_oauth_code_verifier"] == "generated-verifier"
     assert build_flow.return_value.authorization_url.call_args.kwargs == {}
+
+
+@pytest.mark.django_db
+def test_google_login_start_saves_only_safe_next_destination(client):
+    cache.clear()
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.authorization_url.return_value = ("https://accounts.google.com/mock", "state")
+        flow.code_verifier = "verifier"
+        build_flow.return_value = flow
+
+        client.get("/accounts/login/start/", {"next": "/settings/profile/"})
+        assert client.session["google_oauth_next"] == "/settings/profile/"
+
+        client.get("/accounts/login/start/", {"next": "https://attacker.example/steal"})
+        assert "google_oauth_next" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_login_start_saves_and_truncates_signup_cohort(client):
+    cache.clear()
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.authorization_url.return_value = ("https://accounts.google.com/mock", "state")
+        flow.code_verifier = "verifier"
+        build_flow.return_value = flow
+
+        client.get("/accounts/login/start/", {"cohort": "  fall26-freshmen  "})
+        assert client.session["signup_cohort"] == "fall26-freshmen"
+
+        client.get("/accounts/login/start/", {"cohort": "x" * 150})
+        assert len(client.session["signup_cohort"]) == 100
+
+        client.get("/accounts/login/start/")
+        assert "signup_cohort" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_callback_applies_signup_cohort_to_new_account(client, monkeypatch):
+    from agent.models import UserSettings
+
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "")
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
+    session["signup_cohort"] = "fall26-freshmen"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-cohort", "email": "cohort@example.com", "email_verified": True}
+
+        response = client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert response.status_code == 302
+    account = GoogleAccount.objects.get(google_sub="sub-cohort")
+    assert UserSettings.objects.get(user=account.user).cohort == "fall26-freshmen"
+    assert "signup_cohort" not in client.session
+
+
+@pytest.mark.django_db
+def test_google_callback_does_not_overwrite_cohort_on_returning_user(client, monkeypatch):
+    from django.contrib.auth.models import User
+
+    from agent.models import GoogleAccount as GoogleAccountModel
+    from agent.models import UserSettings
+
+    monkeypatch.setenv("ALLOWED_GOOGLE_EMAILS", "")
+    existing_user = User.objects.create_user(username="sub-returning", email="returning@example.com")
+    GoogleAccountModel.objects.create(user=existing_user, google_sub="sub-returning", email="returning@example.com")
+    UserSettings.objects.create(user=existing_user, access_status=UserSettings.ACCESS_ACTIVE, cohort="spring26-original")
+
+    session = client.session
+    session["google_oauth_state"] = "expected-state"
+    session["google_oauth_code_verifier"] = "saved-verifier"
+    session["signup_cohort"] = "should-not-apply"
+    session.save()
+
+    with patch("agent.auth_views.google_oauth.build_flow") as build_flow, \
+         patch("agent.auth_views.google_oauth.verify_id_token") as verify_id_token:
+        build_flow.return_value = _mock_flow_with_credentials()
+        verify_id_token.return_value = {"sub": "sub-returning", "email": "returning@example.com", "email_verified": True}
+
+        client.get("/accounts/callback/?state=expected-state&code=abc")
+
+    assert UserSettings.objects.get(user=existing_user).cohort == "spring26-original"
 
 
 @pytest.mark.django_db
@@ -333,7 +439,7 @@ def test_google_logout_clears_session(client, monkeypatch):
     response = client.post("/accounts/logout/")
 
     assert response.status_code == 302
-    assert response.url == "/accounts/login/"
+    assert response.url == "/"
     assert "_auth_user_id" not in client.session
 
 

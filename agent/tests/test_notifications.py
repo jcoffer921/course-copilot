@@ -156,7 +156,7 @@ def test_in_app_and_email_study_reminders_are_independent(user, monkeypatch):
     result = notifications.list_notifications(user)
     assert result["notifications"] == []
     assert notifications.generate_study_reminder_notification(
-        user, now=datetime(2026, 9, 2, 14, 0, tzinfo=timezone.utc),
+        user, now=datetime(2026, 9, 1, 14, 0, tzinfo=timezone.utc),
     ) == 1
     result = notifications.list_notifications(user)
     assert len(result["notifications"]) == 1

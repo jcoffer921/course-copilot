@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pytest
 
 from agent.services import custom_events, reminders, storage
@@ -106,7 +108,8 @@ def test_list_all_deadlines_marks_synced_syllabus_deadline(isolated_courses_dir,
 
 
 def test_list_all_deadlines_marks_synced_custom_event(isolated_courses_dir, user):
-    created = custom_events.create_event("cs101", "2026-09-01", None, "Study session", "other", user=user)
+    event_date = (date.today() + timedelta(days=7)).isoformat()
+    created = custom_events.create_event("cs101", event_date, None, "Study session", "other", user=user)
     custom_events.update_event(created["id"], user=user, synced=True, google_event_id="evt-2")
 
     deadlines = reminders.list_all_deadlines(user=user)

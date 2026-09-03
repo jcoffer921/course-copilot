@@ -26,6 +26,7 @@ PAGE_CASES = [
     ("study-page", {}, "study-dashboard"),
     ("exam-detail-page", {"course_id": "cs101", "exam_id": "midterm"}, "exam"),
     ("settings-page", {}, "settings"),
+    ("profile-page", {}, "profile"),
 ]
 
 
@@ -63,6 +64,30 @@ def test_root_redirects_authenticated_user_to_dashboard(client, django_user_mode
 
     assert response.status_code == 302
     assert response.url == reverse("dashboard-page")
+
+
+def test_root_renders_public_welcome_page_without_application_sidebar(client):
+    response = client.get(reverse("ontrack"))
+    html = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Stay organized." in html
+    assert reverse("login-page") in html
+    assert reverse("signup-page") in html
+    assert 'id="app-sidebar"' not in html
+
+
+@pytest.mark.django_db
+def test_profile_page_renders_real_profile_sections_and_page_runtime(client, django_user_model):
+    client.force_login(django_user_model.objects.create_user(username="profile-page-user"))
+    html = client.get(reverse("profile-page")).content.decode()
+
+    for hook in ("profile-loading", "profile-panel-overview", "profile-panel-personal", "profile-panel-academics", "profile-panel-activity"):
+        assert f'id="{hook}"' in html
+    assert 'role="tablist"' in html
+    assert 'src="/static/agent/js/profile.js?v=profile-20260902-1"' in html
+    assert 'src="/static/agent/support.js"' not in html
+    assert f'href="{reverse("settings-profile-page")}"' in html
 
 
 @pytest.mark.django_db

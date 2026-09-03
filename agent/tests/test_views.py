@@ -1384,11 +1384,11 @@ def test_basic_auth_with_valid_password_is_rejected(isolated_courses_dir, django
     assert response.status_code == 401
 
 
-def test_anonymous_request_to_ontrack_page_redirects_to_login(client):
+def test_anonymous_request_to_ontrack_page_renders_welcome(client):
     response = client.get("/")
 
-    assert response.status_code == 302
-    assert response.url.startswith("/accounts/login/")
+    assert response.status_code == 200
+    assert b"Stay organized." in response.content
 
 
 @pytest.mark.django_db
@@ -1803,9 +1803,10 @@ def test_custom_event_detail_patch_null_course_id_becomes_general(isolated_cours
 
 @pytest.mark.django_db
 def test_custom_event_detail_patch_rejects_nonexistent_course_id(isolated_courses_dir, api_client):
+    future_date = (date.today() + timedelta(days=7)).isoformat()
     create_response = api_client.post(
         "/api/deadlines/",
-        {"date": "2026-09-01", "title": "Study group", "type": "other"},
+        {"date": future_date, "title": "Study group", "type": "other"},
         format="json",
     )
     event_id = create_response.data["id"]

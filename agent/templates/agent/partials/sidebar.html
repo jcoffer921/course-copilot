@@ -28,10 +28,14 @@
     </div>
     <details class="app-account-menu">
       <summary aria-label="Open account menu">⌄</summary>
+      <div class="app-account-popover">
+      <a href="{% url 'profile-page' %}"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-profile"/></svg>View profile</a>
+      <a href="{% url 'settings-profile-page' %}"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-settings"/></svg>Settings</a>
       <form action="{% url 'google-logout' %}" method="post">
         {% csrf_token %}
-        <button type="submit" class="app-signout">Sign out</button>
+        <button type="submit" class="app-signout">Log out</button>
       </form>
+      </div>
     </details>
   </div>
 </aside>

@@ -14,6 +14,10 @@ def _validate_deadline_type(value):
 class UserProfileUpdateSerializer(serializers.Serializer):
     display_name = serializers.CharField(required=False, allow_blank=False, max_length=150)
     username = serializers.CharField(required=False, allow_blank=False, max_length=150)
+    bio = serializers.CharField(required=False, allow_blank=True, max_length=500)
+    university = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    major = serializers.CharField(required=False, allow_blank=True, max_length=150)
+    graduation_year = serializers.IntegerField(required=False, allow_null=True, min_value=1900, max_value=2200)
     notifications_enabled = serializers.BooleanField(required=False)
     email_notifications_enabled = serializers.BooleanField(required=False)
     timezone = serializers.CharField(required=False, max_length=64)

@@ -25,8 +25,11 @@ course fixtures live under `test-course-data/legacy-course-fixtures/` and are
 not loaded as live user data.
 
 The browser UI uses real Django page routes with a shared OnTrack shell:
-`/dashboard/`, `/calendar/`, `/courses/`, `/cora/`, `/study/`, and
-`/settings/`. Course workspaces and materials are available at
+`/dashboard/`, `/calendar/`, `/courses/`, `/cora/`, `/study/`,
+`/profile/`, and `/settings/`. Anonymous visitors see the public welcome
+page at `/`; `/login/` and `/signup/` are separate presentations of the
+same Google identity flow, which creates the OnTrack account on first sign-in.
+Course workspaces and materials are available at
 `/courses/<course_id>/`, `/courses/<course_id>/materials/`,
 `/courses/<course_id>/study/`, and `/courses/<course_id>/mastery/`. The legacy
 course Schedule URL redirects to the owned course filter on the global Calendar;
@@ -34,11 +37,14 @@ OnTrack does not maintain a second course calendar interface. The JSON API
 remains independently mounted under `/api/`; authenticated visits to `/`
 redirect to `/dashboard/`.
 
-`/settings/` is a page-owned profile and privacy workspace. It persists the
-user's IANA timezone, preferred session length, available study days, reminder
-lead time, and notification preference. Its JSON download is owner-scoped and
-omits OAuth credentials and private storage keys. Exam workspaces use these
-preferences when composing their deterministic readiness and preparation plan.
+`/profile/` is a read-only student overview composed from the authenticated
+user's identity, owned courses, mastery, streak, and study activity.
+`/settings/` remains the editing and privacy workspace. It persists bio,
+university, major, graduation year, IANA timezone, preferred session length,
+available study days, reminder lead time, and notification preference. Its
+JSON download is owner-scoped and omits OAuth credentials and private storage
+keys. Exam workspaces use these preferences when composing their deterministic
+readiness and preparation plan.
 
 `/courses/` is a page-owned, API-backed semester overview. Course IDs remain
 stable while names, codes, instructors, colors, and semesters can be edited.

@@ -40,7 +40,11 @@ def export_account_data(user) -> dict:
     )
     return {
         "exported_at": datetime.now(timezone.utc).isoformat(),
-        "profile": {"display_name": user.get_full_name(), "username": user.username, "email": user.email},
+        "profile": {
+            "display_name": user.get_full_name(), "username": user.username, "email": user.email,
+            "bio": preferences.bio, "university": preferences.university,
+            "major": preferences.major, "graduation_year": preferences.graduation_year,
+        },
         "preferences": {
             "notifications_enabled": preferences.notifications_enabled,
             "email_notifications_enabled": preferences.email_notifications_enabled,

@@ -39,7 +39,12 @@
             <form id="profile-form" class="settings-form">
               <div class="settings-form-grid">
                 <label>Full name<input id="settings-display-name" name="display_name" class="input" maxlength="150" autocomplete="name" required></label>
+                <label>Username<input id="settings-username" name="username" class="input" maxlength="150" autocomplete="username" required></label>
                 <label>Email address<input id="settings-email-input" class="input" type="email" autocomplete="email" readonly aria-describedby="email-help"><small id="email-help">Managed by your verified Google account.</small></label>
+                <label>Graduation year<input id="settings-graduation-year" name="graduation_year" class="input" type="number" min="1900" max="2200" inputmode="numeric" placeholder="2028"></label>
+                <label>University<input id="settings-university" name="university" class="input" maxlength="150" autocomplete="organization" placeholder="Add your school"></label>
+                <label>Major / program<input id="settings-major" name="major" class="input" maxlength="150" placeholder="Add your program"></label>
+                <label id="bio" class="settings-field-wide" tabindex="-1">Bio<textarea id="settings-bio" name="bio" maxlength="500" rows="4" placeholder="Share a little about what you're studying and working toward."></textarea><small><span id="settings-bio-count">0</span>/500 characters</small></label>
                 <label class="settings-field-wide">Timezone<select id="settings-timezone" name="timezone">{% for zone in timezone_choices %}<option value="{{ zone }}">{{ zone }}</option>{% endfor %}</select><small>Used for reminders and deadline times.</small></label>
               </div>
               <p class="app-inline-error" id="profile-error" role="alert" hidden></p>

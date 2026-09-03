@@ -81,52 +81,10 @@ def _positive_int_query_param(request, name: str, default: int):
     return value, None
 
 
-def _display_name_for(user):
-    if user.get_full_name().strip():
-        return user.get_full_name().strip()
-    if user.first_name.strip():
-        return user.first_name.strip()
-    if user.email:
-        return user.email.split("@", 1)[0]
-    return user.username
-
-
 def _profile_payload(user):
-    from django.db.models import Count, Sum
-    from agent.models import CourseMaterial, QuizAttempt, UserSettings
-    from agent.services import course_catalog, entitlements, streak
+    from agent.services import profiles
 
-    settings, _ = UserSettings.objects.get_or_create(user=user)
-    material_totals = CourseMaterial.objects.filter(user=user).aggregate(
-        file_count=Count("pk"), storage_bytes=Sum("size_bytes"),
-    )
-    return {
-        "email": user.email,
-        "username": user.username,
-        "display_name": _display_name_for(user),
-        "access_status": settings.access_status,
-        "tier": settings.tier,
-        "features": sorted(entitlements.features_for_tier(settings.tier)),
-        "notifications_enabled": settings.notifications_enabled,
-        "email_notifications_enabled": settings.email_notifications_enabled,
-        "google_identity_connected": hasattr(user, "google_account"),
-        "calendar_connected": (
-            hasattr(user, "google_calendar_connection")
-            and bool(user.google_calendar_connection.refresh_token)
-            and user.google_calendar_connection.grant_failed_at is None
-        ),
-        "timezone": settings.timezone,
-        "preferred_session_minutes": settings.preferred_session_minutes,
-        "available_study_days": settings.available_study_days,
-        "reminder_lead_minutes": settings.reminder_lead_minutes,
-        "study_reminder_time": settings.study_reminder_time.strftime("%H:%M"),
-        "member_since": user.date_joined.date().isoformat(),
-        "courses_enrolled": course_catalog.count_active_courses(user),
-        "quizzes_completed": QuizAttempt.objects.filter(user=user).count(),
-        "current_streak": streak.current_streak(user=user),
-        "material_file_count": material_totals["file_count"] or 0,
-        "material_storage_bytes": material_totals["storage_bytes"] or 0,
-    }
+    return profiles.build_profile(user)
 
 
 class UserProfileView(APIView):
@@ -160,6 +118,7 @@ class UserProfileView(APIView):
             settings_obj, _ = UserSettings.objects.get_or_create(user=user)
             changed = []
             for field in (
+                "bio", "university", "major", "graduation_year",
                 "notifications_enabled", "email_notifications_enabled", "timezone", "preferred_session_minutes",
                 "available_study_days", "reminder_lead_minutes", "study_reminder_time",
             ):

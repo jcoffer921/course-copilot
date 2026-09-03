@@ -37,6 +37,7 @@ PAGE_SCRIPTS = {
     "study": "agent/js/study.js",
     "exam": "agent/js/exams.js",
     "settings": "agent/js/settings.js",
+    "profile": "agent/js/profile.js",
     "feedback": "agent/js/feedback.js",
     "practice-attempt": "agent/js/practice_attempt.js",
     "interactive-flashcards": "agent/js/interactive_flashcards.js",
@@ -85,7 +86,7 @@ def _enabled_features(user):
 def _render_page(request, template_name, *, page_name, page_title, initial_tab, course_id=None, **context):
     modern_page_names = {
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
-        "course-mastery", "course-grades", "study-dashboard", "exam", "settings",
+        "course-mastery", "course-grades", "study-dashboard", "exam", "settings", "profile",
         "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback",
     }
     modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
@@ -106,6 +107,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
                 else "quiz-loading-20260831-1" if page_name == "practice-quiz-setup"
                 else "interactive-20260831-4" if page_name in ("practice-attempt", "interactive-flashcards")
                 else "settings-20260901-1" if page_name == "settings"
+                else "profile-20260902-1" if page_name == "profile"
                 else ""
             ),
             "course_id": course_id,
@@ -169,9 +171,17 @@ def contact_page(request):
     return response
 
 
-@login_required
 def app_root(request):
-    return redirect("dashboard-page")
+    if request.user.is_authenticated:
+        return redirect("dashboard-page")
+    return render(request, "agent/welcome.html")
+
+
+@login_required
+def profile_page(request):
+    return _render_page(
+        request, "agent/profile.html", page_name="profile", page_title="Profile", initial_tab="overview",
+    )
 
 
 @login_required

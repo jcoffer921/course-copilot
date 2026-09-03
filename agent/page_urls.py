@@ -7,6 +7,7 @@ urlpatterns = [
     path("privacy/", page_views.privacy_page, name="privacy-page"),
     path("contact/", page_views.contact_page, name="contact-page"),
     path("", page_views.app_root, name="ontrack"),
+    path("profile/", page_views.profile_page, name="profile-page"),
     path("dashboard/", page_views.dashboard_page, name="dashboard-page"),
     path("calendar/", page_views.calendar_page, name="calendar-page"),
     path("courses/", page_views.courses_page, name="courses-page"),

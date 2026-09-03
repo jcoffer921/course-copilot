@@ -134,3 +134,30 @@ def test_notification_channel_patch_is_current_user_scoped(django_user_model):
     other_settings = UserSettings.objects.get(user=other)
     assert other_settings.notifications_enabled is False
     assert other_settings.email_notifications_enabled is False
+
+
+@pytest.mark.django_db
+def test_academic_profile_patch_is_current_user_scoped(django_user_model):
+    from agent.models import UserSettings
+    from rest_framework.test import APIClient
+
+    owner = django_user_model.objects.create_user(username="profile-owner")
+    other = django_user_model.objects.create_user(username="profile-other")
+    UserSettings.objects.create(user=other, bio="Private bio", major="History")
+    client = APIClient()
+    client.force_authenticate(user=owner)
+
+    response = client.patch("/api/profile/", {
+        "bio": "Building accessible software.",
+        "university": "Example University",
+        "major": "Computer Science",
+        "graduation_year": 2028,
+    }, format="json")
+
+    assert response.status_code == 200
+    owner_settings = UserSettings.objects.get(user=owner)
+    assert owner_settings.bio == "Building accessible software."
+    assert owner_settings.major == "Computer Science"
+    other_settings = UserSettings.objects.get(user=other)
+    assert other_settings.bio == "Private bio"
+    assert other_settings.major == "History"
