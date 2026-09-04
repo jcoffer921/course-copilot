@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import calendar_events, citations, mastery, quiz, storage
-from .client import MODEL_HAIKU, get_client
+from .client import CORA_MODELS, get_client
 
 EXAM_EVENT_TYPE = "test_quiz"
 READINESS_MASTERY_WEIGHT = 0.70
@@ -323,7 +323,12 @@ async def generate_study_guide(user, course_id: str, event_id: str) -> dict:
 
     client = get_client()
     response = await client.messages.create(
-        model=MODEL_HAIKU,
+        # Upgraded from Haiku to the reasoning model: an exam study guide is
+        # exam-critical, multi-topic synthesis (document_summarizer's "deep"
+        # category), not a quick recap — see agent/services/cora_skills/
+        # document_summarizer.py's routing contract. Only the model changed
+        # here; the prompt/schema/citation post-processing below is untouched.
+        model=CORA_MODELS["reasoning"],
         max_tokens=2048,
         system=STUDY_GUIDE_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_prompt}],

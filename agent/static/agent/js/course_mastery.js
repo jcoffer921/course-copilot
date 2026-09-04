@@ -60,6 +60,16 @@ async function load() {
   } catch (error) { byId("course-mastery-status").hidden = true; byId("course-mastery-error").hidden = false; byId("course-mastery-error").querySelector("p").textContent = error.message; }
 }
 byId("mastery-filter")?.addEventListener("change", renderTopics);
+byId("mastery-cora-insight-btn")?.addEventListener("click", async event => {
+  const button = event.target, para = byId("mastery-cora-insight");
+  button.disabled = true; button.textContent = "Asking Cora…";
+  try {
+    const insight = await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/mastery/insight/`, {method:"POST", body: JSON.stringify({})});
+    para.textContent = `${insight.insight} ${insight.recommended_action}`; para.hidden = false;
+  } catch (error) {
+    para.textContent = error.message; para.hidden = false;
+  } finally { button.disabled = false; button.textContent = "Ask Cora to explain"; }
+});
 byId("mastery-rebuild")?.addEventListener("click", async event => { event.target.disabled = true; event.target.textContent = "Rebuilding…"; try { await apiRequest(`/api/courses/${encodeURIComponent(courseId)}/mastery/rebuild/`, {method:"POST"}); await load(); } catch(error) { byId("course-mastery-error").hidden = false; byId("course-mastery-error").querySelector("p").textContent = error.message; } finally { event.target.disabled = false; event.target.textContent = "Rebuild from activity"; } });
 byId("course-mastery-error")?.querySelector("button")?.addEventListener("click", load);
 if (courseId) { initCourseHeader(courseId); load(); }

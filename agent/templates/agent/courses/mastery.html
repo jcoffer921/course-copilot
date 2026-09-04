@@ -11,7 +11,7 @@
         <article class="learning-card mastery-overall"><div id="mastery-overall-ring" class="mastery-ring" role="progressbar" aria-label="Overall mastery" aria-valuemin="0" aria-valuemax="100"><strong id="mastery-overall-score">—</strong></div><div><strong id="mastery-overall-label">Not enough activity yet</strong><p>Based only on recorded study evidence</p></div></article>
         <article class="learning-card"><span>Topics mastered</span><strong id="mastery-mastered-count" class="summary-number">0 of 0</strong></article>
         <article class="learning-card"><span>Due for review</span><strong id="mastery-review-count" class="summary-number orange">0 topics</strong></article>
-        <article class="learning-card cora-recommendation"><span>Cora recommends</span><strong id="mastery-rec-topic">No recommendation yet</strong><p id="mastery-rec-reason"></p><a id="mastery-study-link" class="btn btn-primary" href="{% url 'course-study-page' course_id=course_id %}">Study this topic</a></article>
+        <article class="learning-card cora-recommendation"><span>Cora recommends</span><strong id="mastery-rec-topic">No recommendation yet</strong><p id="mastery-rec-reason"></p><a id="mastery-study-link" class="btn btn-primary" href="{% url 'course-study-page' course_id=course_id %}">Study this topic</a><button id="mastery-cora-insight-btn" class="btn btn-secondary" type="button">Ask Cora to explain</button><p id="mastery-cora-insight" hidden></p></article>
       </section>
       <section class="mastery-main-grid">
         <div>

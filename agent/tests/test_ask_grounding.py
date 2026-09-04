@@ -332,6 +332,67 @@ async def test_calendar_tool_proposes_change_without_writing_it(isolated_courses
 
 
 @pytest.mark.django_db
+async def test_calendar_tool_escalates_to_sonnet_on_ambiguous_context(isolated_courses_dir, monkeypatch, django_user_model):
+    # "the Friday after Exam 2" requires reasoning about another date rather
+    # than direct parsing — Haiku signals ambiguous_context=true and ask.py
+    # should retry once on Sonnet with the same context before accepting a
+    # result, per the calendar_extractor escalation contract.
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-escalation-owner")
+    _seed_course("testcourse", user)
+    ambiguous_input = {
+        "is_deadline_request": True, "missing": [], "deadlines": [],
+        "message": "still resolving the date", "ambiguous_context": True,
+    }
+    resolved_input = {
+        "is_deadline_request": True, "missing": [], "deadlines": [{
+            "action": "create", "event_id": None, "title": "Homework 5", "course_id": "testcourse",
+            "date": "2026-10-16", "time": None, "end_time": None, "type": "hw",
+        }],
+        "message": "Add Homework 5 on Oct 16?",
+    }
+    fake_client = _FakeClient(_FakeResponseWithContent([]))
+    call_count = 0
+
+    async def create(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        fake_client.messages.calls.append(kwargs)
+        tool_input = ambiguous_input if call_count == 1 else resolved_input
+        return _FakeResponseWithContent([_FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, tool_input)])
+
+    fake_client.messages.create = create
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "Homework 5 is due the Friday after Exam 2", user=user)
+
+    assert call_count == 2
+    assert fake_client.messages.calls[0]["model"] == ask.MODEL_HAIKU
+    assert fake_client.messages.calls[1]["model"] == ask.MODEL
+    assert result["pending_deadline"]["title"] == "Homework 5"
+
+
+@pytest.mark.django_db
+async def test_calendar_tool_does_not_escalate_for_explicit_dates(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-no-escalation-owner")
+    _seed_course("testcourse", user)
+    tool_input = {
+        "is_deadline_request": True, "missing": [], "deadlines": [{
+            "action": "create", "event_id": None, "title": "Exam 1", "course_id": "testcourse",
+            "date": "2026-10-12", "time": "14:00", "end_time": None, "type": "test_quiz",
+        }],
+        "message": "Add Exam 1 on Oct 12 at 2 PM?",
+    }
+    fake_client = _FakeClient(_FakeResponseWithContent([_FakeToolUseBlock(ask.CALENDAR_WRITE_TOOL_NAME, tool_input)]))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "Exam 1 is October 12 at 2 PM", user=user)
+
+    assert len(fake_client.messages.calls) == 1
+    assert fake_client.messages.calls[0]["model"] == ask.MODEL_HAIKU
+    assert result["pending_deadline"]["title"] == "Exam 1"
+
+
+@pytest.mark.django_db
 async def test_calendar_tool_move_request_surfaces_conflict_in_a_different_course(
     isolated_courses_dir, monkeypatch, django_user_model,
 ):
@@ -466,7 +527,9 @@ async def test_no_web_search_tool_when_no_domains_approved(isolated_courses_dir,
     result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["grounded"] is False
-    assert "tools" not in fake_client.messages.calls[0]
+    # calls[0] is now the intent_router classification call ask_async makes
+    # before the grounded-answer call this test actually cares about.
+    assert "tools" not in fake_client.messages.calls[-1]
 
 
 @pytest.mark.django_db
@@ -510,7 +573,9 @@ async def test_saved_sites_reach_ask_context(isolated_courses_dir, monkeypatch, 
     result = await ask.ask_async("testcourse", "what is my course book link?", user=user)
 
     assert result["grounded"] is True
-    context_message = _content_text(fake_client.messages.calls[0]["messages"][0]["content"])
+    # calls[-1] is the grounded-answer call; calls[0] is the intent_router
+    # classification call ask_async makes first.
+    context_message = _content_text(fake_client.messages.calls[-1]["messages"][0]["content"])
     assert "SAVED_SITES" in context_message
     assert "https://example.edu/large-course-book" in context_message
 
@@ -532,7 +597,9 @@ async def test_saved_site_domain_is_available_to_web_search(isolated_courses_dir
 
     await ask.ask_async("testcourse", "look up the next WebGL detail from the book", user=user, allow_web=True)
 
-    assert fake_client.messages.calls[0]["tools"] == [{
+    # calls[-1] is the grounded-answer call; calls[0] is the intent_router
+    # classification call ask_async makes first.
+    assert fake_client.messages.calls[-1]["tools"] == [{
         "type": "web_search_20250305",
         "name": "web_search",
         "allowed_domains": ["sites.google.com"],
@@ -563,7 +630,9 @@ async def test_relevant_prior_sessions_reach_ask_context(isolated_courses_dir, m
     result = await ask.ask_async("testcourse", "remember how I want shader examples explained?", user=user)
 
     assert result["sources"][0]["material_id"].startswith("ontrack-conversation-")
-    context_message = _content_text(fake_client.messages.calls[0]["messages"][0]["content"])
+    # calls[-1] is the grounded-answer call; calls[0] is the intent_router
+    # classification call ask_async makes first.
+    context_message = _content_text(fake_client.messages.calls[-1]["messages"][0]["content"])
     assert "RECALLED_CONVERSATIONS" in context_message
     assert "plain language" in context_message
     assert "final project dates" not in context_message
@@ -605,7 +674,9 @@ async def test_web_search_tool_added_with_approved_domains(isolated_courses_dir,
     result = await ask.ask_async("testcourse", "some question", user=user, allow_web=True)
 
     assert result["grounded"] is True
-    call = fake_client.messages.calls[0]
+    # calls[-1] is the grounded-answer call; calls[0] is the intent_router
+    # classification call ask_async makes first.
+    call = fake_client.messages.calls[-1]
     assert call["tools"] == [{
         "type": "web_search_20250305",
         "name": "web_search",
@@ -625,7 +696,9 @@ async def test_course_material_mode_never_offers_web_even_when_domains_are_appro
     result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["grounding_mode"] == "course_materials"
-    assert fake_client.messages.calls[0].get("tools", []) == []
+    # calls[-1] is the grounded-answer call; calls[0] is the intent_router
+    # classification call ask_async makes first.
+    assert fake_client.messages.calls[-1].get("tools", []) == []
 
 
 @pytest.mark.django_db
@@ -638,14 +711,17 @@ async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_di
     fake_client = _FakeClient(paused_response)
     monkeypatch.setattr(ask, "get_client", lambda: fake_client)
 
-    # First call pauses; make the second call (the resubmission) return the final answer.
+    # Call 1 is the intent_router classification call (harmless here — its
+    # plain-text, no-tool-use response just makes it fall back to course_qa).
+    # Call 2 (the first grounded-answer call) pauses; call 3 (the
+    # resubmission) returns the final answer.
     call_count = 0
 
     async def create(**kwargs):
         nonlocal call_count
         call_count += 1
         fake_client.messages.calls.append(kwargs)
-        if call_count == 1:
+        if call_count <= 2:
             return paused_response
         return _FakeResponse(final)
 
@@ -654,13 +730,13 @@ async def test_pause_turn_resubmits_conversation_up_to_limit(isolated_courses_di
     result = await ask.ask_async("testcourse", "some question", user=user)
 
     assert result["answer"] == "done"
-    assert call_count == 2
+    assert call_count == 3
 
     # The resubmission must replay the paused assistant's actual content
     # (the API auto-detects the trailing server-tool state itself), not a
     # synthetic "Continue" user message.
-    second_call_messages = fake_client.messages.calls[1]["messages"]
-    assert second_call_messages[-1] == {"role": "assistant", "content": paused_response.content}
+    third_call_messages = fake_client.messages.calls[2]["messages"]
+    assert third_call_messages[-1] == {"role": "assistant", "content": paused_response.content}
 
 
 @pytest.mark.django_db
@@ -677,8 +753,9 @@ async def test_pause_turn_stops_after_max_continuations(isolated_courses_dir, mo
     with pytest.raises(ValueError):
         await ask.ask_async("testcourse", "some question", user=user)
 
-    # First call plus the capped number of continuations.
-    assert len(fake_client.messages.calls) == ask.MAX_PAUSE_TURN_CONTINUATIONS + 1
+    # The intent_router classification call, plus the grounded-answer call's
+    # first attempt plus the capped number of continuations.
+    assert len(fake_client.messages.calls) == ask.MAX_PAUSE_TURN_CONTINUATIONS + 2
 
 
 @pytest.mark.django_db
@@ -731,7 +808,9 @@ async def test_reference_text_reaches_prompt(isolated_courses_dir, monkeypatch, 
 
     await ask.ask_async("testcourse", "some question", user=user)
 
-    call = fake_client.messages.calls[0]
+    # calls[-1] is the grounded-answer call; calls[0] is the intent_router
+    # classification call ask_async makes first.
+    call = fake_client.messages.calls[-1]
     assert "UNIQUE_MARKER_TEXT_12345" in _content_text(call["messages"][0]["content"])
 
 

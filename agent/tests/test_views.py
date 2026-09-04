@@ -629,6 +629,72 @@ def test_recommendations_dismiss_rejects_invalid_course_id(isolated_courses_dir,
     assert response.status_code == 400
 
 
+def test_mastery_insight_returns_the_analyzer_result(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101", api_client.user)
+
+    async def fake_analyze(user, course_id, topic=None):
+        assert course_id == "cs101"
+        assert topic == "A"
+        return {"insight": "Misses base cases.", "recommended_action": "Review base cases.", "confidence": "medium"}
+
+    monkeypatch.setattr(views.mastery_analyzer, "analyze", fake_analyze)
+
+    response = api_client.post("/api/courses/cs101/mastery/insight/", {"topic": "A"}, format="json")
+
+    assert response.status_code == 200
+    assert response.data == {"insight": "Misses base cases.", "recommended_action": "Review base cases.", "confidence": "medium"}
+
+
+def test_mastery_insight_404s_for_missing_course(isolated_courses_dir, api_client):
+    response = api_client.post("/api/courses/does-not-exist/mastery/insight/", {}, format="json")
+
+    assert response.status_code == 404
+
+
+def test_mastery_insight_returns_422_when_no_data_yet(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101", api_client.user)
+
+    async def fake_analyze(user, course_id, topic=None):
+        raise views.mastery_analyzer.NoMasteryDataError("nothing to analyze yet")
+
+    monkeypatch.setattr(views.mastery_analyzer, "analyze", fake_analyze)
+
+    response = api_client.post("/api/courses/cs101/mastery/insight/", {}, format="json")
+
+    assert response.status_code == 422
+
+
+def test_study_plan_endpoint_returns_the_planner_result(isolated_courses_dir, api_client, monkeypatch):
+    async def fake_generate_plan(user, available_minutes=None, course_ids=None):
+        assert available_minutes == 90
+        return {"plan": [{"course_id": "cs101", "course_name": "Test", "topic": "A", "activity": "Quiz", "minutes": 30, "reason": "Weak.", "priority": 1}], "summary": "Focus on A."}
+
+    monkeypatch.setattr(views.study_planner, "generate_plan", fake_generate_plan)
+
+    response = api_client.get("/api/study-plan/?available_minutes=90")
+
+    assert response.status_code == 200
+    assert response.data["summary"] == "Focus on A."
+    assert response.data["plan"][0]["topic"] == "A"
+
+
+def test_study_plan_endpoint_returns_422_when_no_context(isolated_courses_dir, api_client, monkeypatch):
+    async def fake_generate_plan(user, available_minutes=None, course_ids=None):
+        raise views.study_planner.NoStudyContextError("no courses yet")
+
+    monkeypatch.setattr(views.study_planner, "generate_plan", fake_generate_plan)
+
+    response = api_client.get("/api/study-plan/")
+
+    assert response.status_code == 422
+
+
+def test_study_plan_endpoint_rejects_a_non_positive_available_minutes(isolated_courses_dir, api_client):
+    response = api_client.get("/api/study-plan/?available_minutes=0")
+
+    assert response.status_code == 400
+
+
 def _seed_exam_course(course_id, user, *, title="Midterm", date="2026-03-01"):
     storage.write_syllabus(course_id, {
         "course_id": course_id, "course_name": "Test", "dates": [{"date": date, "title": title, "type": "test_quiz"}],

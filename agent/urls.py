@@ -3,6 +3,8 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+    path("analytics/", views.AnalyticsSummaryView.as_view(), name="analytics-summary"),
+    path("analytics/export/", views.AnalyticsExportView.as_view(), name="analytics-export"),
     path("profile/", views.UserProfileView.as_view(), name="profile"),
     path("profile/export/", views.AccountExportView.as_view(), name="profile-export"),
     path("feedback/", views.PilotFeedbackView.as_view(), name="pilot-feedback"),
@@ -57,6 +59,7 @@ urlpatterns = [
     ),
     path("courses/<slug:course_id>/mastery/", views.MasteryView.as_view(), name="mastery"),
     path("courses/<slug:course_id>/mastery/rebuild/", views.MasteryRebuildView.as_view(), name="mastery-rebuild"),
+    path("courses/<slug:course_id>/mastery/insight/", views.MasteryInsightView.as_view(), name="mastery-insight"),
     path("courses/<slug:course_id>/flashcards/generate/", views.FlashcardsGenerateView.as_view(), name="flashcards-generate"),
     path("courses/<slug:course_id>/flashcards/progress/", views.FlashcardProgressView.as_view(), name="flashcards-progress"),
     path("courses/<slug:course_id>/flashcards/progress/reset/", views.FlashcardProgressResetView.as_view(), name="flashcards-progress-reset"),
@@ -109,6 +112,7 @@ urlpatterns = [
     path("dashboard/", views.DashboardView.as_view(), name="dashboard"),
     path("recommendations/", views.RecommendationsView.as_view(), name="recommendations"),
     path("recommendations/dismiss/", views.RecommendationDismissView.as_view(), name="recommendations-dismiss"),
+    path("study-plan/", views.StudyPlanView.as_view(), name="study-plan"),
     path("grades/summary/", views.GradesSummaryView.as_view(), name="grades-summary"),
     path("deadlines/", views.DeadlinesView.as_view(), name="deadlines"),
     path("calendar/", views.CalendarView.as_view(), name="calendar-data"),

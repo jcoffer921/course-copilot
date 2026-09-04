@@ -8,7 +8,9 @@ from django.db.utils import DatabaseError
 from django.http import HttpResponse
 from django.utils.http import content_disposition_header
 from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from .authentication import ActiveAccessPermission, PilotOwnerPermission
 from .throttles import AIUserBurstThrottle, AIUserDailyThrottle
 
 from .serializers import (
@@ -25,6 +27,7 @@ from .serializers import (
     CreateCourseDraftRequestSerializer,
     CreateCustomEventRequestSerializer,
     DismissRecommendationRequestSerializer,
+    MasteryInsightRequestSerializer,
     ExtractSyllabusRequestSerializer,
     FlashcardProgressResetSerializer,
     FlashcardProgressUpdateSerializer,
@@ -54,7 +57,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import accounts, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, material_files, materials, metrics, notifications, quiz, recommendations, reminders, sessions, storage, study_sessions
+from .services import accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, quiz, recommendations, reminders, sessions, storage, study_planner, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -66,6 +69,37 @@ class AIAPIView(APIView):
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
         llm_usage.check_and_increment(request.user)
+
+
+class AnalyticsSummaryView(APIView):
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, PilotOwnerPermission]
+
+    async def get(self, request):
+        range_key = request.query_params.get("range", "7d").lower()
+        try:
+            data = await sync_to_async(analytics.build_summary)(request.user, range_key)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        response = Response(data)
+        response["Cache-Control"] = "private, no-store"
+        return response
+
+
+class AnalyticsExportView(APIView):
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, PilotOwnerPermission]
+
+    async def get(self, request):
+        range_key = request.query_params.get("range", "7d").lower()
+        try:
+            rows = await sync_to_async(analytics.build_student_export)(request.user, range_key)
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        response = HttpResponse(analytics.render_student_csv(rows), content_type="text/csv; charset=utf-8")
+        response["Content-Disposition"] = content_disposition_header(
+            True, f"ontrack-student-pilot-analytics-{range_key}.csv",
+        )
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 def _positive_int_query_param(request, name: str, default: int):
@@ -939,6 +973,65 @@ class MasteryRebuildView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         return Response(data, status=status.HTTP_200_OK)
+
+
+class MasteryInsightView(AIAPIView):
+    """
+    POST /api/courses/<course_id>/mastery/insight/
+    body: {"topic": "<optional>"}
+
+    On-demand Sonnet interpretation of this course's (optionally one
+    topic's) deterministic mastery scores and recent quiz attempts —
+    mastery.py already computed those numbers; this only explains the
+    pattern behind them. Never called automatically on page load, only when
+    the student asks for it (a button click), per the project's
+    cost-conscious AI-routing guidance.
+    """
+
+    async def post(self, request, course_id):
+        serializer = MasteryInsightRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        topic = serializer.validated_data.get("topic")
+
+        try:
+            if not await sync_to_async(storage.course_or_draft_exists)(course_id, request.user):
+                return Response({"detail": "Course not found."}, status=status.HTTP_404_NOT_FOUND)
+            insight = await mastery_analyzer.analyze(request.user, course_id, topic=topic)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except mastery_analyzer.NoMasteryDataError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        except ValueError as e:
+            return Response({"detail": f"mastery insight failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(insight, status=status.HTTP_200_OK)
+
+
+class StudyPlanView(AIAPIView):
+    """
+    GET /api/study-plan/?available_minutes=<int, optional>
+
+    Cross-course, prioritized study plan — the same capability Cora's chat
+    reaches through the study_planner intent (agent/services/ask.py),
+    exposed directly here for future Dashboard wiring. Always scoped to
+    every course the signed-in student owns; there is no course_id filter
+    on this endpoint.
+    """
+
+    async def get(self, request):
+        available_minutes, error = _positive_int_query_param(request, "available_minutes", None)
+        if error:
+            return Response({"detail": error}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            plan = await study_planner.generate_plan(request.user, available_minutes=available_minutes)
+        except study_planner.NoStudyContextError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        except ValueError as e:
+            return Response({"detail": f"study plan generation failed: {e}"}, status=status.HTTP_502_BAD_GATEWAY)
+
+        return Response(plan, status=status.HTTP_200_OK)
 
 
 class QuizGenerateView(AIAPIView):

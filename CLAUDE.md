@@ -6,6 +6,8 @@ OnTrack is an AI agent scoped to the current semester's coursework, built on the
 ## Stack
 - Anthropic API (Messages endpoint), Python
 - Sonnet for extraction/quiz/chat; reserve Opus for rubric critique if reasoning quality matters more than cost
+- `agent/services/client.py`'s `CORA_MODELS = {"fast": MODEL_HAIKU, "reasoning": MODEL_DEFAULT, "critique": MODEL_RUBRIC_CRITIQUE}` is the named-alias layer new Cora capabilities route through instead of importing the raw model constants directly — a future model swap is a one-line change there.
+- **Cora capabilities** (`agent/services/cora_skills/`) are a *runtime* registry, distinct from the `.claude/skills/` directory below (which is dev-tooling Claude Code follows while building this app). Each of Cora's ten capabilities (`intent_router`, `syllabus_analyzer`, `calendar_extractor`, `document_summarizer`, `flashcard_generator`, `quiz_generator`, `study_planner`, `mastery_analyzer`, `course_qa`, `general_assistant`) has one file there declaring its trigger criteria, default/escalation model, required context, output schema, and validation rules — `agent/services/intent_router.py`'s Haiku classification prompt is generated from these files, not hand-duplicated, so a capability's routing criteria only ever needs editing in one place. `agent/services/ask.py::ask_async` calls `intent_router.classify()` after its own free deterministic regex checks (deadline/save-site requests) fail to match, then dispatches to the matched capability — course_qa/unknown (and any classifier failure) fall through unchanged to the original grounded-answer pipeline. Every routed capability returns through the same `{answer, grounded, sources}` envelope the Cora chat frontend already expects, so the routing is invisible to the student.
 - Structured JSON per course as the knowledge store for extracted/generated content (syllabus, notes, references, quiz_history) — no vector DB
 - Django + DRF, served over **ASGI** (uvicorn), not WSGI — the agent makes per-request calls to the Anthropic API, which are I/O-bound; async views (`adrf`) + `AsyncAnthropic` keep the event loop free instead of blocking a worker thread per call
 - Django's `db.sqlite3` holds auth/session/admin tables plus mutable per-user state that benefits from relational queries/constraints (flashcard progress, grades, quiz attempts, mastery scores, calendar sync records, custom events, notifications, sessions, saved sites) and `CourseMaterial` operational upload metadata. Extracted/generated *content* itself (syllabus, notes, references) still lives in per-course JSON, never the DB; `CourseMaterial.extracted_data` is only a temporary unconfirmed syllabus review candidate.
@@ -46,8 +48,32 @@ course-copilot/
                             # unauthenticated request
     serializers.py          # DRF request serializers for views.py's APIViews
     services/
-      client.py              # shared AsyncAnthropic init + MODEL constants — every
-                              # API-calling service imports from here, not anthropic directly
+      client.py              # shared AsyncAnthropic init + MODEL constants (+ the CORA_MODELS
+                              # fast/reasoning/critique alias dict) — every API-calling service
+                              # imports from here, not anthropic directly
+      cora_skills/            # runtime registry of Cora's ten capabilities (trigger criteria,
+                              # model, required context, output schema, validation rules) — see
+                              # the Stack section above; intent_router.py's classification prompt
+                              # is generated from these files
+      cora_json.py            # shared JSON-recovery parser for the newer capabilities
+                              # (intent_router/study_planner/mastery_analyzer/document_summarizer)
+                              # only — the three pre-existing parsers in ask.py/quiz.py/
+                              # syllabus_extraction.py are each independently hardened and
+                              # deliberately left alone rather than migrated here
+      intent_router.py        # Cora's chat front door: one small Haiku call classifying a message
+                              # into a capability, called from ask.py after its own free regex
+                              # checks fail to match; any failure safely falls back to course_qa
+      study_planner.py        # cross-course, prioritized study plan — build_context() is pure
+                              # Python composing recommendations/calendar_events/mastery/streak/
+                              # study_sessions; generate_plan()'s Sonnet call only prioritizes and
+                              # explains that context, and its output is filtered to drop any
+                              # course_id/topic the model invented outside that context
+      mastery_analyzer.py     # Sonnet interpretation of mastery.py's already-computed scores +
+                              # quiz.py's recent attempts — explains the pattern behind a score,
+                              # never recomputes it
+      document_summarizer.py  # summarizes one lecture's notes or one reference doc — depth="quick"
+                              # (Haiku) or "deep" (Sonnet); no retrieval, reads only the one
+                              # targeted document like every other content service here
       storage.py            # JSON schema validation + read/write (courses/*.json)
       material_files.py     # bounded upload validation + private object-storage adapter
       materials.py          # owned upload/status/review lifecycle shared by API and CLI
@@ -88,8 +114,11 @@ course-copilot/
                                # re-resolved live by event_id from calendar_events.py — never
                                # cached, so a deleted/rescheduled event just stops resolving
                                # instead of leaving a stale plan visible. Study guide generation
-                               # reads ONLY the plan's included topics/materials and resolves each
-                               # section's citation through citations.py; practice questions reuse
+                               # uses CORA_MODELS["reasoning"] (upgraded from Haiku — an exam-
+                               # critical multi-topic synthesis is a document_summarizer "deep"
+                               # task, not a quick recap) and reads ONLY the plan's included
+                               # topics/materials, resolving each section's citation through
+                               # citations.py; practice questions reuse
                                # quiz.py's existing generate/record endpoints (topic-scoped),
                                # deliberately not a competing question store
       study_sessions.py         # guided StudySession/StudyActivity lifecycle: start, append an
@@ -165,7 +194,16 @@ course-copilot/
                                # app's orange/olive --color-accent*/--color-accent-2*, which live
                                # in the generated _ds bundle) for Cora-branded surfaces — the
                                # dashboard's recommendation card and quick-ask panel, so far
-      js/core/                 # API, CSRF, navigation, modal, toast, and DC controller bridge
+      js/core/                 # API, CSRF, navigation, modal, toast, and DC controller bridge.
+                               # controller.js still loads on every page (app_base.html includes
+                               # it as part of the shared shell) and its render-prep code still
+                               # runs and computes props every page load, but ontrack.html — the
+                               # only template that ever consumed most of those props (the
+                               # Dashboard-tab deadline list, showCalendarSync, syncDashboardDeadline,
+                               # etc.) — is retired and rendered by no view. Before extending or
+                               # "fixing" something found in controller.js, grep the templates for
+                               # whether anything still reads that prop; a lot of it is live output
+                               # with a dead audience, not a bug.
       js/*.js                  # page-owned entry modules; each page loads only its entry point
       _ds/                     # generated "Organic" design system (CSS + component bundle)
       images/                  # logo assets (full logo + cropped icon-only mark for
@@ -504,6 +542,17 @@ authenticated per-session confirmation endpoint after explicit user confirmation
 endpoint treats model output as untrusted and re-resolves update/delete event IDs against the
 signed-in user's current owned calendar before mutating anything.
 
+That confirmation endpoint (`confirm_deadline_actions` in `ask.py`) writes only to OnTrack's
+own internal deadline store (`custom_events`) — it never calls Google Calendar and never checks
+`calendar_connected`. A student who has never connected Google Calendar, or whose connection has
+lapsed, can still propose and confirm deadlines through Cora exactly as if it were connected:
+`calendar_connected` is not a functional dependency anywhere in this path, only an optional,
+separately-gated export of deadlines already saved in OnTrack (`CalendarSyncView`,
+`CustomEventCalendarSyncView`, both explicit student-triggered actions). Do not "helpfully"
+auto-sync a freshly confirmed deadline to Google Calendar inside the confirmation endpoint —
+that would reintroduce a coupling this architecture deliberately avoids, and would make a
+lapsed/never-connected grant a functional failure instead of a degraded add-on.
+
 **calendar_sync.json** — per-course, tracks which syllabus-derived deadlines have been
 pushed to Google Calendar (manual/study-plan events track their own sync state inline on the
 database row).
@@ -581,6 +630,29 @@ named constants in `recommendations.py`, not magic numbers). `POST /api/recommen
 (`{"course_id", "topic", "defer_hours": int|null}`) writes only a `RecommendationDismissal` row —
 dismissing/deferring can never lose quiz, flashcard, or deadline data, since the recommendation
 itself is never stored.
+
+**Study plan (API representation, `GET /api/study-plan/?available_minutes=<int, optional>`)** —
+Sonnet's prioritized read of the same deterministic signals `recommendations.py` already ranks,
+plus calendar/streak/recent-activity context; nothing here is persisted. Cross-course by design —
+there is no `course_id` filter on this endpoint.
+```json
+{
+  "plan": [{"course_id": "string", "course_name": "string", "topic": "string|null", "activity": "string", "minutes": 0, "reason": "string", "priority": 1}],
+  "summary": "string"
+}
+```
+Every `plan` item's `course_id`/`topic` is validated against `study_planner.build_context()`'s own
+output before being returned — an item citing a course or topic the model invented is dropped, not
+trusted. 422 if the signed-in student has no courses yet.
+
+**Mastery insight (API representation, `POST /api/courses/<course_id>/mastery/insight/`, body
+`{"topic": "string, optional"}`)** — on-demand only (a Mastery-page button click, never automatic
+on page load); Sonnet's interpretation of `mastery.py`'s already-computed scores and `quiz.py`'s
+recent attempts for this course (optionally one topic).
+```json
+{"insight": "string", "recommended_action": "string", "confidence": "high|medium|low"}
+```
+404 for a missing/foreign course; 422 if there's no quiz/mastery data yet to interpret.
 
 **Exam workspace (API representation, `GET /api/courses/<course_id>/exams/<event_id>/`)** —
 `event_id` is a confirmed test_quiz-type event's canonical id from `calendar_events.py`

@@ -253,7 +253,11 @@ async def test_retry_request_id_returns_same_exchange_without_duplicate_user_mes
     saved = await sync_to_async(sessions.get_session)("cs101", session["session_id"], user=owner)
 
     assert second == first
-    assert len(fake.messages.calls) == 1
+    # The first ask_async call makes two model calls (intent_router's
+    # classification, then the grounded answer); the point of this
+    # assertion is that the retried second call makes zero more, not that
+    # a single call handles the whole request end to end.
+    assert len(fake.messages.calls) == 2
     assert [message["role"] for message in saved["messages"]] == ["user", "assistant"]
     assert saved["title"] == "What is quantum gravity?"
 

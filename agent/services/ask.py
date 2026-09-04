@@ -7,15 +7,21 @@ CLI use.
 """
 
 import json
+import logging
 import re
 from datetime import date, timedelta
 from urllib.parse import urlparse
 
 from asgiref.sync import sync_to_async
 
-from . import calendar_events, citations, custom_events, grades, mastery, sessions, storage
+from . import (
+    calendar_events, citations, custom_events, document_summarizer, grades, intent_router,
+    mastery, mastery_analyzer, quiz, sessions, storage, study_planner,
+)
 from .client import MODEL_DEFAULT as MODEL, MODEL_HAIKU, get_client
 from .storage import CourseNotFoundError
+
+logger = logging.getLogger(__name__)
 
 ASK_SYSTEM_PROMPT = """You are Cora, the AI academic assistant inside OnTrack — you help students stay on top of their \
 semester. You answer questions about ONE course using ONLY the material provided below, plus — only \
@@ -117,6 +123,15 @@ not fabricating anything is not the same as the material actually answering what
 - Output ONLY valid JSON matching the schema below. Do not wrap the JSON object in a markdown fence, \
 and do not add preamble or commentary outside it — this applies even if you use the web search tool \
 first. Mermaid and Venn fences are allowed only inside the JSON "answer" string when you include a diagram.
+- This still applies when you are declining or redirecting a request — e.g. the student asks you to \
+directly create, edit, or delete a calendar entry through chat rather than through a proposed action. \
+Never reply in plain prose with no JSON wrapper, even for a short decline: put the decline text in the \
+JSON "answer" field, with "grounded" false and "sources" empty, exactly like any other response.
+- If the student asks you to add, change, or remove something on their calendar/schedule, never say you \
+can't or don't have the ability to touch the calendar — that capability exists. Explain that you can \
+draft the change right here for them to review (nothing is added until they confirm it), and that \
+naming a clear title, date, and time works best — or point them to the Deadlines tab if they'd rather \
+add or edit it directly there.
 
 Schema:
 {
@@ -177,6 +192,7 @@ SCHEDULE_TIME_RE = re.compile(
 )
 SAVE_SITE_INTENT_RE = re.compile(r"\b(save|remember|store|add)\b.*\b(site|link|url|address|book|textbook)\b", re.I)
 URL_RE = re.compile(r"https?://[^\s<>()\"']+", re.I)
+CALENDAR_MENTION_RE = re.compile(r"\bcalendar\b", re.I)
 
 
 def _decode_loose_json_string(value: str) -> str:
@@ -284,6 +300,11 @@ complete — do not silently drop a field that isn't changing.
 - If the user gives exact semester start/end dates, use those dates instead of the default schedule window.
 - Return every proposed item in the tool's "deadlines" array, including when there is only one item.
 - If nothing is missing, message should briefly describe the action (e.g. "Move Project 1 to Oct 3?") and ask the user to confirm — never say it's already done, since nothing is written until the user confirms.
+- Set "ambiguous_context" to true only when resolving a date genuinely requires reasoning about its \
+relationship to another date/event (e.g. "the Friday after Exam 2", "two weeks after the project \
+presentation") rather than parsing an explicit date/time directly. Leave it false or omit it for \
+ordinary explicit-date requests — this is not for routine missing-field cases, which "missing" already \
+covers.
 """
 
 
@@ -323,6 +344,16 @@ def _build_calendar_write_tool() -> dict:
                 },
                 "deadlines": {"type": "array", "items": action_schema, "maxItems": MAX_CALENDAR_ACTIONS},
                 "message": {"type": "string"},
+                "ambiguous_context": {
+                    "type": "boolean",
+                    "description": (
+                        "Set true only when resolving a date genuinely required reasoning about "
+                        "its relationship to another date/event mentioned elsewhere (e.g. \"the "
+                        "Friday after Exam 2\"), rather than parsing an explicit date/time "
+                        "directly. Triggers one escalation retry on a stronger model — leave "
+                        "false/omitted for ordinary explicit-date requests."
+                    ),
+                },
             },
             "required": ["is_deadline_request", "missing", "deadlines", "message"],
             "additionalProperties": False,
@@ -688,26 +719,29 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
     }
     data = _recurring_schedule_proposal(question, course_id, today_date, syllabus)
     if data is None:
-        response = await client.messages.create(
-            model=MODEL_HAIKU,
-            max_tokens=8000,
-            system=DEADLINE_EXTRACTION_PROMPT,
-            messages=[{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}],
-            tools=[_build_calendar_write_tool()],
-            tool_choice={"type": "tool", "name": CALENDAR_WRITE_TOOL_NAME},
-        )
-        tool_blocks = [
-            block for block in response.content
-            if getattr(block, "type", None) == "tool_use"
-            and getattr(block, "name", None) == CALENDAR_WRITE_TOOL_NAME
-        ]
-        if len(tool_blocks) > 1:
-            raise ValueError("Cora returned more than one calendar proposal.")
-        if tool_blocks:
-            data = getattr(tool_blocks[0], "input", None)
-            if not isinstance(data, dict):
-                raise ValueError("Cora returned an invalid calendar proposal.")
-        else:
+        calendar_messages = [{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}]
+
+        async def _call_calendar_tool(model: str) -> dict:
+            response = await client.messages.create(
+                model=model,
+                max_tokens=8000,
+                system=DEADLINE_EXTRACTION_PROMPT,
+                messages=calendar_messages,
+                tools=[_build_calendar_write_tool()],
+                tool_choice={"type": "tool", "name": CALENDAR_WRITE_TOOL_NAME},
+            )
+            tool_blocks = [
+                block for block in response.content
+                if getattr(block, "type", None) == "tool_use"
+                and getattr(block, "name", None) == CALENDAR_WRITE_TOOL_NAME
+            ]
+            if len(tool_blocks) > 1:
+                raise ValueError("Cora returned more than one calendar proposal.")
+            if tool_blocks:
+                result = getattr(tool_blocks[0], "input", None)
+                if not isinstance(result, dict):
+                    raise ValueError("Cora returned an invalid calendar proposal.")
+                return result
             # Compatibility with recorded responses created before the calendar
             # tool contract. New production calls force tool use above.
             raw = "".join(
@@ -716,9 +750,17 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
             ).strip()
             raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip())
             try:
-                data = _parse_json_response(raw)
+                return _parse_json_response(raw)
             except json.JSONDecodeError:
                 raise ValueError("Cora couldn't prepare that calendar change. Please rephrase it with a title, date, and time.")
+
+        data = await _call_calendar_tool(MODEL_HAIKU)
+        if data.get("ambiguous_context"):
+            # Haiku itself signaled that resolving this date requires reasoning
+            # about its relationship to another date/event rather than direct
+            # parsing (e.g. "the Friday after Exam 2") — escalate once to
+            # Sonnet with the same context instead of guessing on Haiku.
+            data = await _call_calendar_tool(MODEL)
 
     if not isinstance(data.get("missing", []), list):
         raise ValueError("Cora returned invalid missing calendar fields.")
@@ -789,6 +831,180 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
     }
 
 
+_AVAILABLE_MINUTES_RE = re.compile(r"\b(\d{1,3})\s*(hour|hr|minute|min)s?\b", re.I)
+
+
+def _extract_available_minutes(question: str) -> int | None:
+    """Cheap, deterministic extraction of an explicitly-stated time budget
+    (e.g. "I have 90 minutes", "2 hours tonight") for study_planner —
+    word-form numbers ("about two hours") aren't handled; the planner still
+    produces a reasonable plan without an explicit budget, so this is a
+    nice-to-have, not a requirement."""
+    total = None
+    for match in _AVAILABLE_MINUTES_RE.finditer(question or ""):
+        value = int(match.group(1))
+        unit = match.group(2).lower()
+        minutes = value * 60 if unit in ("hour", "hr") else value
+        total = (total or 0) + minutes
+    return total
+
+
+def _match_syllabus_topic(question: str, topics: list) -> str | None:
+    """Cheap containment match against this course's own syllabus topics —
+    good enough to scope mastery_analyzer/quiz_or_flashcards to a named
+    topic when the student names one verbatim. Falls back to None (whole
+    course) rather than guessing at a fuzzy match."""
+    lower = (question or "").lower()
+    for topic in topics or []:
+        if topic and topic.lower() in lower:
+            return topic
+    return None
+
+
+SMALL_TALK_SYSTEM_PROMPT = """You are Cora, OnTrack's AI academic assistant. The student's message is \
+small talk, a greeting, thanks, or a basic question about who you are or what you can do — not an \
+academic question. Reply briefly and warmly in one or two sentences, in plain text (not JSON, not \
+markdown). Never answer an academic/course question here; if the message actually contains one, say \
+you're happy to help and ask them to go ahead and ask it."""
+
+
+async def _small_talk_reply(client, question: str) -> dict:
+    response = await client.messages.create(
+        model=MODEL_HAIKU,
+        max_tokens=150,
+        system=SMALL_TALK_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": question}],
+    )
+    answer = "".join(b.text for b in response.content if getattr(b, "type", None) == "text").strip()
+    return {"answer": answer or "Happy to help!", "grounded": False, "sources": []}
+
+
+def _format_study_plan_answer(plan_result: dict) -> str:
+    if not plan_result.get("plan"):
+        return plan_result.get("summary") or (
+            "I don't have enough deadline/mastery data yet to build a plan — try again once "
+            "you've got a course and some study activity logged."
+        )
+    lines = [plan_result["summary"]] if plan_result.get("summary") else []
+    for i, item in enumerate(plan_result["plan"], start=1):
+        minutes = f"{item['minutes']} min — " if item.get("minutes") else ""
+        topic = f" — {item['topic']}" if item.get("topic") else ""
+        lines.append(
+            f"{i}. **{item['course_name']}{topic}** ({minutes}{item.get('activity', '')})\n"
+            f"   {item.get('reason', '')}"
+        )
+    return "\n\n".join(lines)
+
+
+def _format_flashcards_answer(topic: str, cards: list) -> str:
+    if not cards:
+        return "I couldn't generate flashcards for that right now — try naming a specific topic."
+    heading = f"Here are some flashcards on **{topic}**:" if topic else "Here are some flashcards:"
+    lines = [heading] + [f"- **{c['term']}**: {c['definition']}" for c in cards]
+    return "\n".join(lines)
+
+
+def _format_quiz_answer(question_data: dict) -> str:
+    lines = [f"**{question_data['question']}**"]
+    for choice in question_data.get("choices") or []:
+        lines.append(f"- {choice}")
+    lines.append(f"\n**Answer:** {question_data['correct_answer']} — {question_data.get('explanation', '')}")
+    return "\n".join(lines)
+
+
+async def _dispatch_routed_intent(client, intent: str, course_id: str, question: str, syllabus: dict, user=None) -> dict | None:
+    """Handles every intent_router value except course_qa/unknown, which
+    fall through unchanged to ask_async's existing grounded pipeline. Returns
+    None for anything unrecognized (defensive; shouldn't happen given
+    intent_router's own enum validation) so the caller falls through safely
+    instead of raising mid-request.
+
+    Takes the same already-resolved client ask_async uses for everything
+    else (see intent_router.classify's docstring for why)."""
+    topics = syllabus.get("topics") or []
+
+    if intent == "general_assistant":
+        return await _small_talk_reply(client, question)
+
+    if intent == "study_planner":
+        try:
+            plan_result = await study_planner.generate_plan(
+                user, available_minutes=_extract_available_minutes(question), course_ids=None,
+            )
+        except study_planner.NoStudyContextError:
+            return {
+                "answer": "I don't have enough course, deadline, or study data yet to build a "
+                          "plan — add a course and log some study activity first.",
+                "grounded": False, "sources": [],
+            }
+        return {
+            "answer": _format_study_plan_answer(plan_result),
+            "grounded": True,
+            "sources": ["mastery_scores", "quiz_history"],
+        }
+
+    if intent == "mastery_analyzer":
+        topic = _match_syllabus_topic(question, topics)
+        try:
+            analysis = await mastery_analyzer.analyze(user, course_id, topic=topic)
+        except mastery_analyzer.NoMasteryDataError:
+            return {
+                "answer": "I don't have enough quiz/study data yet on that to spot a pattern — "
+                          "try a few more practice questions first.",
+                "grounded": False, "sources": [],
+            }
+        answer = f"{analysis['insight']}\n\n**What to do:** {analysis['recommended_action']}"
+        return {"answer": answer, "grounded": True, "sources": ["mastery_scores", "quiz_history"]}
+
+    if intent in ("document_summary_quick", "document_summary_deep"):
+        depth = "quick" if intent == "document_summary_quick" else "deep"
+        try:
+            summary = await document_summarizer.summarize(course_id, depth=depth, user=user)
+        except document_summarizer.NoTargetDocumentError:
+            return {
+                "answer": "I don't have any notes or references to summarize for this course yet.",
+                "grounded": False, "sources": [],
+            }
+        if depth == "quick":
+            answer = summary["summary"]
+        else:
+            parts = []
+            if summary["key_concepts"]:
+                parts.append("**Key concepts**\n" + "\n".join(f"- {c}" for c in summary["key_concepts"]))
+            if summary["definitions"]:
+                parts.append(
+                    "**Definitions**\n"
+                    + "\n".join(f"- **{d['term']}**: {d['definition']}" for d in summary["definitions"])
+                )
+            if summary["relationships"]:
+                parts.append("**How these connect**\n" + "\n".join(f"- {r}" for r in summary["relationships"]))
+            if summary["likely_testable"]:
+                parts.append("**Likely testable**\n" + "\n".join(f"- {t}" for t in summary["likely_testable"]))
+            answer = "\n\n".join(parts) or "I couldn't pull a deeper breakdown from that material."
+        return {"answer": answer, "grounded": True, "sources": [summary["source_id"]]}
+
+    if intent == "quiz_or_flashcards":
+        topic = _match_syllabus_topic(question, topics)
+        wants_flashcards = "flashcard" in question.lower()
+        try:
+            if wants_flashcards:
+                result = await quiz.generate_flashcards_async(course_id, topic=topic, user=user)
+                answer = _format_flashcards_answer(topic, result.get("flashcards") or [])
+            else:
+                result = await quiz.generate_assessment_question_async(course_id, topic=topic, user=user)
+                answer = _format_quiz_answer(result)
+        except quiz.NoChunksAvailableError:
+            return {
+                "answer": "This course doesn't have any chunked notes yet to generate that from "
+                          "— upload some lecture notes first.",
+                "grounded": False, "sources": [],
+            }
+        source = result.get("lecture_id")
+        return {"answer": answer, "grounded": True, "sources": [source] if source else ["syllabus"]}
+
+    return None
+
+
 async def ask_async(
     course_id: str,
     question: str,
@@ -849,6 +1065,26 @@ async def ask_async(
                 client_request_id=client_request_id, user=user,
             )
         return result
+
+    # Free regex checks above already handle save-site and deadline requests.
+    # Everything else gets one cheap Haiku classification before falling
+    # through to the full grounded-Sonnet pipeline below — course_qa/unknown
+    # (and any classifier failure, which safely defaults to course_qa) fall
+    # through completely unchanged.
+    routed_intent = await intent_router.classify(client, question, has_current_course=True)
+    if routed_intent["intent"] not in ("course_qa", "unknown"):
+        result = await _dispatch_routed_intent(client, routed_intent["intent"], course_id, question, syllabus, user=user)
+        if result is not None:
+            result = await _structure_result_sources(
+                result, course_id, question, user=user, session_id=session_id,
+            )
+            result["grounding_mode"] = grounding_mode
+            if session_id is not None:
+                result = await sync_to_async(sessions.append_exchange)(
+                    course_id, session_id, question, result,
+                    client_request_id=client_request_id, user=user,
+                )
+            return result
 
     notes = await sync_to_async(storage.read_notes)(course_id, user)
     references = await sync_to_async(storage.read_references)(course_id, user)
@@ -979,6 +1215,11 @@ async def ask_async(
             f"response truncated at max_tokens before completing the JSON answer "
             f"(stop_reason={response.stop_reason})"
         )
+    if response.stop_reason == "pause_turn":
+        raise ValueError(
+            f"web search never completed after {MAX_PAUSE_TURN_CONTINUATIONS} continuations "
+            f"(stop_reason={response.stop_reason})"
+        )
 
     last_non_text = max((i for i, b in enumerate(response.content) if b.type != "text"), default=-1)
     raw = "".join(
@@ -989,7 +1230,24 @@ async def ask_async(
     try:
         data = _parse_json_response(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"model did not return valid JSON: {e}\n\nRaw output:\n{raw}")
+        # A missing or malformed JSON envelope means the model went
+        # off-script somewhere — a decline, a refusal, a stray tool
+        # narration — not that nothing usable came back. Surfacing that as
+        # an ungrounded answer (rather than failing the request outright)
+        # means a slightly-off response instead of a dead-end error for the
+        # student; logging every occurrence lets us see how often the model
+        # actually drops the envelope under real use.
+        logger.warning(
+            "ask_async: model response had no valid JSON envelope for course_id=%s: %s\n\nRaw output:\n%s",
+            course_id, e, raw,
+        )
+        data = {
+            "answer": (raw or "").strip() or (
+                "Sorry, I had trouble putting together a response to that — could you try asking again?"
+            ),
+            "grounded": False,
+            "sources": [],
+        }
 
     result = {
         "answer": data.get("answer", ""),
@@ -1000,6 +1258,19 @@ async def ask_async(
         result, course_id, question, user=user, session_id=session_id,
     )
     result["grounding_mode"] = grounding_mode
+
+    if not result.get("grounded") and CALENDAR_MENTION_RE.search(result.get("answer") or ""):
+        # _looks_like_deadline_request didn't classify this question as a
+        # calendar request, yet the model's own (ungrounded) answer talks
+        # about the calendar anyway — almost always a redirect it produced
+        # on its own initiative. Logged rather than chased: pilot data on
+        # which real phrasings the classifier actually misses is more
+        # useful than guessing more regex patterns up front.
+        logger.info(
+            "ask_async: plain Q&A path produced a calendar-flavored answer for an "
+            "unclassified question in course_id=%s: %r",
+            course_id, question,
+        )
 
     if session_id is not None:
         result = await sync_to_async(sessions.append_exchange)(

@@ -330,6 +330,10 @@ class DismissRecommendationRequestSerializer(serializers.Serializer):
     defer_hours = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
 
 
+class MasteryInsightRequestSerializer(serializers.Serializer):
+    topic = serializers.CharField(required=False, allow_blank=False, default=None)
+
+
 class StartStudySessionRequestSerializer(serializers.Serializer):
     topic = serializers.CharField(required=False, allow_blank=True, default="")
     duration_minutes = serializers.IntegerField(required=False, min_value=1, allow_null=True, default=None)
