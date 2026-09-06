@@ -1697,6 +1697,96 @@ def test_deadline_crud_round_trips_location_and_notes(isolated_courses_dir, api_
 
 
 @pytest.mark.django_db
+def test_recurring_events_endpoint_creates_a_series(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+
+    response = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "cs101", "title": "CS101 Class", "type": "class",
+        "weekdays": ["tue", "thu"], "start_date": "2026-09-01", "end_date": "2026-09-14",
+        "time": "15:35", "end_time": "16:25",
+    }, format="json")
+
+    assert response.status_code == 201
+    assert response.data["series_id"]
+    assert len(response.data["events"]) == 4
+    assert {e["series_id"] for e in response.data["events"]} == {response.data["series_id"]}
+
+
+def test_recurring_events_endpoint_rejects_invalid_weekday(isolated_courses_dir, api_client):
+    response = api_client.post("/api/deadlines/recurring/", {
+        "title": "X", "type": "class", "weekdays": ["funday"],
+        "start_date": "2026-09-01", "end_date": "2026-09-14", "time": "15:35",
+    }, format="json")
+
+    assert response.status_code == 400
+
+
+def test_recurring_events_endpoint_rejects_nonexistent_course_id(isolated_courses_dir, api_client):
+    response = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "does-not-exist", "title": "X", "type": "class", "weekdays": ["tue"],
+        "start_date": "2026-09-01", "end_date": "2026-09-14", "time": "15:35",
+    }, format="json")
+
+    assert response.status_code == 422
+
+
+def test_deadline_patch_series_scope_all_propagates_to_series(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    created = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "cs101", "title": "CS101 Class", "type": "class", "weekdays": ["tue"],
+        "start_date": "2026-09-01", "end_date": "2026-09-15", "time": "15:35",
+    }, format="json").data
+    anchor_id = created["events"][0]["id"]
+
+    response = api_client.patch(f"/api/deadlines/{anchor_id}/", {
+        "location": "Room 204", "series_scope": "all",
+    }, format="json")
+
+    assert response.status_code == 200
+    events = api_client.get("/api/deadlines/?course_id=cs101").data
+    assert all(e["location"] == "Room 204" for e in events)
+
+
+def test_deadline_patch_series_scope_422s_for_a_non_series_event(isolated_courses_dir, api_client):
+    created = api_client.post("/api/deadlines/", {
+        "date": "2026-09-01", "title": "One-off", "type": "other",
+    }, format="json").data
+
+    response = api_client.patch(f"/api/deadlines/{created['id']}/", {
+        "title": "Renamed", "series_scope": "all",
+    }, format="json")
+
+    assert response.status_code == 422
+
+
+def test_deadline_delete_series_scope_all_removes_whole_series(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    created = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "cs101", "title": "CS101 Class", "type": "class", "weekdays": ["tue"],
+        "start_date": "2026-09-01", "end_date": "2026-09-15", "time": "15:35",
+    }, format="json").data
+    anchor_id = created["events"][0]["id"]
+
+    response = api_client.delete(f"/api/deadlines/{anchor_id}/", {"series_scope": "all"}, format="json")
+
+    assert response.status_code == 204
+    assert api_client.get("/api/deadlines/?course_id=cs101").data == []
+
+
+def test_deadline_delete_with_no_body_still_defaults_to_this_scope(isolated_courses_dir, api_client):
+    # Regression: a plain DELETE with no body at all (today's existing
+    # frontend behavior for a one-off event) must keep working exactly as
+    # before now that the view also accepts an optional series_scope body.
+    created = api_client.post("/api/deadlines/", {
+        "date": "2026-09-01", "title": "One-off", "type": "other",
+    }, format="json").data
+
+    response = api_client.delete(f"/api/deadlines/{created['id']}/")
+
+    assert response.status_code == 204
+
+
+@pytest.mark.django_db
 def test_deadlines_get_can_filter_by_course_id(isolated_courses_dir, api_client):
     storage.write_syllabus("cs101", {
         "course_id": "cs101", "course_name": "CS", "dates": [{"date": "2099-01-01", "title": "CS Final", "type": "exam"}],

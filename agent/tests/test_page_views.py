@@ -359,7 +359,7 @@ def test_calendar_page_uses_page_owned_runtime_only(client, django_user_model):
 
     html = client.get(reverse("calendar-page")).content.decode()
 
-    assert 'src="/static/agent/js/calendar.js?v=calendar-20260902-1"' in html
+    assert 'src="/static/agent/js/calendar.js?v=calendar-20260904-1"' in html
     assert 'src="/static/agent/support.js"' not in html
     assert "class Component extends window.createOnTrackComponent(DCLogic)" not in html
     assert "{{ deadlineDate }}" not in html
@@ -426,13 +426,17 @@ def test_calendar_page_renders_week_month_filters_and_accessible_dialogs(client,
     client.force_login(django_user_model.objects.create_user(username="calendar-page-user"))
     html = client.get(reverse("calendar-page") + "?view=month&date=2026-08-24").content.decode()
     for hook in ('id="cal-week"', 'id="cal-month"', 'id="mini-grid"', 'id="cal-course-filters"',
-                 'id="cal-type-filters"', 'id="cal-event-modal"', 'id="cal-delete-modal"'):
+                 'id="cal-type-filters"', 'id="cal-event-modal"', 'id="cal-delete-modal"',
+                 'id="cal-repeat-fields"', 'id="cal-event-repeat"', 'id="cal-repeat-weekdays"',
+                 'id="cal-repeat-until-field"', 'id="cal-series-scope-field"', 'id="cal-delete-series-scope-field"'):
         assert hook in html
     assert 'role="dialog" aria-modal="true"' in html
     assert 'id="cal-event-modal" hidden' in html
     assert 'id="cal-delete-modal" hidden' in html
     assert 'data-calendar-api="/api/calendar/"' in html
-    assert 'src="/static/agent/js/calendar.js?v=calendar-20260902-1"' in html
+    assert 'name="cal-series-scope"' in html
+    assert 'name="cal-delete-series-scope"' in html
+    assert 'src="/static/agent/js/calendar.js?v=calendar-20260904-1"' in html
 
     controller = (Path(__file__).parents[1] / "static/agent/js/calendar.js").read_text(encoding="utf-8")
     assert '$("#cal-week").hidden = state.view !== "week"' in controller

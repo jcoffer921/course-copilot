@@ -148,16 +148,61 @@ function setModalOpen(modal, open) {
 }
 
 function openEventModal(event = null) {
-  closePopover(); state.returnFocus = document.activeElement; const form = $("#cal-event-form"); form.reset(); $("#cal-modal-title").textContent = event ? "Edit event" : "Add event"; $("#cal-event-id").value = event?.id || ""; $("#cal-event-key").value = event?.source === "syllabus" ? event.key : ""; $("#cal-event-title").value = event?.title || ""; $("#cal-event-date").value = event?.date || iso(state.anchor); $("#cal-event-course").value = event?.course_id || ""; $("#cal-event-all-day").checked = event ? event.all_day : false; $("#cal-event-start").value = event?.start_time || "09:00"; $("#cal-event-end").value = event?.end_time || "10:00"; $("#cal-event-type").value = event?.type || "other"; $("#cal-event-location").value = event?.location || ""; $("#cal-event-notes").value = event?.notes || ""; $("#cal-form-error").hidden = true; toggleTimeFields(); setModalOpen($("#cal-event-modal"), true); focusFirst($("#cal-event-modal"));
+  closePopover(); state.returnFocus = document.activeElement; const form = $("#cal-event-form"); form.reset(); $("#cal-modal-title").textContent = event ? "Edit event" : "Add event"; $("#cal-event-id").value = event?.id || ""; $("#cal-event-key").value = event?.source === "syllabus" ? event.key : ""; $("#cal-event-title").value = event?.title || ""; $("#cal-event-date").value = event?.date || iso(state.anchor); $("#cal-event-course").value = event?.course_id || ""; $("#cal-event-all-day").checked = event ? event.all_day : false; $("#cal-event-start").value = event?.start_time || "09:00"; $("#cal-event-end").value = event?.end_time || "10:00"; $("#cal-event-type").value = event?.type || "other"; $("#cal-event-location").value = event?.location || ""; $("#cal-event-notes").value = event?.notes || ""; $("#cal-form-error").hidden = true;
+  // Repeats: only offered when creating a brand-new event. Changing an
+  // existing series' recurrence pattern isn't supported — delete and
+  // recreate the series instead.
+  $("#cal-repeat-fields").hidden = !!event; $("#cal-event-repeat").value = "none";
+  $("#cal-repeat-weekdays").hidden = true; root.querySelectorAll("#cal-repeat-weekdays input").forEach((box) => { box.checked = false; });
+  $("#cal-repeat-until-field").hidden = true; $("#cal-event-repeat-until").value = "";
+  // Series scope: only offered when editing an event that's already part of a series.
+  const hasSeries = !!event?.series_id;
+  $("#cal-series-scope-field").hidden = !hasSeries;
+  if (hasSeries) $('input[name="cal-series-scope"][value="this"]').checked = true;
+  $("#cal-event-date").disabled = false;
+  toggleTimeFields(); setModalOpen($("#cal-event-modal"), true); focusFirst($("#cal-event-modal"));
 }
 function closeEventModal() { setModalOpen($("#cal-event-modal"), false); restoreFocus(state.returnFocus); }
 function toggleTimeFields() { $("#cal-time-fields").hidden = $("#cal-event-all-day").checked; }
+function toggleRepeatFields() {
+  const weekly = $("#cal-event-repeat").value === "weekly";
+  $("#cal-repeat-weekdays").hidden = !weekly; $("#cal-repeat-until-field").hidden = !weekly;
+  if (weekly && !$("#cal-event-repeat-until").value) {
+    const start = parseDate($("#cal-event-date").value || iso(state.anchor));
+    $("#cal-event-repeat-until").value = iso(addDays(start, 15 * 7 - 1));
+  }
+}
+function toggleSeriesScopeDateField() {
+  const scope = $('input[name="cal-series-scope"]:checked')?.value || "this";
+  $("#cal-event-date").disabled = scope !== "this";
+}
 
 async function saveEvent(event) {
-  event.preventDefault(); const id = $("#cal-event-id").value; const allDay = $("#cal-event-all-day").checked; const payload = { title: $("#cal-event-title").value.trim(), date: $("#cal-event-date").value, course_id: $("#cal-event-course").value || null, type: $("#cal-event-type").value, time: allDay ? null : $("#cal-event-start").value || null, end_time: allDay ? null : $("#cal-event-end").value || null, location: $("#cal-event-location").value.trim(), notes: $("#cal-event-notes").value.trim() }; if ($("#cal-event-key").value) payload.replaces_syllabus_key = $("#cal-event-key").value;
+  event.preventDefault(); const id = $("#cal-event-id").value; const allDay = $("#cal-event-all-day").checked;
+  const isNewEvent = !id; const repeating = isNewEvent && $("#cal-event-repeat").value === "weekly";
   $("#cal-save").disabled = true; $("#cal-form-error").hidden = true;
   try {
-    const saved = await apiRequest(id && !$("#cal-event-key").value ? `${root.dataset.deadlinesApi}${encodeURIComponent(id)}/` : root.dataset.deadlinesApi, { method: id && !$("#cal-event-key").value ? "PATCH" : "POST", body: JSON.stringify(payload) });
+    let saved; let successMessage;
+    if (repeating) {
+      const weekdays = [...root.querySelectorAll("#cal-repeat-weekdays input:checked")].map((box) => box.value);
+      if (!weekdays.length) throw new Error("Choose at least one day for the repeating event.");
+      if (!$("#cal-event-repeat-until").value) throw new Error("Choose a repeat-until date.");
+      const payload = {
+        title: $("#cal-event-title").value.trim(), course_id: $("#cal-event-course").value || null,
+        type: $("#cal-event-type").value, weekdays,
+        start_date: $("#cal-event-date").value, end_date: $("#cal-event-repeat-until").value,
+        time: allDay ? null : $("#cal-event-start").value || null, end_time: allDay ? null : $("#cal-event-end").value || null,
+        location: $("#cal-event-location").value.trim(), notes: $("#cal-event-notes").value.trim(),
+      };
+      const result = await apiRequest(`${root.dataset.deadlinesApi}recurring/`, { method: "POST", body: JSON.stringify(payload) });
+      saved = result.events[0]; successMessage = `${result.events.length} events added.`;
+    } else {
+      const payload = { title: $("#cal-event-title").value.trim(), date: $("#cal-event-date").value, course_id: $("#cal-event-course").value || null, type: $("#cal-event-type").value, time: allDay ? null : $("#cal-event-start").value || null, end_time: allDay ? null : $("#cal-event-end").value || null, location: $("#cal-event-location").value.trim(), notes: $("#cal-event-notes").value.trim() };
+      if ($("#cal-event-key").value) payload.replaces_syllabus_key = $("#cal-event-key").value;
+      if (!isNewEvent && !$("#cal-series-scope-field").hidden) payload.series_scope = $('input[name="cal-series-scope"]:checked')?.value || "this";
+      saved = await apiRequest(id && !$("#cal-event-key").value ? `${root.dataset.deadlinesApi}${encodeURIComponent(id)}/` : root.dataset.deadlinesApi, { method: id && !$("#cal-event-key").value ? "PATCH" : "POST", body: JSON.stringify(payload) });
+      successMessage = isNewEvent ? "Event added." : "Event updated.";
+    }
     const visibility = visibilityForEvent(saved, state.typeGroups);
     state.anchor = parseDate(visibility.date);
     state.miniMonth = new Date(state.anchor.getFullYear(), state.anchor.getMonth(), 1);
@@ -165,13 +210,21 @@ async function saveEvent(event) {
     if (visibility.showUnassigned) state.showUnassigned = true;
     if (visibility.typeGroupId) state.typeFilters.add(visibility.typeGroupId);
     updateUrl(true);
-    closeEventModal(); showToast(id ? "Event updated." : "Event added.", "success"); await loadCalendar();
+    closeEventModal(); showToast(successMessage, "success"); await loadCalendar();
   }
   catch (error) { $("#cal-form-error").textContent = error.message; $("#cal-form-error").hidden = false; }
   finally { $("#cal-save").disabled = false; }
 }
 
-async function deleteSelected() { if (!state.selectedEvent) return; $("#cal-confirm-delete").disabled = true; try { await apiRequest(`${root.dataset.deadlinesApi}${encodeURIComponent(state.selectedEvent.id)}/`, { method: "DELETE" }); setModalOpen($("#cal-delete-modal"), false); closePopover(); showToast("Event deleted.", "success"); await loadCalendar(); } catch (error) { showToast(error.message, "error"); } finally { $("#cal-confirm-delete").disabled = false; } }
+async function deleteSelected() {
+  if (!state.selectedEvent) return; $("#cal-confirm-delete").disabled = true;
+  const options = { method: "DELETE" };
+  if (!$("#cal-delete-series-scope-field").hidden) options.body = JSON.stringify({ series_scope: $('input[name="cal-delete-series-scope"]:checked')?.value || "this" });
+  try {
+    await apiRequest(`${root.dataset.deadlinesApi}${encodeURIComponent(state.selectedEvent.id)}/`, options);
+    setModalOpen($("#cal-delete-modal"), false); closePopover(); showToast("Event deleted.", "success"); await loadCalendar();
+  } catch (error) { showToast(error.message, "error"); } finally { $("#cal-confirm-delete").disabled = false; }
+}
 
 async function toggleCompleted() {
   const event = state.selectedEvent; if (!event) return; const completed = !event.completed; $("#cal-complete").disabled = true;
@@ -207,7 +260,7 @@ root.querySelectorAll("[data-cal-view]").forEach((button) => button.addEventList
 $("#cal-show-unassigned").addEventListener("change", (event) => { state.showUnassigned = event.target.checked; updateUrl(); render(); }); $("#cal-add").addEventListener("click", () => openEventModal()); root.querySelector("[data-open-event]").addEventListener("click", () => openEventModal());
 $("#cal-view-upcoming").addEventListener("click", () => { state.anchor = new Date(); state.view = "week"; state.courseFilters = new Set(state.courses.map((course) => course.id)); state.typeFilters = new Set(state.typeGroups.map((group) => group.id)); state.showUnassigned = true; updateUrl(); render(); });
 $("#cal-filter-toggle").addEventListener("click", () => { const open = $("#cal-utility").classList.toggle("open"); $("#cal-filter-toggle").setAttribute("aria-expanded", String(open)); });
-$("#cal-event-all-day").addEventListener("change", toggleTimeFields); $("#cal-event-form").addEventListener("submit", saveEvent); root.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeEventModal)); $(".cal-popover-close").addEventListener("click", closePopover); $("#cal-edit").addEventListener("click", () => openEventModal(state.selectedEvent)); $("#cal-delete").addEventListener("click", () => { setModalOpen($("#cal-delete-modal"), true); focusFirst($("#cal-delete-modal")); }); $("[data-cancel-delete]").addEventListener("click", () => { setModalOpen($("#cal-delete-modal"), false); }); $("#cal-confirm-delete").addEventListener("click", deleteSelected); $("#cal-retry").addEventListener("click", loadCalendar);
+$("#cal-event-all-day").addEventListener("change", toggleTimeFields); $("#cal-event-repeat").addEventListener("change", toggleRepeatFields); root.querySelectorAll('input[name="cal-series-scope"]').forEach((radio) => radio.addEventListener("change", toggleSeriesScopeDateField)); $("#cal-event-form").addEventListener("submit", saveEvent); root.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", closeEventModal)); $(".cal-popover-close").addEventListener("click", closePopover); $("#cal-edit").addEventListener("click", () => openEventModal(state.selectedEvent)); $("#cal-delete").addEventListener("click", () => { const hasSeries = !!state.selectedEvent?.series_id; $("#cal-delete-series-scope-field").hidden = !hasSeries; if (hasSeries) $('input[name="cal-delete-series-scope"][value="this"]').checked = true; setModalOpen($("#cal-delete-modal"), true); focusFirst($("#cal-delete-modal")); }); $("[data-cancel-delete]").addEventListener("click", () => { setModalOpen($("#cal-delete-modal"), false); }); $("#cal-confirm-delete").addEventListener("click", deleteSelected); $("#cal-retry").addEventListener("click", loadCalendar);
 $("#cal-complete").addEventListener("click", toggleCompleted);
 document.addEventListener("pointerdown", (event) => {
   const popover = $("#cal-popover");

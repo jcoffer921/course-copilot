@@ -11,7 +11,7 @@ the event itself, not in calendar_sync.py's per-course calendar_sync.json.
 
 import logging
 import uuid
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from django.conf import settings
 from google.auth.exceptions import RefreshError
@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 class EventNotFoundError(Exception):
     """Raised when event_id doesn't match an owned custom event."""
 
+
+# Python date.weekday() convention (Monday=0..Sunday=6) — the one shared
+# mapping for weekday-abbreviation input, used by create_recurring_events
+# (via the API serializer) and ask.py's _recurring_schedule_proposal alike,
+# so the two recurring-event entry points can't drift on what "tue" means.
+WEEKDAY_ABBREVIATIONS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 
 VALID_EVENT_SOURCES = {"manual", "study_plan"}
 UPDATABLE_FIELDS = {
@@ -42,6 +48,16 @@ UPDATABLE_FIELDS = {
     "synced",
     "google_event_id",
     "synced_at",
+}
+# Fields that are inherently per-occurrence and must never be copied from one
+# series member onto its siblings, even when the caller asked for a
+# "following"/"all" bulk edit — each occurrence keeps its own date,
+# completion state, effort estimate, source material link, and Google sync
+# status regardless of what changed on the anchor event.
+SERIES_SCOPES = {"this", "following", "all"}
+_SERIES_PROPAGATION_EXCLUDED_FIELDS = {
+    "date", "completed", "estimated_effort_minutes", "source_material_id",
+    "synced", "google_event_id", "synced_at",
 }
 
 
@@ -97,6 +113,23 @@ def _validate_source_material(user, course_id, material_id):
     return str(material.material_id)
 
 
+def expand_weekly_dates(start_date: date, end_date: date, weekdays: set[int]) -> list[date]:
+    """Every date in [start_date, end_date] (inclusive) whose Python
+    date.weekday() (Monday=0..Sunday=6) is in weekdays. Shared by
+    create_recurring_events() below and ask.py's Cora-chat recurring-class
+    proposal, so both paths expand a "weekly on these days" pattern the
+    same way instead of keeping two copies of this loop in sync by hand."""
+    if end_date < start_date:
+        return []
+    dates = []
+    current = start_date
+    while current <= end_date:
+        if current.weekday() in weekdays:
+            dates.append(current)
+        current += timedelta(days=1)
+    return dates
+
+
 def list_events(user=None) -> list:
     return storage.read_custom_events(user=user)
 
@@ -116,6 +149,7 @@ def create_event(
     source: str = "manual",
     location: str = "",
     notes: str = "",
+    series_id: str = None,
 ) -> dict:
     from django.utils import timezone
 
@@ -142,6 +176,7 @@ def create_event(
         "estimated_effort_minutes": estimated_effort_minutes,
         "source_material_id": source_material_id,
         "replaces_syllabus_key": replaces_syllabus_key,
+        "series_id": series_id,
         "completed": bool(completed),
         "synced": False, "google_event_id": None, "synced_at": None,
         "created_at": timezone.now().isoformat(),
@@ -151,7 +186,44 @@ def create_event(
     return event
 
 
-def update_event(event_id: str, user=None, **fields) -> dict:
+def create_recurring_events(
+    course_id,
+    title: str,
+    event_type: str,
+    weekdays: set[int],
+    start_date: date,
+    end_date: date,
+    time: str,
+    end_time: str = None,
+    user=None,
+    location: str = "",
+    notes: str = "",
+) -> dict:
+    """Creates one CustomEvent per matching date in [start_date, end_date],
+    all sharing a freshly generated series_id so they're later bulk-
+    editable/deletable as a group via update_event/delete_event's
+    series_scope. Reuses create_event's own validation (time range, event
+    type) for every occurrence rather than duplicating it."""
+    series_id = uuid.uuid4().hex
+    events = [
+        create_event(
+            course_id, occurrence.isoformat(), time, title, event_type, user=user,
+            end_time=end_time, location=location, notes=notes, series_id=series_id,
+        )
+        for occurrence in expand_weekly_dates(start_date, end_date, weekdays)
+    ]
+    return {"series_id": series_id, "events": events}
+
+
+def update_event(event_id: str, user=None, series_scope: str = "this", **fields) -> dict:
+    """series_scope="this" (default) is exactly the original single-event
+    behavior. "following"/"all" additionally copy a propagation subset of
+    fields (everything except _SERIES_PROPAGATION_EXCLUDED_FIELDS) onto the
+    anchor's siblings — every other event sharing its series_id, restricted
+    to date >= the anchor's own date for "following". Raises ValueError if
+    the anchor isn't part of a series at all."""
+    if series_scope not in SERIES_SCOPES:
+        raise ValueError(f"series_scope must be one of {sorted(SERIES_SCOPES)}")
     unexpected = set(fields) - UPDATABLE_FIELDS
     if unexpected:
         raise ValueError(f"fields cannot be updated: {', '.join(sorted(unexpected))}")
@@ -162,32 +234,66 @@ def update_event(event_id: str, user=None, **fields) -> dict:
 
     storage.claim_custom_event(event_id, user)
     events = storage.read_custom_events(user=user)
-    for event in events:
-        if event["id"] == event_id:
-            start_time = fields["time"] if "time" in fields else event.get("time")
-            end_time = fields["end_time"] if "end_time" in fields else event.get("end_time")
-            _validate_time_range(start_time, end_time)
-            course_id = fields["course_id"] if "course_id" in fields else event.get("course_id")
-            material_id = (
-                fields["source_material_id"]
-                if "source_material_id" in fields
-                else event.get("source_material_id")
-            )
-            if material_id:
-                fields["source_material_id"] = _validate_source_material(user, course_id, material_id)
-            for key, value in fields.items():
+    anchor = next((event for event in events if event["id"] == event_id), None)
+    if anchor is None:
+        raise EventNotFoundError(f"no custom event '{event_id}'")
+    if series_scope != "this" and not anchor.get("series_id"):
+        raise ValueError("this event is not part of a recurring series")
+
+    start_time = fields["time"] if "time" in fields else anchor.get("time")
+    end_time = fields["end_time"] if "end_time" in fields else anchor.get("end_time")
+    _validate_time_range(start_time, end_time)
+    course_id = fields["course_id"] if "course_id" in fields else anchor.get("course_id")
+    material_id = (
+        fields["source_material_id"] if "source_material_id" in fields else anchor.get("source_material_id")
+    )
+    if material_id:
+        fields["source_material_id"] = _validate_source_material(user, course_id, material_id)
+
+    for key, value in fields.items():
+        anchor[key] = value
+
+    if series_scope != "this":
+        propagated = {k: v for k, v in fields.items() if k not in _SERIES_PROPAGATION_EXCLUDED_FIELDS}
+        for event in events:
+            if event is anchor or event.get("series_id") != anchor["series_id"]:
+                continue
+            if series_scope == "following" and event["date"] < anchor["date"]:
+                continue
+            for key, value in propagated.items():
                 event[key] = value
-            storage.write_custom_events(events, user=user)
-            return event
-    raise EventNotFoundError(f"no custom event '{event_id}'")
+
+    storage.write_custom_events(events, user=user)
+    return anchor
 
 
-def delete_event(event_id: str, user=None) -> None:
+def delete_event(event_id: str, user=None, series_scope: str = "this") -> None:
+    """series_scope="this" (default) is exactly the original single-event
+    behavior. "following" removes the anchor plus every sibling sharing its
+    series_id with date >= the anchor's own date; "all" removes every
+    sibling regardless of date. Raises ValueError if the anchor isn't part
+    of a series at all."""
+    if series_scope not in SERIES_SCOPES:
+        raise ValueError(f"series_scope must be one of {sorted(SERIES_SCOPES)}")
     storage.claim_custom_event(event_id, user)
     events = storage.read_custom_events(user=user)
-    remaining = [e for e in events if e["id"] != event_id]
-    if len(remaining) == len(events):
+    anchor = next((event for event in events if event["id"] == event_id), None)
+    if anchor is None:
         raise EventNotFoundError(f"no custom event '{event_id}'")
+
+    if series_scope == "this":
+        remaining = [event for event in events if event["id"] != event_id]
+    else:
+        if not anchor.get("series_id"):
+            raise ValueError("this event is not part of a recurring series")
+        if series_scope == "following":
+            remaining = [
+                event for event in events
+                if not (event.get("series_id") == anchor["series_id"] and event["date"] >= anchor["date"])
+            ]
+        else:
+            remaining = [event for event in events if event.get("series_id") != anchor["series_id"]]
+
     storage.write_custom_events(remaining, user=user)
 
 

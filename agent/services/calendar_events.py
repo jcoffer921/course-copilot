@@ -151,6 +151,7 @@ def _syllabus_event(user, course_id: str, raw: dict, material_id: str | None, sy
         "estimated_effort_minutes": None,
         "source_material_id": material_id,
         "replaces_syllabus_key": None,
+        "series_id": None,
         "synced": synced_record is not None,
         "google_event_id": synced_record.get("google_event_id") if synced_record else None,
         "synced_at": synced_record.get("synced_at") if synced_record else None,

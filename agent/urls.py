@@ -115,6 +115,10 @@ urlpatterns = [
     path("study-plan/", views.StudyPlanView.as_view(), name="study-plan"),
     path("grades/summary/", views.GradesSummaryView.as_view(), name="grades-summary"),
     path("deadlines/", views.DeadlinesView.as_view(), name="deadlines"),
+    # Must precede deadlines/<str:event_id>/ below — otherwise "recurring"
+    # matches as an event_id instead of this route, since <str:...> matches
+    # any non-empty segment.
+    path("deadlines/recurring/", views.RecurringEventsView.as_view(), name="deadlines-recurring"),
     path("calendar/", views.CalendarView.as_view(), name="calendar-data"),
     path("deadlines/<str:event_id>/", views.CustomEventDetailView.as_view(), name="custom-event-detail"),
     path("deadlines/<str:event_id>/calendar-sync/", views.CustomEventCalendarSyncView.as_view(), name="custom-event-calendar-sync"),

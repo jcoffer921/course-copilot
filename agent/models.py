@@ -333,6 +333,7 @@ class CustomEvent(models.Model):
     estimated_effort_minutes = models.PositiveIntegerField(null=True, blank=True)
     source_material_id = models.UUIDField(null=True, blank=True)
     replaces_syllabus_key = models.CharField(max_length=512, null=True, blank=True)
+    series_id = models.CharField(max_length=64, null=True, blank=True, db_index=True)
     completed = models.BooleanField(default=False)
     synced = models.BooleanField(default=False)
     google_event_id = models.CharField(max_length=255, null=True, blank=True)

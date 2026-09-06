@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from .services import storage
+from .services import custom_events, storage
 
 
 def _validate_deadline_type(value):
@@ -89,6 +89,7 @@ class UpdateCustomEventRequestSerializer(serializers.Serializer):
     completed = serializers.BooleanField(required=False, default=None)
     estimated_effort_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=1, default=None)
     source_material_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+    series_scope = serializers.ChoiceField(choices=["this", "following", "all"], required=False, default="this")
 
     def validate(self, attrs):
         if attrs.get("type") is not None:
@@ -96,6 +97,35 @@ class UpdateCustomEventRequestSerializer(serializers.Serializer):
         if attrs.get("end_time") and not attrs.get("time") and "time" in self.initial_data:
             raise serializers.ValidationError({"end_time": "End time requires a start time."})
         if attrs.get("time") and attrs.get("end_time") and attrs["end_time"] <= attrs["time"]:
+            raise serializers.ValidationError({"end_time": "End time must be later than start time."})
+        return attrs
+
+
+class DeleteCustomEventRequestSerializer(serializers.Serializer):
+    series_scope = serializers.ChoiceField(choices=["this", "following", "all"], required=False, default="this")
+
+
+class CreateRecurringEventsRequestSerializer(serializers.Serializer):
+    course_id = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
+    title = serializers.CharField(allow_blank=False)
+    type = serializers.CharField(allow_blank=False)
+    weekdays = serializers.ListField(
+        child=serializers.ChoiceField(choices=list(custom_events.WEEKDAY_ABBREVIATIONS)),
+        allow_empty=False, max_length=7,
+    )
+    start_date = serializers.DateField()
+    end_date = serializers.DateField()
+    time = serializers.TimeField()
+    end_time = serializers.TimeField(required=False, allow_null=True, default=None)
+    location = serializers.CharField(required=False, allow_blank=True, max_length=255, default="")
+    notes = serializers.CharField(required=False, allow_blank=True, max_length=2000, default="")
+
+    def validate(self, attrs):
+        attrs["type"] = _validate_deadline_type(attrs.get("type"))
+        attrs["weekdays"] = {custom_events.WEEKDAY_ABBREVIATIONS[day] for day in attrs["weekdays"]}
+        if attrs["end_date"] < attrs["start_date"]:
+            raise serializers.ValidationError({"end_date": "End date must be on or after the start date."})
+        if attrs.get("end_time") and attrs["end_time"] <= attrs["time"]:
             raise serializers.ValidationError({"end_time": "End time must be later than start time."})
         return attrs
 
@@ -109,6 +139,7 @@ class ConfirmDeadlineActionItemSerializer(serializers.Serializer):
     time = serializers.TimeField(required=False, allow_null=True, default=None)
     end_time = serializers.TimeField(required=False, allow_null=True, default=None)
     type = serializers.CharField(required=False, allow_blank=False, default=None)
+    series_id = serializers.CharField(required=False, allow_null=True, allow_blank=False, default=None)
 
     def validate(self, attrs):
         if attrs.get("type") is not None:

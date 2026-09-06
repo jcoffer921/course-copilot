@@ -26,6 +26,8 @@ from .serializers import (
     CourseArchiveSerializer,
     CreateCourseDraftRequestSerializer,
     CreateCustomEventRequestSerializer,
+    CreateRecurringEventsRequestSerializer,
+    DeleteCustomEventRequestSerializer,
     DismissRecommendationRequestSerializer,
     MasteryInsightRequestSerializer,
     ExtractSyllabusRequestSerializer,
@@ -1732,8 +1734,15 @@ class CustomEventDetailView(APIView):
         # validated_data (where every omitted field also defaults to None) —
         # otherwise an explicit {"time": null} to clear a field is
         # indistinguishable from the field simply being absent, and gets
-        # silently dropped instead of applied.
-        fields = {k: v for k, v in serializer.validated_data.items() if k in request.data}
+        # silently dropped instead of applied. series_scope is a directive
+        # for update_event, not a stored field, so it's pulled out on its
+        # own rather than left in fields (which would otherwise make
+        # update_event reject it as an unexpected field).
+        series_scope = serializer.validated_data["series_scope"]
+        fields = {
+            k: v for k, v in serializer.validated_data.items()
+            if k in request.data and k != "series_scope"
+        }
         if "date" in fields:
             fields["date"] = fields["date"].isoformat()
         if "time" in fields:
@@ -1747,7 +1756,9 @@ class CustomEventDetailView(APIView):
             return Response({"detail": f"no course '{fields['course_id']}' found"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         try:
-            event = await sync_to_async(custom_events.update_event)(event_id, user=request.user, **fields)
+            event = await sync_to_async(custom_events.update_event)(
+                event_id, user=request.user, series_scope=series_scope, **fields
+            )
         except custom_events.EventNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.CustomEventsStorageError as e:
@@ -1763,8 +1774,16 @@ class CustomEventDetailView(APIView):
         return Response(event, status=status.HTTP_200_OK)
 
     async def delete(self, request, event_id):
+        # An optional JSON body carries series_scope; a plain DELETE with no
+        # body at all (today's existing behavior) still validates fine since
+        # every field here defaults, series_scope resolving to "this".
+        scope_serializer = DeleteCustomEventRequestSerializer(data=request.data or {})
+        if not scope_serializer.is_valid():
+            return Response(scope_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        series_scope = scope_serializer.validated_data["series_scope"]
+
         try:
-            await sync_to_async(custom_events.delete_event)(event_id, user=request.user)
+            await sync_to_async(custom_events.delete_event)(event_id, user=request.user, series_scope=series_scope)
         except custom_events.EventNotFoundError as e:
             return Response({"detail": str(e)}, status=status.HTTP_404_NOT_FOUND)
         except storage.CustomEventsStorageError as e:
@@ -1774,8 +1793,50 @@ class CustomEventDetailView(APIView):
                 {"detail": "Deadline storage is not migrated yet. Run manage.py migrate, then try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class RecurringEventsView(APIView):
+    """
+    POST /api/deadlines/recurring/
+    body: {"course_id"?, "title", "type", "weekdays": ["mon".."sun", 1-7 items],
+    "start_date", "end_date", "time", "end_time"?, "location"?, "notes"?}
+
+    Creates one CustomEvent per matching weekday in [start_date, end_date],
+    all sharing a freshly generated series_id — this is the Calendar page's
+    "Repeats: weekly on [days]" control. Returns {"series_id", "events"}.
+    """
+
+    async def post(self, request):
+        serializer = CreateRecurringEventsRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        d = serializer.validated_data
+
+        if d["course_id"] is not None and not await sync_to_async(storage.course_exists)(d["course_id"], request.user):
+            return Response({"detail": f"no course '{d['course_id']}' found"}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        try:
+            result = await sync_to_async(custom_events.create_recurring_events)(
+                d["course_id"], d["title"], d["type"], d["weekdays"], d["start_date"], d["end_date"],
+                d["time"].strftime("%H:%M"),
+                end_time=d["end_time"].strftime("%H:%M") if d.get("end_time") else None,
+                user=request.user, location=d.get("location", ""), notes=d.get("notes", ""),
+            )
+        except storage.CustomEventsStorageError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except DatabaseError as e:
+            return Response(
+                {"detail": "Deadline storage is not migrated yet. Run manage.py migrate, then try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(result, status=status.HTTP_201_CREATED)
 
 
 class NotificationsView(APIView):

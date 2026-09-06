@@ -9,6 +9,7 @@ CLI use.
 import json
 import logging
 import re
+import uuid
 from datetime import date, timedelta
 from urllib.parse import urlparse
 
@@ -431,10 +432,10 @@ def _recurring_schedule_proposal(question: str, course_id: str, today_date: date
     OnTrack to calculate safely and deterministically.
     """
     text = question or ""
-    weekday_numbers = {
-        "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+    weekdays = {
+        custom_events.WEEKDAY_ABBREVIATIONS[match.group(1).lower()[:3]]
+        for match in SCHEDULE_WEEKDAY_RE.finditer(text)
     }
-    weekdays = {weekday_numbers[match.group(1).lower()[:3]] for match in SCHEDULE_WEEKDAY_RE.finditer(text)}
     compact = SCHEDULE_COMPACT_DAYS_RE.search(text)
     if compact:
         compact_days = compact.group(0).lower()
@@ -482,21 +483,25 @@ def _recurring_schedule_proposal(question: str, course_id: str, today_date: date
             "deadlines": [],
             "message": f"The confirmed syllabus class schedule ended on {schedule_end.isoformat()}. Upload or provide the current schedule before adding meetings.",
         }
-    actions = []
-    current = max(today_date, schedule_start)
-    while current <= schedule_end:
-        if current.weekday() in weekdays:
-            actions.append({
-                "action": "create",
-                "event_id": None,
-                "title": meeting_title or f"{course_label} Class",
-                "course_id": course_id,
-                "date": current.isoformat(),
-                "time": start_time,
-                "end_time": end_time,
-                "type": "class",
-            })
-        current += timedelta(days=1)
+    # Every occurrence in this batch shares one series_id, so the resulting
+    # calendar rows are later bulk-editable/deletable as a group through the
+    # same series_scope mechanism the Calendar page's modal uses — one
+    # series concept, not two independently-maintained ones.
+    series_id = uuid.uuid4().hex
+    actions = [
+        {
+            "action": "create",
+            "event_id": None,
+            "title": meeting_title or f"{course_label} Class",
+            "course_id": course_id,
+            "date": occurrence.isoformat(),
+            "time": start_time,
+            "end_time": end_time,
+            "type": "class",
+            "series_id": series_id,
+        }
+        for occurrence in custom_events.expand_weekly_dates(max(today_date, schedule_start), schedule_end, weekdays)
+    ]
     if not actions:
         return None
     return {
@@ -520,6 +525,11 @@ def _normalize_pending_deadline(raw: dict, default_course_id: str) -> dict:
         "end_time": deadline.get("end_time") or None,
         "type": storage.normalize_date_type(deadline.get("type")),
         "completed": False,
+        # Only ever set by the deterministic _recurring_schedule_proposal
+        # path (never the model), so a confirmed batch of recurring class
+        # meetings shares one series_id and becomes bulk-editable/deletable
+        # like a series created through the Calendar page's modal.
+        "series_id": deadline.get("series_id"),
     }
 
 
@@ -1333,6 +1343,7 @@ def confirm_deadline_actions(course_id: str, session_id: str, actions: list, use
                 raw["time"].strftime("%H:%M") if raw.get("time") else None,
                 title, raw.get("type") or "other", user=user,
                 end_time=raw["end_time"].strftime("%H:%M") if raw.get("end_time") else None,
+                series_id=raw.get("series_id") or None,
             )
             summaries.append(f"Added **{event['title']}** — {_format_when(event['date'], event['time'])}.")
             continue

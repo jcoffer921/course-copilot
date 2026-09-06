@@ -131,6 +131,7 @@ async function confirmDeadlineActions(items, button) {
       body: JSON.stringify({ actions: items.map(item => ({
         action: item.action, event_id: item.event_id, course_id: item.course_id,
         title: item.title, date: item.date, time: item.time, end_time: item.end_time, type: item.type,
+        series_id: item.series_id,
       })) }),
     });
     state.session = data; state.messages = data.messages || [];

@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -124,6 +124,124 @@ def test_delete_event_removes_it(isolated_courses_dir, owner):
 def test_delete_event_raises_when_not_found(isolated_courses_dir):
     with pytest.raises(custom_events.EventNotFoundError):
         custom_events.delete_event("nonexistent-id")
+
+
+def test_expand_weekly_dates_walks_inclusive_range_by_weekday():
+    dates = custom_events.expand_weekly_dates(date(2026, 9, 1), date(2026, 9, 14), {1, 3})  # Tue, Thu
+
+    assert [d.isoformat() for d in dates] == ["2026-09-01", "2026-09-03", "2026-09-08", "2026-09-10"]
+
+
+def test_expand_weekly_dates_empty_when_end_before_start():
+    assert custom_events.expand_weekly_dates(date(2026, 9, 14), date(2026, 9, 1), {1}) == []
+
+
+def test_create_recurring_events_shares_one_series_id(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1, 3}, date(2026, 9, 1), date(2026, 9, 14),
+        "15:35", end_time="16:25", user=owner,
+    )
+
+    assert result["series_id"]
+    assert len(result["events"]) == 4
+    assert {event["series_id"] for event in result["events"]} == {result["series_id"]}
+    assert all(event["title"] == "CS101 Class" and event["time"] == "15:35" for event in result["events"])
+
+
+def test_update_event_this_scope_only_affects_the_anchor(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1}, date(2026, 9, 1), date(2026, 9, 15), "15:35", user=owner,
+    )
+    anchor_id = result["events"][0]["id"]
+
+    custom_events.update_event(anchor_id, user=owner, series_scope="this", title="CS101 Class (room change)")
+
+    events = custom_events.list_events(user=owner)
+    changed = [e for e in events if e["title"] == "CS101 Class (room change)"]
+    assert len(changed) == 1
+    assert changed[0]["id"] == anchor_id
+
+
+def test_update_event_following_scope_affects_anchor_and_later_only(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1}, date(2026, 9, 1), date(2026, 9, 22), "15:35", user=owner,
+    )
+    events = sorted(result["events"], key=lambda e: e["date"])
+    anchor_id = events[1]["id"]  # the second Tuesday
+
+    custom_events.update_event(anchor_id, user=owner, series_scope="following", time="16:00")
+
+    after = {e["id"]: e for e in custom_events.list_events(user=owner)}
+    assert after[events[0]["id"]]["time"] == "15:35"  # earlier occurrence untouched
+    assert after[events[1]["id"]]["time"] == "16:00"
+    assert after[events[2]["id"]]["time"] == "16:00"
+
+
+def test_update_event_all_scope_affects_every_occurrence_regardless_of_date(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1}, date(2026, 9, 1), date(2026, 9, 22), "15:35", user=owner,
+    )
+    events = sorted(result["events"], key=lambda e: e["date"])
+    anchor_id = events[-1]["id"]  # the last occurrence
+
+    custom_events.update_event(anchor_id, user=owner, series_scope="all", location="Room 204")
+
+    assert all(e["location"] == "Room 204" for e in custom_events.list_events(user=owner))
+
+
+def test_update_event_series_scope_never_propagates_per_occurrence_fields(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1}, date(2026, 9, 1), date(2026, 9, 8), "15:35", user=owner,
+    )
+    events = sorted(result["events"], key=lambda e: e["date"])
+    anchor_id, sibling_id = events[0]["id"], events[1]["id"]
+
+    custom_events.update_event(anchor_id, user=owner, series_scope="all", completed=True, date="2026-09-30")
+
+    after = {e["id"]: e for e in custom_events.list_events(user=owner)}
+    assert after[anchor_id]["completed"] is True
+    assert after[anchor_id]["date"] == "2026-09-30"
+    assert after[sibling_id]["completed"] is False
+    assert after[sibling_id]["date"] == "2026-09-08"
+
+
+def test_update_event_series_scope_raises_for_a_non_series_event(isolated_courses_dir, owner):
+    created = custom_events.create_event("cs101", "2026-09-01", None, "One-off", "other", user=owner)
+
+    with pytest.raises(ValueError):
+        custom_events.update_event(created["id"], user=owner, series_scope="all", title="X")
+
+
+def test_delete_event_following_scope_removes_anchor_and_later_only(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1}, date(2026, 9, 1), date(2026, 9, 22), "15:35", user=owner,
+    )
+    events = sorted(result["events"], key=lambda e: e["date"])
+    anchor_id = events[1]["id"]
+
+    custom_events.delete_event(anchor_id, user=owner, series_scope="following")
+
+    remaining_ids = {e["id"] for e in custom_events.list_events(user=owner)}
+    assert remaining_ids == {events[0]["id"]}
+
+
+def test_delete_event_all_scope_removes_the_whole_series(isolated_courses_dir, owner):
+    result = custom_events.create_recurring_events(
+        "cs101", "CS101 Class", "class", {1}, date(2026, 9, 1), date(2026, 9, 22), "15:35", user=owner,
+    )
+    other = custom_events.create_event("cs101", "2026-09-05", None, "Unrelated", "other", user=owner)
+
+    custom_events.delete_event(result["events"][0]["id"], user=owner, series_scope="all")
+
+    remaining_ids = {e["id"] for e in custom_events.list_events(user=owner)}
+    assert remaining_ids == {other["id"]}
+
+
+def test_delete_event_series_scope_raises_for_a_non_series_event(isolated_courses_dir, owner):
+    created = custom_events.create_event("cs101", "2026-09-01", None, "One-off", "other", user=owner)
+
+    with pytest.raises(ValueError):
+        custom_events.delete_event(created["id"], user=owner, series_scope="all")
 
 
 def test_delete_events_for_course_removes_matching_events(isolated_courses_dir, owner):

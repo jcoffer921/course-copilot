@@ -187,11 +187,17 @@ def test_recurring_schedule_proposal_is_deterministic_and_future_only():
     )
 
     assert result["missing"] == []
-    assert result["deadlines"][0] == {
+    first = result["deadlines"][0]
+    assert first["series_id"]
+    assert {k: v for k, v in first.items() if k != "series_id"} == {
         "action": "create", "event_id": None, "title": "CMPSC 469 Class", "course_id": "cmpsc469",
         "date": "2026-09-02", "time": "15:35", "end_time": "16:25", "type": "class",
     }
     assert all(item["date"] >= "2026-09-01" for item in result["deadlines"])
+    # Every occurrence in the batch shares one series_id, so they're later
+    # bulk-editable/deletable together like a series created through the
+    # Calendar page's modal.
+    assert len({item["series_id"] for item in result["deadlines"]}) == 1
 
 
 @pytest.mark.django_db

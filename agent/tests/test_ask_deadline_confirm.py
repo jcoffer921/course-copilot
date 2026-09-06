@@ -77,6 +77,23 @@ def test_confirm_create_writes_event_and_appends_message(isolated_courses_dir, u
     assert "Project 1" in updated["messages"][-1]["content"]
 
 
+def test_confirm_create_persists_series_id_onto_every_created_row(isolated_courses_dir, user):
+    # Mirrors what cora.js actually sends back after a student confirms a
+    # Cora-proposed recurring class schedule: every action in the batch
+    # carries the same series_id _recurring_schedule_proposal generated.
+    _seed_syllabus("cs101", user)
+    session_id = _seed_session("cs101", user)
+
+    ask.confirm_deadline_actions("cs101", session_id, [
+        {"action": "create", "title": "CS101 Class", "date": "2026-09-14", "type": "class", "series_id": "series-abc"},
+        {"action": "create", "title": "CS101 Class", "date": "2026-09-16", "type": "class", "series_id": "series-abc"},
+    ], user=user)
+
+    events = custom_events.list_events(user=user)
+    assert len(events) == 2
+    assert {event["series_id"] for event in events} == {"series-abc"}
+
+
 def test_confirm_create_requires_title_and_date(isolated_courses_dir, user):
     _seed_syllabus("cs101", user)
     session_id = _seed_session("cs101", user)
