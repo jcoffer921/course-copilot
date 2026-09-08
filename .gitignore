@@ -3,10 +3,16 @@ __pycache__/
 *.pyc
 venv/
 .venv/
+.venv-codex/
+.pytest-tmp/
+.pytest-tmp*/
 *.egg-info/
 .pytest_cache/
 db.sqlite3
 .superpowers/
 .worktrees/
-courses/custom_events.json
-courses/*/calendar_sync.json
+.claude/worktrees/
+# Runtime course content is private user data and must never be tracked.
+courses/**
+!courses/.gitkeep
+backups/

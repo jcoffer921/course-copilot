@@ -42,16 +42,12 @@ def _category_pcts(items: list, component: str) -> list:
     return sorted(i["score"] / i["max_points"] * 100 for i in items if i["component"] == component)
 
 
-def current_grade(course_id: str, user=None) -> dict:
-    """"My grade right now" — categories with zero entered items are
-    excluded entirely (not treated as 0%), and the overall percentage is a
-    weighted average renormalized across only the categories that have
-    data, so an ungraded Final Exam doesn't crater today's number."""
-    syllabus = _require_syllabus(course_id, user)
-    grading = syllabus.get("grading", [])
-    items = storage.read_grades(course_id, user=user)["items"]
-    grade_scale = syllabus.get("grade_scale") or DEFAULT_GRADE_SCALE
-
+def _compute_grade(course_id: str, items: list, grading: list, grade_scale: dict) -> dict:
+    """Shared weighted-average/drop-lowest math behind both current_grade()
+    (real entered items) and project_grade() (items with one hypothetical
+    score substituted in) — keeping this in one place is what lets a
+    what-if projection reuse the exact same rules as the real grade
+    instead of drifting out of sync with it."""
     categories = []
     graded_weight = 0.0
     weighted_sum = 0.0
@@ -83,6 +79,18 @@ def current_grade(course_id: str, user=None) -> dict:
         "course_id": course_id, "overall_pct": overall_pct, "letter": letter,
         "grade_scale": grade_scale, "categories": categories,
     }
+
+
+def current_grade(course_id: str, user=None) -> dict:
+    """"My grade right now" — categories with zero entered items are
+    excluded entirely (not treated as 0%), and the overall percentage is a
+    weighted average renormalized across only the categories that have
+    data, so an ungraded Final Exam doesn't crater today's number."""
+    syllabus = _require_syllabus(course_id, user)
+    grading = syllabus.get("grading", [])
+    items = storage.read_grades(course_id, user=user)["items"]
+    grade_scale = syllabus.get("grade_scale") or DEFAULT_GRADE_SCALE
+    return _compute_grade(course_id, items, grading, grade_scale)
 
 
 def add_item(course_id: str, component: str, title: str, score: float, max_points: float, date: str = None, user=None) -> dict:
@@ -132,6 +140,53 @@ def delete_item(course_id: str, item_id: str, user=None) -> None:
         raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
     data["items"] = remaining
     storage.write_grades(course_id, data, user=user)
+
+
+def project_grade(
+    course_id: str, hypothetical_score: float, hypothetical_max_points: float,
+    item_id: str = None, component: str = None, title: str = None, user=None,
+) -> dict:
+    """Read-only "if I score X on this assignment" projection — never writes
+    to storage. Two modes: item_id substitutes a hypothetical score onto an
+    already-entered item (without changing it); component (with no item_id)
+    appends a hypothetical not-yet-entered item to that category instead, so
+    an upcoming, ungraded assignment can be projected too. This is
+    deliberately a different question than grade_needed(): that solves for
+    the flat score needed on every remaining item to hit a target overall;
+    this projects the effect of one specific hypothetical score."""
+    syllabus = _require_syllabus(course_id, user)
+    grading = syllabus.get("grading", [])
+    grade_scale = syllabus.get("grade_scale") or DEFAULT_GRADE_SCALE
+    real_items = storage.read_grades(course_id, user=user)["items"]
+
+    projected_items = [dict(i) for i in real_items]
+    if item_id is not None:
+        for item in projected_items:
+            if item["id"] == item_id:
+                item["score"] = hypothetical_score
+                item["max_points"] = hypothetical_max_points
+                break
+        else:
+            raise ItemNotFoundError(f"no grade item '{item_id}' for '{course_id}'")
+    else:
+        valid_components = {g["component"] for g in grading}
+        if not component or component not in valid_components:
+            raise ValueError(f"'{component}' isn't a grading category for '{course_id}' (valid: {sorted(valid_components)})")
+        projected_items.append({
+            "id": None, "component": component, "title": title or "Hypothetical item",
+            "score": hypothetical_score, "max_points": hypothetical_max_points, "date": None,
+        })
+
+    baseline = _compute_grade(course_id, real_items, grading, grade_scale)
+    projected = _compute_grade(course_id, projected_items, grading, grade_scale)
+    baseline_pct, projected_pct = baseline["overall_pct"], projected["overall_pct"]
+
+    return {
+        "course_id": course_id,
+        "baseline_pct": baseline_pct, "baseline_letter": baseline["letter"],
+        "projected_pct": projected_pct, "projected_letter": projected["letter"],
+        "delta_pct": round(projected_pct - baseline_pct, 2) if baseline_pct is not None and projected_pct is not None else None,
+    }
 
 
 def find_orphaned_components(course_id: str, new_grading: list, user=None) -> list:

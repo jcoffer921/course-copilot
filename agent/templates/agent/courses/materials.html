@@ -1,0 +1,116 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div data-page-section="materials" class="course-workspace materials-page" data-course-id="{{ course_id }}">
+  {% include "agent/partials/course_header.html" %}
+  {% include "agent/partials/course_tabs.html" %}
+
+  <div id="materials-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
+
+  <div class="materials-body-split">
+    <div class="materials-body-main">
+      <section id="materials-upload-card" class="card elev-sm materials-upload-card-unified" aria-labelledby="materials-upload-title">
+        <div class="materials-section-heading">
+          <div><h2 id="materials-upload-title">Upload materials</h2></div>
+        </div>
+        <div class="materials-upload-tabs" role="tablist" aria-label="Material type">
+          <button type="button" id="syllabus-upload-tab" class="materials-upload-tab" data-upload-tab="syllabus" role="tab" aria-selected="true" aria-controls="syllabus-upload-panel">Syllabus</button>
+          <button type="button" id="lecture-upload-tab" class="materials-upload-tab" data-upload-tab="lecture" role="tab" aria-selected="false" aria-controls="lecture-upload-panel">Notes &amp; slides</button>
+          <button type="button" id="reference-upload-tab" class="materials-upload-tab" data-upload-tab="reference" role="tab" aria-selected="false" aria-controls="reference-upload-panel">Reference</button>
+        </div>
+
+        <div id="syllabus-upload-panel" class="materials-upload-panel" role="tabpanel" aria-labelledby="syllabus-upload-tab">
+          <p>Upload first, then review every extracted date, topic, grading item, and the course name before anything changes.</p>
+          <form id="syllabus-upload-form">
+            <div class="materials-dropzone" data-dropzone-for="syllabus-upload-form">
+              <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-upload"/></svg>
+              <p>Drag and drop a file here, or</p>
+              <label class="btn btn-secondary">Upload files<input class="sr-only" name="file" type="file" accept=".pdf,.pptx,.docx,.txt,.md" required></label>
+              <span class="materials-dropzone-filename" aria-live="polite"></span>
+            </div>
+            <label class="materials-field">Course name hint <span>(optional)</span>
+              <input class="input" name="course_name" type="text" maxlength="255">
+            </label>
+            <p class="materials-formats">Supported: PDF, PPTX, DOCX, TXT, MD</p>
+            <button class="btn btn-primary" type="submit">Extract for review</button>
+          </form>
+        </div>
+
+        <div id="lecture-upload-panel" class="materials-upload-panel" role="tabpanel" aria-labelledby="lecture-upload-tab" hidden>
+          <p>Each lecture becomes a grounded source for Cora, quizzes, and mastery.</p>
+          <form id="lecture-upload-form">
+            <div class="materials-dropzone" data-dropzone-for="lecture-upload-form">
+              <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-upload"/></svg>
+              <p>Drag and drop a file here, or</p>
+              <label class="btn btn-secondary">Upload files<input class="sr-only" name="file" type="file" accept=".pdf,.pptx,.docx,.txt,.md" required></label>
+              <span class="materials-dropzone-filename" aria-live="polite"></span>
+            </div>
+            <div class="materials-field-row">
+              <label class="materials-field">Lecture ID
+                <input class="input" name="lecture_id" type="text" maxlength="64" required placeholder="lecture-01">
+              </label>
+              <label class="materials-field">Date <span>(optional)</span>
+                <input class="input" name="date" type="date">
+              </label>
+            </div>
+            <label class="materials-check"><input name="overwrite" type="checkbox"> Replace an existing lecture with this ID</label>
+            <p class="materials-formats">Supported: PDF, PPTX, DOCX, TXT, MD</p>
+            <button class="btn btn-primary" type="submit">Add lecture material</button>
+          </form>
+        </div>
+
+        <div id="reference-upload-panel" class="materials-upload-panel" role="tabpanel" aria-labelledby="reference-upload-tab" hidden>
+          <p>Add a reading or handout without changing the official syllabus or lecture topics.</p>
+          <form id="reference-upload-form">
+            <div class="materials-dropzone" data-dropzone-for="reference-upload-form">
+              <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-upload"/></svg>
+              <p>Drag and drop a file here, or</p>
+              <label class="btn btn-secondary">Upload files<input class="sr-only" name="file" type="file" accept=".pdf,.pptx,.docx,.txt,.md" required></label>
+              <span class="materials-dropzone-filename" aria-live="polite"></span>
+            </div>
+            <label class="materials-field">Title <span>(optional)</span>
+              <input class="input" name="title" type="text" maxlength="255">
+            </label>
+            <p class="materials-formats">Supported: PDF, PPTX, DOCX, TXT, MD</p>
+            <button class="btn btn-primary" type="submit">Add reference</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="materials-library" aria-labelledby="materials-list-title">
+        <div class="materials-section-heading">
+          <div><h2 id="materials-list-title">Course materials</h2></div>
+          <button id="refresh-materials" class="btn btn-secondary" type="button">Refresh</button>
+        </div>
+        <div id="materials-loading" class="shared-state" role="status">Loading materials…</div>
+        <div id="materials-error" class="shared-state shared-state-error" hidden>
+          <h2>Materials couldn’t load</h2><p></p><button class="btn btn-secondary" type="button">Try again</button>
+        </div>
+        <div id="materials-empty" class="shared-state shared-state-empty" hidden>
+          <h2>No material uploaded yet</h2><p>Add a syllabus to establish the course, then add lecture sources.</p>
+        </div>
+        <div id="materials-list" class="materials-list" hidden><div class="materials-table-head"><span>Name</span><span>Type</span><span>Uploaded</span><span>Status</span><span>Actions</span></div></div>
+      </section>
+    </div>
+
+    <div class="materials-body-side">
+      <section id="syllabus-review" class="card elev-sm syllabus-review" aria-labelledby="syllabus-review-title" hidden>
+        <div class="materials-section-heading">
+          <div class="review-title-row"><span class="course-card-icon green"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg></span><h2 id="syllabus-review-title">Extraction review</h2></div>
+          <span id="review-source-name" class="review-source-badge"></span>
+        </div>
+        <p>Uncheck uncertain items, edit anything inaccurate, then explicitly confirm. Your current syllabus remains active until then.</p>
+        <form id="syllabus-review-form">
+          <label class="materials-field">Course name
+            <input id="review-course-name" class="input" type="text" required>
+          </label>
+          <div class="review-columns"><fieldset class="review-group review-dates-group"><legend>Deadlines and events</legend><div class="review-date-head"><span>Include</span><span>Deadline</span><span>Topic</span><span>Type</span></div><div id="review-dates"></div><button id="add-review-date" class="review-add-item" type="button">＋ Add item</button></fieldset><details class="review-extra"><summary>Topics and grading</summary><fieldset class="review-group"><legend>Topics</legend><div id="review-topics"></div></fieldset><fieldset class="review-group"><legend>Grading</legend><div id="review-grading"></div></fieldset></details></div>
+          <div class="page-actions">
+            <button class="btn btn-primary btn-cora" type="submit">Confirm changes</button>
+            <button id="cancel-syllabus-review" class="btn btn-secondary" type="button">Keep current version</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+</div>
+{% endblock %}

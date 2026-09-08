@@ -1,17 +1,18 @@
 import asyncio
 from pathlib import Path
 
+from django.core.files import File
 from django.core.management.base import BaseCommand, CommandError
 
-from agent.services import references, storage
+from agent.services import material_files, materials, storage
 from agent.services.cli_owner import resolve_owner_user
 
 
 class Command(BaseCommand):
-    help = "Ingest a reference document (PDF/TXT/MD) for a course (standalone, no server needed)."
+    help = "Ingest a reference document (PDF/PPTX/DOCX/TXT/MD) for a course."
 
     def add_arguments(self, parser):
-        parser.add_argument("source", help="Path to reference file (PDF/TXT/MD)")
+        parser.add_argument("source", help="Path to reference PDF, PPTX, DOCX, TXT, or MD file")
         parser.add_argument("course_id", help="Short course identifier, e.g. cs101")
         parser.add_argument("--title", dest="title", default=None, help="Reference title (defaults to the filename)")
 
@@ -22,20 +23,18 @@ class Command(BaseCommand):
             raise CommandError(f"source file not found: {source_path}")
 
         try:
-            data = asyncio.run(
-                references.ingest_reference(
-                    options["course_id"], source_path.read_bytes(), source_path.name, owner, title=options["title"],
+            with source_path.open("rb") as handle:
+                material = asyncio.run(
+                    materials.process_reference(
+                        owner,
+                        options["course_id"],
+                        File(handle, name=source_path.name),
+                        title=options["title"],
+                    )
                 )
-            )
-        except ValueError as e:
+        except (material_files.UploadValidationError, storage.CourseNotFoundError, storage.InvalidCourseIdError) as e:
             raise CommandError(str(e))
+        except materials.MaterialProcessingError as e:
+            raise CommandError(e.public_message)
 
-        errors = storage.validate_reference(data)
-        if errors:
-            self.stdout.write(self.style.ERROR("Schema validation failed:"))
-            for e in errors:
-                self.stdout.write(f"  - {e}")
-            raise CommandError("reference ingestion failed schema validation")
-
-        out_path = storage.write_reference(options["course_id"], data["reference_id"], data, owner)
-        self.stdout.write(self.style.SUCCESS(f"Wrote {out_path} (reference_id: {data['reference_id']})"))
+        self.stdout.write(self.style.SUCCESS(f"Ready (reference_id: {material.source_key})"))

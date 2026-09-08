@@ -1,9 +1,20 @@
-from datetime import datetime
-from types import SimpleNamespace
-
 import pytest
 
-from agent.services import google_oauth
+from agent.services import google_oauth, reminders, storage
+
+
+@pytest.fixture
+def isolated_courses_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(storage, "COURSES_DIR", tmp_path)
+    return tmp_path
+
+
+def test_sign_in_scopes_are_identity_only():
+    assert google_oauth.OAUTH_SCOPES == [
+        "openid",
+        "https://www.googleapis.com/auth/userinfo.email",
+        "https://www.googleapis.com/auth/userinfo.profile",
+    ]
 
 
 def test_is_email_allowed_matches_case_insensitively(monkeypatch):
@@ -20,9 +31,23 @@ def test_is_email_allowed_rejects_unlisted_email(monkeypatch):
 
 
 def test_is_email_allowed_fails_closed_when_unset(monkeypatch):
+    monkeypatch.delenv("ONTRACK_ADMISSION_MODE", raising=False)
     monkeypatch.delenv("ALLOWED_GOOGLE_EMAILS", raising=False)
 
     assert google_oauth.is_email_allowed("jordan@example.com") is False
+
+
+def test_open_admission_accepts_any_verified_identity(monkeypatch):
+    monkeypatch.setenv("ONTRACK_ADMISSION_MODE", "open")
+    monkeypatch.delenv("ALLOWED_GOOGLE_EMAILS", raising=False)
+
+    assert google_oauth.is_email_allowed("student@any-domain.example") is True
+
+
+def test_unknown_admission_mode_fails_closed(monkeypatch):
+    monkeypatch.setenv("ONTRACK_ADMISSION_MODE", "typo")
+
+    assert google_oauth.is_email_allowed("student@example.com") is False
 
 
 def test_is_email_allowed_ignores_whitespace_around_entries(monkeypatch):
@@ -31,34 +56,22 @@ def test_is_email_allowed_ignores_whitespace_around_entries(monkeypatch):
     assert google_oauth.is_email_allowed("alex@example.com") is True
 
 
-def _fake_credentials(token="tok", refresh_token="refresh", expiry=None):
-    """Mimics google.oauth2.credentials.Credentials' relevant attributes.
-    Real Credentials.expiry is a naive UTC datetime — reproduced here since
-    get_or_create_account must handle that (see Step 4)."""
-    return SimpleNamespace(
-        token=token, refresh_token=refresh_token,
-        expiry=expiry or datetime(2026, 12, 31, 0, 0, 0),
-    )
-
-
 @pytest.mark.django_db
 def test_get_or_create_account_creates_new_user_and_account():
     from agent.models import GoogleAccount
 
-    user = google_oauth.get_or_create_account("sub-123", "jordan@example.com", _fake_credentials())
+    user = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
 
     assert user.email == "jordan@example.com"
     account = GoogleAccount.objects.get(google_sub="sub-123")
     assert account.user == user
     assert account.email == "jordan@example.com"
-    assert account.access_token == "tok"
-    assert account.token_expiry.tzinfo is not None  # naive google-auth datetime made tz-aware
 
 
 @pytest.mark.django_db
 def test_get_or_create_account_stores_google_profile_name():
     user = google_oauth.get_or_create_account(
-        "sub-123", "jordan@example.com", _fake_credentials(), name="Jordan Lee"
+        "sub-123", "jordan@example.com", name="Jordan Lee"
     )
 
     assert user.first_name == "Jordan Lee"
@@ -68,22 +81,22 @@ def test_get_or_create_account_stores_google_profile_name():
 def test_get_or_create_account_returns_existing_user_on_second_login():
     from agent.models import GoogleAccount
 
-    first = google_oauth.get_or_create_account("sub-123", "jordan@example.com", _fake_credentials(token="old"))
-    second = google_oauth.get_or_create_account("sub-123", "jordan@example.com", _fake_credentials(token="new"))
+    first = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
+    second = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
 
     assert first.pk == second.pk
     assert GoogleAccount.objects.filter(google_sub="sub-123").count() == 1
-    assert GoogleAccount.objects.get(google_sub="sub-123").access_token == "new"
 
 
 @pytest.mark.django_db
-def test_get_or_create_account_keeps_existing_refresh_token_if_google_omits_a_new_one():
-    from agent.models import GoogleAccount
+def test_reauthentication_preserves_user_scoped_courses(isolated_courses_dir):
+    first = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
+    storage.write_course_draft("cs101", "Computer Science", first)
 
-    google_oauth.get_or_create_account("sub-123", "jordan@example.com", _fake_credentials(refresh_token="original-refresh"))
-    google_oauth.get_or_create_account("sub-123", "jordan@example.com", _fake_credentials(refresh_token=None))
+    reauthenticated = google_oauth.get_or_create_account("sub-123", "jordan@example.com")
 
-    assert GoogleAccount.objects.get(google_sub="sub-123").refresh_token == "original-refresh"
+    assert reauthenticated.pk == first.pk
+    assert [course["course_id"] for course in reminders.list_draft_courses(reauthenticated)] == ["cs101"]
 
 
 def test_build_flow_carries_a_passed_in_code_verifier(monkeypatch):

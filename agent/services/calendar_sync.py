@@ -34,7 +34,11 @@ class CalendarAuthError(Exception):
     surface this as a clear, actionable message, not a raw 500."""
 
 
-def get_credentials(google_account) -> Credentials:
+class CalendarNotConnectedError(CalendarAuthError):
+    """Raised when optional Google Calendar authorization is absent."""
+
+
+def get_credentials(connection) -> Credentials:
     """Builds a Credentials object from the stored tokens, refreshing (and
     persisting the refresh back onto google_account) if expired.
 
@@ -42,13 +46,13 @@ def get_credentials(google_account) -> Credentials:
     convention documented in agent/services/google_oauth.py's
     get_or_create_account) — Django's token_expiry field is timezone-aware,
     so tzinfo is stripped going in and re-attached going out."""
-    expiry = google_account.token_expiry
+    expiry = connection.token_expiry
     if expiry.tzinfo is not None:
         expiry = expiry.replace(tzinfo=None)
 
     credentials = Credentials(
-        token=google_account.access_token,
-        refresh_token=google_account.refresh_token,
+        token=connection.access_token,
+        refresh_token=connection.refresh_token,
         token_uri="https://oauth2.googleapis.com/token",
         client_id=os.environ.get("GOOGLE_OAUTH_CLIENT_ID"),
         client_secret=os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET"),
@@ -59,16 +63,22 @@ def get_credentials(google_account) -> Credentials:
         try:
             credentials.refresh(GoogleAuthRequest())
         except RefreshError as e:
+            connection.grant_failed_at = timezone.now()
+            connection.save(update_fields=["grant_failed_at", "updated_at"])
             raise CalendarAuthError(
                 "Could not connect to Google Calendar — try signing out and back in."
             ) from e
 
-        google_account.access_token = credentials.token
+        connection.access_token = credentials.token
         new_expiry = credentials.expiry
-        google_account.token_expiry = (
+        connection.token_expiry = (
             new_expiry.replace(tzinfo=dt_timezone.utc) if new_expiry.tzinfo is None else new_expiry
         )
-        google_account.save()
+        update_fields = ["access_token", "token_expiry", "updated_at"]
+        if connection.grant_failed_at is not None:
+            connection.grant_failed_at = None
+            update_fields.append("grant_failed_at")
+        connection.save(update_fields=update_fields)
 
     return credentials
 
@@ -79,18 +89,18 @@ def add_deadline_to_calendar(user, course_id: str, date: str, title: str, event_
     AlreadySyncedError if (date, title) is already recorded for this
     course, or CalendarAuthError if the stored Google credentials can't be
     refreshed. Returns {"google_event_id": "..."}."""
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
 
     already_synced = storage.read_calendar_sync(course_id, user=user)
     if any(r["date"] == date and r["title"] == title for r in already_synced):
         raise AlreadySyncedError(f"'{title}' on {date} is already on your Google Calendar")
 
     try:
-        google_account = user.google_account
-    except GoogleAccount.DoesNotExist as e:
-        raise CalendarAuthError("Sign in with Google to add deadlines to your calendar.") from e
+        connection = user.google_calendar_connection
+    except GoogleCalendarConnection.DoesNotExist as e:
+        raise CalendarNotConnectedError("Connect Google Calendar in Settings before syncing events.") from e
 
-    credentials = get_credentials(google_account)
+    credentials = get_credentials(connection)
 
     start_date = datetime.strptime(date, "%Y-%m-%d").date()
     end_date = (start_date + timedelta(days=1)).isoformat()

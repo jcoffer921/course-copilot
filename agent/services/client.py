@@ -17,6 +17,16 @@ MODEL_DEFAULT = "claude-sonnet-4-6"
 MODEL_HAIKU = "claude-haiku-4-5"
 MODEL_RUBRIC_CRITIQUE = "claude-opus-4-6"
 
+# Named aliases for Cora's capability routing (agent/services/cora_skills/) —
+# new capabilities reference CORA_MODELS["fast"/"reasoning"/"critique"]
+# instead of importing the raw constants above, so a future model swap is a
+# one-line change here rather than a hunt across every capability file.
+CORA_MODELS = {
+    "fast": MODEL_HAIKU,
+    "reasoning": MODEL_DEFAULT,
+    "critique": MODEL_RUBRIC_CRITIQUE,
+}
+
 
 def get_client() -> AsyncAnthropic:
     """Returns a configured AsyncAnthropic client, or raises a clear

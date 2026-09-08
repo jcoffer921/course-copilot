@@ -1,0 +1,9 @@
+<nav class="course-breadcrumb" aria-label="Breadcrumb"><a href="{% url 'courses-page' %}">Courses</a><span aria-hidden="true">/</span><span id="course-header-breadcrumb-name" aria-current="page">{{ course_id }}</span></nav>
+<div id="course-header-loading" class="course-workspace-status" role="status">Loading course…</div>
+<div id="course-header-error" class="course-workspace-status course-workspace-error" role="alert" hidden><strong>Couldn’t load this course</strong><p></p></div>
+<header id="course-header" class="course-workspace-header" hidden>
+  <span id="course-header-avatar" class="course-workspace-avatar" aria-hidden="true"></span>
+  <div class="course-header-identity"><h1 id="course-header-name">{{ course_id }}</h1><p id="course-header-instructor" class="course-header-meta" hidden><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-users"/></svg><span></span></p></div>
+  <div class="course-header-stat course-header-deadline"><span class="course-header-stat-label">Next deadline</span><span id="course-header-deadline-when" class="course-header-stat-value">No upcoming deadlines</span><span id="course-header-deadline-title" class="course-header-stat-sub"></span></div>
+  <div class="course-header-stat course-header-mastery"><span class="course-header-stat-label">Mastery</span><div class="course-header-mastery-row"><div id="course-header-mastery-progress" class="course-progress" role="progressbar" aria-label="Overall mastery" aria-valuemin="0" aria-valuemax="100"><span id="course-header-mastery-fill"></span></div><span id="course-header-mastery-label">Not enough data</span></div></div>
+</header>

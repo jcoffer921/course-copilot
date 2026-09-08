@@ -7,6 +7,7 @@ command wraps the same coroutine with asyncio.run() for standalone CLI use.
 import io
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 
 from . import storage
@@ -31,12 +32,14 @@ Schema:
 {
   "course_id": "string",
   "course_name": "string",
+  "meeting_patterns": [{"title": "string", "days": [0], "start_time": "HH:MM", "end_time": "HH:MM|null", "start_date": "YYYY-MM-DD|null", "end_date": "YYYY-MM-DD|null"}],
   "dates": [{"date": "YYYY-MM-DD", "title": "string", "type": "hw|project|test_quiz|class|other"}],
   "grading": [{"component": "Homework|Tests|Quizzes|Midterm|Final|Projects|Lab and Demo|Final Project|Class Participation|Other", "weight_pct": 0}],
   "topics": ["string"]
 }
 
 Notes on fields:
+- "meeting_patterns" contains recurring class meeting information only when it is explicitly present. Use weekday numbers Monday=0 through Sunday=6. Preserve explicit start/end dates when stated. Do not infer a current-semester schedule from an old syllabus or from the course's total weekly duration. Return an empty list when days or start time are not stated.
 - "date" must be YYYY-MM-DD, and the year is NOT optional. Before extracting any \
 dates[] entries, check whether an explicit calendar year (e.g. "2026") appears \
 ANYWHERE in the document — in a header, term label ("Fall 2026"), or elsewhere. \
@@ -201,7 +204,74 @@ async def extract_syllabus_async(source_text: str, course_id: str, course_name_h
     )
 
     raw = "".join(block.text for block in response.content if block.type == "text").strip()
-    return _normalize_extracted_syllabus(_parse_model_json(raw))
+    normalized = _normalize_extracted_syllabus(_parse_model_json(raw))
+    source_patterns = _extract_meeting_patterns(source_text)
+    if source_patterns:
+        normalized["meeting_patterns"] = source_patterns
+    return normalized
+
+
+def _normalize_clock_time(value: str) -> str | None:
+    text = re.sub(r"[.\s]", "", value or "").lower()
+    match = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?(am|pm)?", text)
+    if not match:
+        return None
+    hour, minute, period = int(match.group(1)), int(match.group(2) or 0), match.group(3)
+    if minute > 59 or (period and not 1 <= hour <= 12) or (not period and hour > 23):
+        return None
+    if period:
+        hour = hour % 12 + (12 if period == "pm" else 0)
+    return f"{hour:02d}:{minute:02d}"
+
+
+def _extract_meeting_patterns(source_text: str) -> list[dict]:
+    """Extract explicit recurring class hours that the broad model schema may omit."""
+    weekday_words = {
+        "mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6,
+    }
+    day_re = re.compile(
+        r"\b(mon(?:day)?s?|tue(?:sday)?s?|wed(?:nesday)?s?|thu(?:rsday)?s?|fri(?:day)?s?|sat(?:urday)?s?|sun(?:day)?s?)\b",
+        re.I,
+    )
+    time_re = re.compile(
+        r"\b(?:(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:a\.?m\.?|p\.?m\.?)|(?:[01]?\d|2[0-3]):[0-5]\d)\b",
+        re.I,
+    )
+    date_range = re.search(
+        r"\b([A-Z][a-z]{2,8}\s+\d{1,2},\s*\d{4})\s*[-–—]\s*([A-Z][a-z]{2,8}\s+\d{1,2},\s*\d{4})\b",
+        source_text or "",
+    )
+    start_date = end_date = None
+    if date_range:
+        for fmt in ("%b %d, %Y", "%B %d, %Y"):
+            try:
+                start_date = datetime.strptime(date_range.group(1), fmt).date().isoformat()
+                end_date = datetime.strptime(date_range.group(2), fmt).date().isoformat()
+                break
+            except ValueError:
+                continue
+
+    patterns = []
+    for line in (source_text or "").splitlines():
+        if not re.search(r"\b(class|course)\s+(?:meeting\s+)?(?:hours?|times?)\b|\bmeets?\b", line, re.I):
+            continue
+        days = {weekday_words[m.group(1).lower()[:3]] for m in day_re.finditer(line)}
+        compact = re.search(r"\b(MoWeFr|MWF|TTh|TuTh)\b", line, re.I)
+        if compact:
+            days.update({0, 2, 4} if compact.group(0).lower() in {"mowefr", "mwf"} else {1, 3})
+        times = [_normalize_clock_time(match.group(0)) for match in time_re.finditer(line)]
+        times = [value for value in times if value]
+        if not days or not times:
+            continue
+        patterns.append({
+            "title": "Class",
+            "days": sorted(days),
+            "start_time": times[0],
+            "end_time": times[1] if len(times) > 1 else None,
+            "start_date": start_date,
+            "end_date": end_date,
+        })
+    return patterns
 
 
 def _normalize_extracted_syllabus(data: dict) -> dict:
@@ -213,6 +283,8 @@ def _normalize_extracted_syllabus(data: dict) -> dict:
     """
     if not isinstance(data, dict):
         return data
+    data = dict(data)
+    data.setdefault("meeting_patterns", [])
     dates = data.get("dates")
     if isinstance(dates, list):
         normalized_dates = []
@@ -221,7 +293,7 @@ def _normalize_extracted_syllabus(data: dict) -> dict:
                 normalized_dates.append(dict(item, type=storage.normalize_date_type(item.get("type"))))
             else:
                 normalized_dates.append(item)
-        data = dict(data, dates=normalized_dates)
+        data["dates"] = normalized_dates
     return data
 
 

@@ -1,0 +1,36 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pilot privacy notice · OnTrack</title>
+  <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <style>
+    body{margin:0;background:#f8f7f2;color:#232621;font-family:var(--font-body);line-height:1.65}.privacy-shell{width:min(760px,calc(100% - 36px));margin:42px auto 70px}.privacy-brand{display:flex;align-items:center;gap:11px;color:#24472f;text-decoration:none;font:25px var(--font-heading);margin-bottom:28px}.privacy-brand img{width:40px;height:40px}.privacy-card{background:#fff;border:1px solid #e3dfd6;border-radius:18px;padding:clamp(24px,5vw,48px);box-shadow:0 15px 45px rgba(35,45,35,.06)}h1,h2{font-family:var(--font-heading);line-height:1.2}h1{font-size:34px;margin:0 0 10px}h2{font-size:19px;margin:28px 0 7px}.privacy-lead{color:#666b62;margin:0 0 26px}.privacy-card p,.privacy-card li{font-size:14px}.privacy-card ul{padding-left:20px}.privacy-note{padding:14px 16px;border-radius:10px;background:#edf2e9;color:#315638}.privacy-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:30px}.privacy-actions a{padding:10px 15px;border-radius:999px;border:1px solid #bcc5b8;color:#294c32;text-decoration:none;font-weight:700;font-size:13px}.privacy-actions .primary{background:#4f7848;color:#fff;border-color:#4f7848}
+  </style>
+</head>
+<body><main class="privacy-shell">
+  <a class="privacy-brand" href="{% url 'ontrack' %}"><img src="{% static 'agent/images/ontrack-icon.png' %}" alt=""><span>OnTrack</span></a>
+  <article class="privacy-card">
+    <h1>Pilot privacy notice</h1>
+    <p class="privacy-lead">A plain-language summary of how the OnTrack pilot uses your information. Last updated August 31, 2026.</p>
+    <p class="privacy-note"><strong>The short version:</strong> OnTrack uses your school materials to build study help for you. It does not sell your data or use your course content for advertising.</p>
+    <h2>What OnTrack stores</h2>
+    <p>Your Google account identity, the courses and deadlines you add, uploaded notes and references, generated study materials, Cora conversations, study history, notification preferences, contact requests, and feedback you submit. Feedback sent with “Submit without attaching my account” is stored without your account or current page.</p>
+    <h2>How AI is used</h2>
+    <p>Text from materials you upload and prompts you send may be shared with the configured AI provider to extract course information and generate answers, plans, quizzes, and flashcards. Do not upload highly sensitive personal information or content you are not permitted to share.</p>
+    <h2>Google and email</h2>
+    <p>Google sign-in provides identity information. Calendar access is separate and optional. If you enable reminders, OnTrack sends at most one study-reminder email per day at the time and timezone you choose; you can disable it in Settings.</p>
+    <h2>Pilot measurement</h2>
+    <p>OnTrack records limited product events such as a study session starting or completing and an AI answer completing. Identified feedback may record a submission event; anonymous feedback does not. Events may include course ID, study mode, duration, or grounding status. They do not copy note text, uploaded material contents, questions, answers, feedback text, or Cora message text into the metrics table.</p>
+    <h2>Your choices</h2>
+    <ul><li>Disconnect optional Google Calendar access at any time.</li><li>Disable study emails or change their time in Settings.</li><li>Download your account data from Settings.</li><li>Delete your account and associated OnTrack data from Settings.</li></ul>
+    <h2>Pilot access and retention</h2>
+    <p>Only approved pilot accounts can sign in. Pilot operators may review operational logs and feedback to support the service. Backups are retained on a rolling basis for recovery and are removed as they age out.</p>
+    <h2>Questions</h2>
+    <p>Use “Send feedback” inside OnTrack or contact <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.</p>
+    <div class="privacy-actions">{% if user.is_authenticated %}<a class="primary" href="{% url 'settings-page' %}#privacy">Back to settings</a>{% else %}<a class="primary" href="{% url 'google-login' %}">Back to sign in</a>{% endif %}</div>
+  </article>
+</main></body></html>

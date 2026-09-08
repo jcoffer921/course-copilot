@@ -1,0 +1,54 @@
+{% extends "agent/app_base.html" %}
+
+{% block page_content %}
+<section class="analytics-page" data-api="/api/analytics/" data-export="/api/analytics/export/">
+  <header class="analytics-header">
+    <div><p class="analytics-kicker">Pilot</p><h1>Analytics</h1><p>Understand how your student pilot is using OnTrack.</p></div>
+    <a id="analytics-export" class="analytics-export" href="/api/analytics/export/?range=7d">↓ <span>Export per-student CSV</span></a>
+  </header>
+
+  <section class="analytics-context" aria-label="Pilot context">
+    <div class="analytics-pilot"><span class="analytics-round-icon">♙</span><div><strong>Student Pilot 2026</strong><span id="analytics-student-count">— students</span></div></div>
+    <div class="analytics-status">
+      <div><span><i class="pending"></i>Pending</span><strong id="status-pending">—</strong><small id="status-pending-percent">—</small></div>
+      <div><span><i class="active"></i>Active</span><strong id="status-active">—</strong><small id="status-active-percent">—</small></div>
+      <div><span><i class="suspended"></i>Suspended</span><strong id="status-suspended">—</strong><small id="status-suspended-percent">—</small></div>
+    </div>
+    <div class="analytics-range"><strong>Date range</strong><div role="group" aria-label="Analytics date range"><button class="selected" data-range="7d">7D</button><button data-range="30d">30D</button><button data-range="all">All</button></div></div>
+  </section>
+
+  <p class="analytics-exclusion">🔒 All metrics exclude your own activity.
+    <button type="button" aria-describedby="exclude-explanation">Why exclude me?</button>
+    <span id="exclude-explanation" role="tooltip">Your own use of OnTrack is excluded so that testing and dogfooding do not distort student pilot metrics.</span>
+  </p>
+
+  <div id="analytics-error" class="analytics-error" hidden><strong>Analytics could not be loaded.</strong><button type="button" id="analytics-retry">Try again</button></div>
+  <div id="analytics-loading" class="analytics-loading">Loading pilot activity…</div>
+
+  <div id="analytics-content" hidden>
+    <section class="analytics-metrics" aria-label="Pilot metrics">
+      <article><span class="analytics-round-icon">♙</span><div><h2>Active Students</h2><strong id="metric-active">—</strong><p id="metric-active-detail">—</p><small class="metric-period">This week</small></div></article>
+      <article><span class="analytics-round-icon">⌁</span><div><h2>Study Sessions</h2><strong id="metric-sessions">—</strong><p id="metric-sessions-detail">—</p><small class="metric-period">This week</small></div></article>
+      <article><span class="analytics-round-icon">?</span><div><h2>Questions Answered</h2><strong id="metric-questions">—</strong><p id="metric-questions-detail">—</p><small class="metric-period">This week</small></div></article>
+      <article><span class="analytics-round-icon">□</span><div><h2>Calendar Connected</h2><strong id="metric-calendar">—</strong><p id="metric-calendar-detail">—</p><small>Valid connections now</small></div></article>
+      <article><span class="analytics-round-icon">✦</span><div><h2>LLM Usage</h2><strong id="metric-llm">—</strong><p>student AI requests</p><small>Tokens and cost are not tracked</small></div></article>
+    </section>
+
+    <section class="analytics-visuals">
+      <article class="analytics-card"><header><h2>Active Students Over Time</h2><span>Daily</span></header><div id="active-chart" class="active-chart" aria-label="Daily active students line chart"></div></article>
+      <article class="analytics-card"><header><h2>Engagement by Feature</h2><span id="engagement-total">— events</span></header><div id="engagement-chart" class="engagement-chart"></div></article>
+    </section>
+
+    <section class="analytics-lower">
+      <article class="analytics-card analytics-courses"><header><h2>Course Activity</h2><span>Selected period</span></header><div class="analytics-table-wrap"><table><thead><tr><th>Course</th><th>Students active</th><th>Study sessions</th><th>Questions answered</th><th>Avg. first-attempt accuracy</th><th>Calendar connected</th></tr></thead><tbody id="course-rows"></tbody></table></div><p id="courses-empty" class="analytics-empty" hidden>No course activity in this period.</p></article>
+      <article class="analytics-card analytics-impact"><header><h2>Pilot Impact Metrics</h2><span>Evidence-gated</span></header>
+        <div class="impact-row"><span class="analytics-round-icon">◎</span><div><strong>Learning after resurfacing</strong><p id="impact-resurfacing">Not enough data yet</p></div></div>
+        <div class="impact-row"><span class="analytics-round-icon">□</span><div><strong>Calendar Connection Retention (7+ Days)</strong><p id="impact-calendar">Not enough data yet</p></div></div>
+        <div class="impact-row"><span class="analytics-round-icon">✓</span><div><strong>Syllabus Date Corrections</strong><p id="impact-syllabus">Not enough data yet</p></div></div>
+      </article>
+    </section>
+
+    <aside class="analytics-note"><span>♧</span><div><strong>Notes on small-cohort data</strong><p>With fewer than ~20 students, day-to-day changes can look noisy. Use 30D or All to identify broader patterns. Percentages show their denominator where ambiguity matters.</p></div><a href="{% url 'privacy-page' %}">Privacy &amp; data use</a></aside>
+  </div>
+</section>
+{% endblock %}

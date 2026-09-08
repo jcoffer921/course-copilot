@@ -1,0 +1,29 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div data-page-section="course-mastery" class="course-workspace course-learning-page" data-course-id="{{ course_id }}">
+  {% include "agent/partials/course_header.html" %}{% include "agent/partials/course_tabs.html" %}
+  <main>
+    <div id="course-mastery-status" class="course-workspace-status" role="status" aria-live="polite">Loading mastery…</div>
+    <div id="course-mastery-error" class="course-workspace-error" hidden><h2>Mastery couldn’t load</h2><p></p><button class="btn btn-secondary" type="button">Try again</button></div>
+    <div id="course-mastery-content" hidden>
+      <header class="learning-page-heading"><div><h1>Topic mastery</h1><p>See what you know and what needs review</p></div><div class="mastery-filters"><label>Filter topics<select id="mastery-filter"><option value="all">All topics</option><option value="needs_review">Needs review</option><option value="learning">Learning</option><option value="proficient">Proficient</option><option value="not_started">Not started</option><option value="at_risk">At risk</option><option value="exam_ready">Exam ready</option></select></label></div></header>
+      <section class="mastery-summary-grid">
+        <article class="learning-card mastery-overall"><div id="mastery-overall-ring" class="mastery-ring" role="progressbar" aria-label="Overall mastery" aria-valuemin="0" aria-valuemax="100"><strong id="mastery-overall-score">—</strong></div><div><strong id="mastery-overall-label">Not enough activity yet</strong><p>Based only on recorded study evidence</p></div></article>
+        <article class="learning-card"><span>Topics mastered</span><strong id="mastery-mastered-count" class="summary-number">0 of 0</strong></article>
+        <article class="learning-card"><span>Due for review</span><strong id="mastery-review-count" class="summary-number orange">0 topics</strong></article>
+        <article class="learning-card cora-recommendation"><span>Cora recommends</span><strong id="mastery-rec-topic">No recommendation yet</strong><p id="mastery-rec-reason"></p><a id="mastery-study-link" class="btn btn-primary" href="{% url 'course-study-page' course_id=course_id %}">Study this topic</a><button id="mastery-cora-insight-btn" class="btn btn-secondary" type="button">Ask Cora to explain</button><p id="mastery-cora-insight" hidden></p></article>
+      </section>
+      <section class="mastery-main-grid">
+        <div>
+          <article class="learning-card"><h2>Mastery by topic</h2><div class="mastery-table-head"><span>Topic</span><span>Status</span><span>Mastery</span><span>Score</span></div><div id="mastery-topic-list"></div></article>
+          <article class="learning-card mastery-evidence"><h2>Recent evidence</h2><div id="mastery-evidence-list"><p>Complete study activities to build traceable evidence.</p></div><button id="mastery-rebuild" class="btn btn-secondary" type="button">Rebuild from activity</button></article>
+        </div>
+        <div>
+          <article class="learning-card mastery-trend"><h2>Progress over time</h2><div class="trend-empty" role="img" aria-label="No supported mastery trend is available yet">Complete more study activities to see your trend.</div></article>
+          <article class="learning-card"><h2>Why these scores?</h2><p>Scores use quiz correctness, flashcard ratings, study recency, and attempt count. They are estimates rebuilt from recorded activity.</p><div class="evidence-stats"><div><span>Scored topics</span><strong id="mastery-scored-topics">0</strong></div><div><span>Total attempts</span><strong id="mastery-attempts">0</strong></div><div><span>Last activity</span><strong id="mastery-last-activity">—</strong></div></div></article>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+{% endblock %}

@@ -1,0 +1,32 @@
+{% extends "agent/app_base.html" %}
+{% load static %}
+{% block page_content %}
+<div data-page-section="dashboard" class="dash-page" data-calendar-url="{% url 'calendar-page' %}" data-courses-url="{% url 'courses-page' %}" data-cora-url="{% url 'cora-page' %}" data-study-url="{% url 'study-page' %}" data-first-name="{{ first_name }}" data-timezone="{{ dashboard_timezone }}">
+  <header class="dash-header">
+    <div class="dash-welcome"><span class="dash-sun" aria-hidden="true">☀</span><div><h1 id="dash-greeting">{{ dashboard_greeting }}, {{ first_name }}</h1><p>Here’s what matters today.</p></div></div>
+    <div class="dash-header-actions"><span class="dash-user-avatar" aria-label="Signed in as {{ display_name }}">{{ user_initials }}</span></div>
+  </header>
+  <div id="dash-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
+  <div id="dash-loading" class="shared-state" role="status">Loading your dashboard…</div>
+  <div id="dash-error" class="shared-state shared-state-error" hidden><h2>Couldn’t load your dashboard</h2><p></p><button id="dash-retry" class="btn btn-secondary" type="button">Try again</button></div>
+
+  <div id="dash-content" hidden>
+    <section class="dash-stat-row" aria-label="Today at a glance">
+      <article class="dash-stat-card"><span class="dash-stat-icon dash-stat-icon-deadline" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-calendar"/></svg></span><div class="dash-stat-body"><p class="dash-stat-label">Next deadline</p><a id="dash-next-deadline-link" class="dash-stat-title" href="{% url 'calendar-page' %}">Nothing due soon</a><p id="dash-next-deadline-course" class="dash-stat-course" hidden></p><p id="dash-next-deadline-when" class="dash-stat-when"></p></div></article>
+      <article class="dash-stat-card dash-stat-card-exam"><span class="dash-stat-icon dash-stat-icon-exam" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-pencil"/></svg></span><div class="dash-stat-body"><p class="dash-stat-label">Next exam</p><a id="dash-next-exam-link" class="dash-stat-title" href="{% url 'calendar-page' %}">No exam scheduled</a><p id="dash-next-exam-course" class="dash-stat-course" hidden></p><p id="dash-next-exam-when" class="dash-stat-when"></p></div></article>
+      <article class="dash-stat-card"><span class="dash-stat-icon dash-stat-icon-streak" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-flame"/></svg></span><div class="dash-stat-body"><p class="dash-stat-label">Study streak</p><p id="dash-streak-title" class="dash-stat-title">0 days</p><p id="dash-streak-sub" class="dash-stat-when">Start today</p><div id="dash-streak-week" class="dash-streak-week" aria-label="This week’s study activity"></div></div></article>
+    </section>
+
+    <section class="dash-grid-top">
+      <article class="card dash-plan-card"><div class="materials-section-heading"><div class="dash-section-title"><span aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-check"/></svg></span><h2>Today’s plan</h2></div><a href="{% url 'calendar-page' %}" class="dash-small-button">View full plan</a></div><ul id="dash-plan-list" class="dash-plan-list"></ul><p id="dash-plan-empty" class="dash-empty" hidden>Nothing urgent today — nice work.</p><a href="{% url 'calendar-page' %}" class="dash-add-task">✦ Add a task</a></article>
+      <article class="card dash-cora-card"><div class="dash-cora-card-header"><span class="dash-cora-avatar" aria-hidden="true">✦</span><h2>Recommended by Cora</h2><span id="dash-recommendation-badge" class="dash-cora-badge" hidden>Best next step</span></div><div class="dash-recommendation-layout"><div id="dash-recommendation-evidence" class="recommendation-evidence" hidden><span class="recommendation-evidence-label">Course evidence</span><div id="dash-recommendation-sources" class="recommendation-sources"></div></div><div><div id="dash-recommendation-body"><h3 id="dash-recommendation-title"></h3><p id="dash-recommendation-reason"></p></div><p id="dash-recommendation-empty" class="dash-empty" hidden>No evidence-backed recommendations yet. Upload a PDF, DOCX, or PPTX to help Cora find your next step.</p><div id="dash-recommendation-actions" class="dash-cora-actions" hidden><a id="dash-recommendation-start" class="btn btn-primary" href="#">Start this task</a><button id="dash-recommendation-why" class="dash-link" type="button" aria-expanded="false" aria-controls="dash-recommendation-facts">Why this?</button><button id="dash-recommendation-dismiss" class="dash-link" type="button">Dismiss</button></div><p id="dash-recommendation-facts" class="material-meta" hidden></p></div></div></article>
+    </section>
+
+    <section class="dash-grid-bottom">
+      <article class="card dash-courses-section"><div class="materials-section-heading"><h2>Your courses</h2><a href="{% url 'courses-page' %}" class="dash-small-button">View all courses</a></div><div id="dash-courses-grid" class="dash-courses-grid"></div><div id="dash-courses-empty" class="dash-new-account" hidden><h3>Welcome to OnTrack</h3><p>Add your first course and upload a syllabus to build your dashboard.</p><a class="btn btn-primary" href="{% url 'courses-page' %}">Add your first course</a></div></article>
+      <article class="card dash-deadlines-card"><div class="materials-section-heading"><h2>Upcoming deadlines</h2><a href="{% url 'calendar-page' %}" class="dash-small-button">View calendar</a></div><div id="dash-deadlines-list" class="dash-deadlines-list"></div><p id="dash-deadlines-empty" class="dash-empty" hidden>Nothing in the next two weeks.</p></article>
+      <article class="card dash-cora-quick-card"><div class="dash-cora-quick-header"><span class="dash-cora-avatar" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-chat"/></svg></span><h2>Cora</h2></div><img src="{% static 'agent/images/cora-dashboard.png' %}" alt="Cora, OnTrack’s academic assistant" class="dash-cora-quick-image"><p class="dash-cora-greeting">Hi {{ first_name }}! I’m Cora.<br>How can I help you today?</p><form id="dash-cora-form" class="dash-cora-form"><label for="dash-cora-input" class="sr-only">Ask Cora a question</label><input id="dash-cora-input" class="input" type="text" placeholder="Ask Cora anything…" autocomplete="off" maxlength="500"><button class="dash-cora-send" type="submit" aria-label="Ask Cora"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-send"/></svg></button></form></article>
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · OnTrack</title>
+  <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+  {% if not modern_shell %}<script src="{% static 'agent/js/core/controller.js' %}"></script>{% endif %}
+  {% if not modern_shell %}<script src="{% static 'agent/support.js' %}"></script>{% endif %}
+  {% if modern_shell %}
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'agent/css/app.css' %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}">
+  {% if page_name == "analytics" %}<link rel="stylesheet" href="{% static 'agent/css/analytics.css' %}?v=20260902-1">{% endif %}
+  {% if page_name == "practice-quiz-setup" or page_name == "practice-attempt" or page_name == "interactive-flashcards" %}<link rel="stylesheet" href="{% static 'agent/css/interactive_study.css' %}?v={{ page_asset_version }}">{% endif %}
+  {% if page_name == "study" and initial_tab == "session" %}<link rel="stylesheet" href="{% static 'agent/css/guided_study.css' %}">{% endif %}
+  {% endif %}
+  {% if page_name != "calendar" %}<link rel="stylesheet" href="{% static 'agent/css/notifications.css' %}?v=20260902-1">{% endif %}
+  <script>
+    window.CURRENT_USER_EMAIL = "{{ user.email|escapejs }}";
+    window.CURRENT_USER_NAME = "{{ user.get_full_name|default:user.first_name|default:user.email|escapejs }}";
+    window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
+    window.ONTRACK_PAGE_NAME = "{{ page_name|escapejs }}";
+    window.ONTRACK_INITIAL_TAB = "{{ initial_tab|escapejs }}";
+    window.ONTRACK_INITIAL_COURSE = "{{ initial_course_id|default:'all'|escapejs }}";
+    window.ONTRACK_INITIAL_TOPIC = "{{ initial_topic|default:''|escapejs }}";
+    window.ONTRACK_INITIAL_QUESTION = "{{ initial_question|default:''|escapejs }}";
+    window.ONTRACK_QUIZ_ID = "{{ quiz_id|default:''|escapejs }}";
+    window.ONTRACK_ATTEMPT_ID = "{{ attempt_id|default:''|escapejs }}";
+    window.ONTRACK_DECK_ID = "{{ deck_id|default:''|escapejs }}";
+  </script>
+  <script type="module" src="{% static page_script %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}"></script>
+</head>
+<body data-page="{{ page_name }}">
+  {% csrf_token %}
+  {% include "agent/partials/icon_symbols.html" %}
+  <x-dc>
+    {% if not modern_shell %}
+    <helmet>
+      <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+      <link rel="stylesheet" href="{% static 'agent/css/app.css' %}">
+      <script src="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/_ds_bundle.js' %}"></script>
+    </helmet>
+    {% endif %}
+
+    <div class="app-shell">
+      {% include "agent/partials/sidebar.html" %}
+      <div class="app-main">
+        {% include "agent/partials/topbar.html" %}
+        {% if page_name != "calendar" %}{% include "agent/partials/notifications_center.html" %}{% endif %}
+        <main id="main-content" class="app-content" tabindex="-1">
+          {% block page_content %}{% endblock %}
+        </main>
+      </div>
+      {% if not modern_shell %}{% include "agent/partials/app_overlays.html" %}{% endif %}
+      {% include "agent/partials/toast_region.html" %}
+    </div>
+  </x-dc>
+  {% include "agent/partials/action_dialog.html" %}
+  {% if not modern_shell %}<script type="text/x-dc" data-dc-script>
+{% include "agent/partials/app_logic.html" %}
+  </script>{% endif %}
+  <script type="module" src="{% static 'agent/js/core/dialogs.js' %}?v=20260901-1"></script>
+  {% if page_name != "calendar" %}<script type="module" src="{% static 'agent/js/core/notifications.js' %}?v=20260902-1"></script>{% endif %}
+</body>
+</html>
