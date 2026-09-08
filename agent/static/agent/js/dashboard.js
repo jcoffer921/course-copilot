@@ -7,8 +7,10 @@ const byId = id => document.getElementById(id);
 const root = document.querySelector("[data-page-section='dashboard']");
 const routes = { calendar: root?.dataset.calendarUrl || "/calendar/", courses: root?.dataset.coursesUrl || "/courses/", cora: root?.dataset.coraUrl || "/cora/", study: root?.dataset.studyUrl || "/study/" };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const state = { currentRecommendation: null, notificationsBusy: false };
-const ui = { loadingHidden: false, errorHidden: true, contentHidden: true, alertHidden: true, alertText: "", alertIsError: false, recommendationBadgeHidden: true, recommendationEmptyHidden: true, recommendationActionsHidden: true, recommendationFactsHidden: true, planEmptyHidden: true, coursesEmptyHidden: true, deadlinesEmptyHidden: true, notificationOpen: false };
+const DASHBOARD_COURSE_LIMIT = 3;
+const DASHBOARD_DEADLINE_LIMIT = 3;
+const state = { currentRecommendation: null };
+const ui = { loadingHidden: false, errorHidden: true, contentHidden: true, alertHidden: true, alertText: "", alertIsError: false, recommendationBadgeHidden: true, recommendationEmptyHidden: true, recommendationActionsHidden: true, recommendationFactsHidden: true, planEmptyHidden: true, coursesEmptyHidden: true, deadlinesEmptyHidden: true };
 
 function errorMessage(error) {
   if (error?.data && typeof error.data === "object") {
@@ -56,9 +58,6 @@ function enforceUi() {
   set("dash-recommendation-badge", ui.recommendationBadgeHidden); set("dash-recommendation-empty", ui.recommendationEmptyHidden);
   set("dash-recommendation-actions", ui.recommendationActionsHidden); set("dash-recommendation-facts", ui.recommendationFactsHidden);
   set("dash-plan-empty", ui.planEmptyHidden); set("dash-courses-empty", ui.coursesEmptyHidden); set("dash-deadlines-empty", ui.deadlinesEmptyHidden);
-  set("dash-notification-popover", !ui.notificationOpen);
-  const notificationToggle = byId("dash-notification-toggle");
-  if (notificationToggle) { notificationToggle.setAttribute("aria-expanded", String(ui.notificationOpen)); notificationToggle.setAttribute("aria-label", ui.notificationOpen ? "Close notifications" : "Open notifications"); }
   const alert = byId("dash-alert"); if (alert) { alert.hidden = ui.alertHidden; alert.textContent = ui.alertText; alert.classList.toggle("error", ui.alertIsError); }
 }
 function showAlert(message, isError = false) { ui.alertHidden = false; ui.alertText = message; ui.alertIsError = isError; enforceUi(); }
@@ -123,7 +122,7 @@ function renderRecommendation(rec) {
 }
 function renderCourses(data) {
   const entries = Object.entries(data.courses || {}).filter(([, item]) => !item.error); ui.coursesEmptyHidden = !!(entries.length || data.drafts?.length);
-  byId("dash-courses-grid").replaceChildren(...entries.slice(0, 4).map(([courseId, summary]) => {
+  byId("dash-courses-grid").replaceChildren(...entries.slice(0, DASHBOARD_COURSE_LIMIT).map(([courseId, summary]) => {
     const card = document.createElement("article"); card.className = "dash-course-card";
     const main = document.createElement("a"); main.className = "dash-course-main"; main.href = `/courses/${encodeURIComponent(courseId)}/materials/`;
     const head = document.createElement("div"); head.className = "dash-course-head";
@@ -143,7 +142,7 @@ function renderCourses(data) {
   }));
 }
 function renderDeadlines(data) {
-  const items = (data.deadlines || []).slice(0, 4); ui.deadlinesEmptyHidden = !!items.length;
+  const items = (data.deadlines || []).slice(0, DASHBOARD_DEADLINE_LIMIT); ui.deadlinesEmptyHidden = !!items.length;
   byId("dash-deadlines-list").replaceChildren(...items.map(item => {
     const row = document.createElement("a"); row.className = "dash-deadline-row"; row.href = routes.calendar;
     const icon = document.createElement("span"); icon.className = "dash-deadline-icon"; icon.style.setProperty("--course-color", item.course_color || "#557c48"); icon.append(svgIcon("calendar"));
@@ -154,39 +153,6 @@ function renderDeadlines(data) {
     const relativeLine = document.createElement("div"); relativeLine.className = "material-meta"; relativeLine.textContent = daysUntilLabel(item.date);
     when.append(dateLine, relativeLine); row.append(icon, body, when); return row;
   }));
-}
-function renderNotifications(data) {
-  const badge = byId("dash-notification-badge"); badge.textContent = data.unread_count > 9 ? "9+" : String(data.unread_count || ""); badge.hidden = !data.unread_count;
-  const items = data.notifications || [];
-  byId("dash-notification-summary").textContent = data.unread_count ? `${data.unread_count} unread update${data.unread_count === 1 ? "" : "s"}` : "You’re all caught up";
-  byId("dash-notifications-read").hidden = !data.unread_count;
-  byId("dash-notifications-list").replaceChildren(...items.map(item => {
-    const li = document.createElement("li"); if (!item.read) li.classList.add("unread");
-    const icon = document.createElement("span"); icon.className = "dash-notification-item-icon"; icon.append(svgIcon(item.kind === "cora_message" ? "cora" : item.kind === "study_reminder" ? "study" : "calendar"));
-    const copy = document.createElement("div"); copy.className = "dash-notification-copy";
-    const title = document.createElement("strong"); title.textContent = item.title; const body = document.createElement("span"); body.textContent = item.body;
-    const meta = document.createElement("small"); meta.textContent = item.due_date ? `Due ${formatDateShort(item.due_date)} · ${daysUntilLabel(item.due_date)}` : item.kind === "cora_message" ? "Cora message" : item.kind === "study_reminder" ? "Study reminder" : "OnTrack update";
-    const view = document.createElement("a"); view.className = "dash-notification-view"; view.href = item.action_url || routes.calendar; view.textContent = item.kind === "cora_message" ? "Open conversation" : item.kind === "study_reminder" ? "Start studying" : "View in calendar"; copy.append(title, body, meta, view); li.append(icon, copy);
-    if (!item.read) { const read = document.createElement("button"); read.type = "button"; read.className = "dash-notification-read-one"; read.dataset.notificationId = item.id; read.setAttribute("aria-label", `Mark ${item.title} as read`); read.textContent = "Mark read"; li.append(read); }
-    return li;
-  }));
-  const status = byId("dash-notifications-status"); status.replaceChildren(); status.hidden = !!items.length;
-  if (!items.length) { status.append(svgIcon("check"), document.createTextNode("No new notifications. You’re all caught up.")); }
-}
-async function loadNotifications() {
-  try { renderNotifications(await apiRequest("/api/notifications/")); }
-  catch { const status = byId("dash-notifications-status"); status.hidden = false; status.textContent = "Notifications aren’t available right now. Try again in a moment."; }
-}
-function setNotificationOpen(open, restoreFocus = true) {
-  const toggle = byId("dash-notification-toggle"); ui.notificationOpen = open; enforceUi();
-  if (open) byId("dash-notification-close").focus(); else if (restoreFocus) toggle.focus();
-}
-async function markNotificationsRead(ids, button) {
-  if (state.notificationsBusy) return; state.notificationsBusy = true;
-  if (button) button.disabled = true;
-  try { renderNotifications(await apiRequest("/api/notifications/read/", { method: "PATCH", body: JSON.stringify(ids ? { ids } : {}) })); }
-  catch { showAlert("Couldn’t update notifications. Please try again.", true); if (button) button.disabled = false; }
-  finally { state.notificationsBusy = false; }
 }
 async function loadDashboard({ quiet = false } = {}) {
   if (!quiet) { ui.loadingHidden = false; ui.errorHidden = true; ui.contentHidden = true; enforceUi(); }
@@ -204,14 +170,8 @@ function bind() {
     const target = event.target; if (target.closest("#dash-retry")) return loadDashboard();
     if (target.closest("#dash-recommendation-why")) { ui.recommendationFactsHidden = !ui.recommendationFactsHidden; target.closest("#dash-recommendation-why").setAttribute("aria-expanded", String(!ui.recommendationFactsHidden)); return enforceUi(); }
     if (target.closest("#dash-recommendation-dismiss")) return dismissRecommendation();
-    if (target.closest("#dash-notification-toggle")) return setNotificationOpen(!ui.notificationOpen);
-    if (target.closest("#dash-notification-close")) return setNotificationOpen(false);
-    if (target.closest("#dash-notifications-read")) return markNotificationsRead(null, target.closest("#dash-notifications-read"));
-    const readOne = target.closest("[data-notification-id]"); if (readOne) return markNotificationsRead([Number(readOne.dataset.notificationId)], readOne);
-    if (!target.closest("#dash-notification-popover") && ui.notificationOpen) setNotificationOpen(false, false);
   });
-  document.addEventListener("keydown", event => { if (event.key === "Escape" && ui.notificationOpen) setNotificationOpen(false); });
   document.addEventListener("submit", event => { if (event.target.id !== "dash-cora-form") return; event.preventDefault(); const question = byId("dash-cora-input").value.trim(); if (question) window.location.assign(`${routes.cora}?q=${encodeURIComponent(question)}`); });
 }
 
-if (root) { bind(); updateGreeting(); loadDashboard(); loadNotifications(); window.setInterval(enforceUi, 400); window.setInterval(updateGreeting, 60_000); [900, 1800].forEach(delay => window.setTimeout(() => loadDashboard({ quiet: true }), delay)); }
+if (root) { bind(); updateGreeting(); loadDashboard(); window.setInterval(enforceUi, 400); window.setInterval(updateGreeting, 60_000); [900, 1800].forEach(delay => window.setTimeout(() => loadDashboard({ quiet: true }), delay)); }

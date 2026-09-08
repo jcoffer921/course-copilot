@@ -48,6 +48,14 @@ def _recent_activity(user, course_names: dict[str, str]) -> list[dict]:
     ]
 
 
+def _calendar_connected(user) -> bool:
+    return (
+        hasattr(user, "google_calendar_connection")
+        and bool(user.google_calendar_connection.refresh_token)
+        and user.google_calendar_connection.grant_failed_at is None
+    )
+
+
 def build_profile(user) -> dict:
     settings_row, _ = UserSettings.objects.get_or_create(user=user)
     material_totals = CourseMaterial.objects.filter(user=user).aggregate(
@@ -83,10 +91,13 @@ def build_profile(user) -> dict:
         "notifications_enabled": settings_row.notifications_enabled,
         "email_notifications_enabled": settings_row.email_notifications_enabled,
         "google_identity_connected": hasattr(user, "google_account"),
-        "calendar_connected": (
-            hasattr(user, "google_calendar_connection")
-            and bool(user.google_calendar_connection.refresh_token)
-            and user.google_calendar_connection.grant_failed_at is None
+        "calendar_connected": _calendar_connected(user),
+        # True only when a connection was made before and has since stopped
+        # working (grant revoked/expired) — distinct from never having
+        # connected at all, so the UI can say "reconnect" instead of
+        # "connect" and not read as OnTrack having silently lost data.
+        "calendar_connection_lapsed": (
+            hasattr(user, "google_calendar_connection") and not _calendar_connected(user)
         ),
         "timezone": settings_row.timezone,
         "preferred_session_minutes": settings_row.preferred_session_minutes,

@@ -40,9 +40,9 @@ class _FakeClient:
         self.messages = _FakeMessages(response)
 
 
-def _seed_lecture(course_id, user, lecture_id="lecture-1", text="Recursion breaks a problem into smaller versions of itself."):
+def _seed_lecture(course_id, user, lecture_id="lecture-1", text="Recursion breaks a problem into smaller versions of itself.", lecture_date=None):
     storage.write_notes(course_id, lecture_id, {
-        "lecture_id": lecture_id, "source": "notes", "topics": ["Recursion"],
+        "lecture_id": lecture_id, "source": "notes", "date": lecture_date, "topics": ["Recursion"],
         "chunks": [{"id": "chunk-1", "topic": "Recursion", "text": text}],
     }, user)
 
@@ -112,6 +112,19 @@ async def test_no_target_given_falls_back_to_most_recent_lecture(monkeypatch, dj
     result = await document_summarizer.summarize("cs101", depth="quick", user=user)
 
     assert result["source_id"] == "lecture-2"
+
+
+async def test_lecture_date_selects_matching_notes_instead_of_latest_filename(monkeypatch, django_user_model, isolated_courses_dir):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="dated-lecture-owner")
+    _seed_lecture("cs101", user, lecture_id="lecture-today", text="Today's graph lesson.", lecture_date="2026-09-04")
+    _seed_lecture("cs101", user, lecture_id="z-older", text="An older recursion lesson.", lecture_date="2026-09-01")
+    fake = _FakeClient(_FakeResponse(json.dumps({"summary": "- Graph lesson recap."})))
+    monkeypatch.setattr(document_summarizer, "get_client", lambda: fake)
+
+    result = await document_summarizer.summarize("cs101", lecture_date="2026-09-04", depth="quick", user=user)
+
+    assert result["source_id"] == "lecture-today"
+    assert "Today's graph lesson." in fake.messages.calls[0]["messages"][0]["content"]
 
 
 async def test_raises_when_course_has_no_notes_or_references(django_user_model, isolated_courses_dir):

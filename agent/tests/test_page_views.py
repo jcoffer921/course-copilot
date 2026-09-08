@@ -295,7 +295,7 @@ def test_dashboard_renders_all_mockup_sections(client, django_user_model):
         'id="dash-next-deadline-link"', 'id="dash-next-exam-link"', 'id="dash-streak-week"',
         'id="dash-plan-list"', 'id="dash-recommendation-title"', 'id="dash-recommendation-start"',
         'id="dash-courses-grid"', 'id="dash-deadlines-list"', 'id="dash-cora-form"',
-        'id="dash-notification-toggle"', 'id="dash-notification-popover"', 'id="dash-courses-empty"',
+        'id="site-notification-toggle"', 'id="site-notification-popover"', 'id="dash-courses-empty"',
     ):
         assert hook in html
     assert ", Jason</h1>" in html
@@ -306,6 +306,16 @@ def test_dashboard_renders_all_mockup_sections(client, django_user_model):
     assert "▣" not in html
     assert "♨" not in html
     assert 'src="/static/agent/js/dashboard.js"' in html
+
+
+def test_dashboard_caps_courses_and_deadlines_at_three_cards():
+    root = Path(__file__).resolve().parents[2]
+    controller = (root / "agent/static/agent/js/dashboard.js").read_text(encoding="utf-8")
+
+    assert "const DASHBOARD_COURSE_LIMIT = 3;" in controller
+    assert "entries.slice(0, DASHBOARD_COURSE_LIMIT)" in controller
+    assert "const DASHBOARD_DEADLINE_LIMIT = 3;" in controller
+    assert "(data.deadlines || []).slice(0, DASHBOARD_DEADLINE_LIMIT)" in controller
 
 
 @pytest.mark.django_db

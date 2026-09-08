@@ -104,6 +104,10 @@ export ALLOWED_GOOGLE_EMAILS=you@example.com,teammate@example.com
 # flag. Must match the email of a User who has signed in at least once.
 export CLI_OWNER_EMAIL=you@example.com
 
+# Exactly one active account may view the private pilot analytics page, API,
+# and per-student CSV export. Defaults to CLI_OWNER_EMAIL when omitted.
+export ONTRACK_PILOT_OWNER_EMAIL=you@example.com
+
 # Optional material-processing bounds (defaults shown).
 export ONTRACK_MAX_UPLOAD_BYTES=10485760
 export ONTRACK_MATERIAL_PROCESSING_TIMEOUT_SECONDS=90

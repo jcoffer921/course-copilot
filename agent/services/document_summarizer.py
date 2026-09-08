@@ -62,7 +62,9 @@ def _chunk_text(note: dict) -> str:
     return "\n\n".join(str(chunk.get("text", "")) for chunk in note.get("chunks", []))
 
 
-def _resolve_target(course_id: str, lecture_id: str, reference_id: str, user) -> tuple[str, str, str]:
+def _resolve_target(
+    course_id: str, lecture_id: str, reference_id: str, lecture_date: str, user,
+) -> tuple[str, str, str]:
     """Returns (source_id, title, text). source_id is the exact lecture_id/
     reference_id a caller can cite (via citations.py) — distinct from
     "title", which is only for display and isn't always the same string
@@ -82,6 +84,11 @@ def _resolve_target(course_id: str, lecture_id: str, reference_id: str, user) ->
     # Neither given — "summarize today's lecture" with no explicit target
     # falls back to the most recently added lecture's notes.
     notes = storage.read_notes(course_id, user)
+    if lecture_date:
+        dated_note = next((note for note in notes if note.get("date") == lecture_date), None)
+        if dated_note:
+            dated_id = dated_note.get("lecture_id", "dated lecture")
+            return dated_id, dated_id, _chunk_text(dated_note)
     if notes:
         latest = notes[-1]
         latest_id = latest.get("lecture_id", "latest lecture")
@@ -91,9 +98,12 @@ def _resolve_target(course_id: str, lecture_id: str, reference_id: str, user) ->
 
 
 async def summarize(
-    course_id: str, lecture_id: str = None, reference_id: str = None, depth: str = "quick", user=None,
+    course_id: str, lecture_id: str = None, reference_id: str = None,
+    lecture_date: str = None, depth: str = "quick", user=None,
 ) -> dict:
-    source_id, title, text = await sync_to_async(_resolve_target)(course_id, lecture_id, reference_id, user)
+    source_id, title, text = await sync_to_async(_resolve_target)(
+        course_id, lecture_id, reference_id, lecture_date, user,
+    )
     if not text.strip():
         raise NoTargetDocumentError(f"'{title}' has no text content to summarize")
 

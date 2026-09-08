@@ -99,11 +99,21 @@ function fill(data) {
     $("google-identity-state").textContent = data.google_identity_connected ? "Connected" : "Not connected";
     $("google-identity-state").classList.toggle("connected", data.google_identity_connected);
   }
+  // Deadlines always live in OnTrack regardless of this connection — Google
+  // Calendar is an optional mirror of them. "Needs reconnecting" (grant
+  // failed after a prior connection) reads very differently from "Not
+  // connected" (never set up) — collapsing them into one status made a
+  // routine re-consent look like OnTrack losing something.
   if ($("calendar-state")) {
-    $("calendar-state").textContent = data.calendar_connected ? "Connected" : "Not connected";
+    $("calendar-state").textContent = data.calendar_connected
+      ? "Connected"
+      : data.calendar_connection_lapsed ? "Needs reconnecting" : "Not connected";
     $("calendar-state").classList.toggle("connected", data.calendar_connected);
   }
-  if ($("calendar-connect")) $("calendar-connect").hidden = data.calendar_connected;
+  if ($("calendar-connect")) {
+    $("calendar-connect").hidden = data.calendar_connected;
+    $("calendar-connect").textContent = data.calendar_connection_lapsed ? "Reconnect" : "Connect";
+  }
   if ($("calendar-disconnect")) $("calendar-disconnect").hidden = !data.calendar_connected;
   snapshot = relevantState();
   updateDirtyState();

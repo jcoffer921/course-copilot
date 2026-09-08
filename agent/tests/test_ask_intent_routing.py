@@ -253,6 +253,56 @@ async def test_document_summary_intent_dispatches(monkeypatch, django_user_model
     assert result["sources"]
 
 
+@pytest.mark.parametrize(("question", "expected_depth"), [
+    ("what was todays lesosn about", "quick"),
+    ("what was todayâ€™s lesson about", "quick"),
+    ("let's review today's lesson", "deep"),
+    ("what did we cover in class today?", "quick"),
+])
+async def test_today_lesson_phrasing_bypasses_classifier_and_uses_today_notes(
+    monkeypatch, django_user_model, isolated_courses_dir, question, expected_depth,
+):
+    user = await sync_to_async(django_user_model.objects.create_user)(username=f"today-lesson-{abs(hash(question))}")
+    await sync_to_async(_seed_course)("cs101", user)
+    today = ask.date.today().isoformat()
+    storage.write_notes("cs101", "today-lesson", {
+        "lecture_id": "today-lesson", "source": "notes", "date": today, "topics": ["Recursion"],
+        "chunks": [{"id": "today-1", "topic": "Recursion", "text": "Today's lesson covered recursive base cases."}],
+    }, user)
+    storage.write_notes("cs101", "z-older-lesson", {
+        "lecture_id": "z-older-lesson", "source": "notes", "date": "2026-01-01", "topics": ["Loops"],
+        "chunks": [{"id": "old-1", "topic": "Loops", "text": "An older lesson covered loops."}],
+    }, user)
+
+    async def fail_if_classified(*args, **kwargs):
+        raise AssertionError("today-lesson requests should bypass probabilistic intent classification")
+
+    summary_calls = []
+
+    async def summarize_today(course_id, **kwargs):
+        summary_calls.append((course_id, kwargs))
+        if kwargs["depth"] == "deep":
+            return {
+                "source_id": "today-lesson", "title": "today-lesson", "depth": "deep",
+                "key_concepts": ["Recursive base cases"], "definitions": [],
+                "relationships": [], "likely_testable": [],
+            }
+        return {
+            "source_id": "today-lesson", "title": "today-lesson", "depth": "quick",
+            "summary": "- Recursive base cases.",
+        }
+
+    monkeypatch.setattr(intent_router, "classify", fail_if_classified)
+    monkeypatch.setattr(ask, "get_client", lambda: _SequencedClient([_text_response("unused")]))
+    monkeypatch.setattr(document_summarizer, "summarize", summarize_today)
+
+    result = await ask.ask_async("cs101", question, user=user)
+
+    assert result["grounded"] is True
+    assert result["sources"][0]["lecture_id"] == "today-lesson"
+    assert summary_calls == [("cs101", {"lecture_date": today, "depth": expected_depth, "user": user})]
+
+
 async def test_quiz_or_flashcards_intent_dispatches_flashcards(monkeypatch, django_user_model, isolated_courses_dir):
     user = await sync_to_async(django_user_model.objects.create_user)(username="flashcard-dispatch-owner")
     await sync_to_async(_seed_course)("cs101", user)

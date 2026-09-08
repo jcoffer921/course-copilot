@@ -866,6 +866,80 @@ async def test_preamble_text_without_tool_use_is_still_parsed(isolated_courses_d
 
 
 @pytest.mark.django_db
+async def test_pure_prose_reply_with_no_json_falls_back_to_ungrounded_answer(
+    isolated_courses_dir, monkeypatch, django_user_model,
+):
+    # Reproduces a live failure (previously a 502 from AskView) where the
+    # model dropped the JSON envelope entirely and answered a decline (e.g.
+    # a direct "add this to my calendar" chat ask) in plain prose with no
+    # '{' anywhere in the output. This must not raise — it should surface as
+    # an ungrounded answer rather than failing the whole request.
+    user = await sync_to_async(django_user_model.objects.create_user)(username="pure-prose-no-json")
+    _seed_course("testcourse", user)
+    canned = (
+        "I don't have the ability to actually create or modify calendar "
+        "entries directly. What I can do is help you with course material, "
+        "deadlines, and grading."
+    )
+    fake_client = _FakeClient(_FakeResponse(canned))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "can you manage my calendar for me?", user=user)
+
+    assert result["answer"] == canned
+    assert result["grounded"] is False
+    assert result["sources"] == []
+
+
+@pytest.mark.django_db
+async def test_malformed_json_falls_back_to_ungrounded_answer_instead_of_raising(
+    isolated_courses_dir, monkeypatch, django_user_model,
+):
+    # Unlike the pure-prose case above, this reply DOES attempt JSON but
+    # botches it (truncated mid-string) — _parse_json_response's brace-search
+    # finds a '{' and fails to decode it, which used to propagate out of
+    # ask_async as a ValueError (-> AskView's 502). A missing OR malformed
+    # envelope should both be recoverable, not just the missing case.
+    user = await sync_to_async(django_user_model.objects.create_user)(username="malformed-json")
+    _seed_course("testcourse", user)
+    canned = 'Sure, here you go: {"answer": "partial answer that never closes properly'
+    fake_client = _FakeClient(_FakeResponse(canned))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    result = await ask.ask_async("testcourse", "what's my grade breakdown?", user=user)
+
+    assert result["answer"] == canned
+    assert result["grounded"] is False
+    assert result["sources"] == []
+
+
+@pytest.mark.django_db
+async def test_calendar_flavored_fallback_answer_logs_a_classifier_miss(
+    isolated_courses_dir, monkeypatch, django_user_model, caplog,
+):
+    # _looks_like_deadline_request didn't route this one to the proposal
+    # flow, yet the model's own ungrounded answer talks about the calendar
+    # anyway — this should be logged so real missed phrasings can be found
+    # from pilot data instead of guessed at via more regex patterns.
+    import logging as logging_module
+
+    user = await sync_to_async(django_user_model.objects.create_user)(username="calendar-miss-logging")
+    _seed_course("testcourse", user)
+    canned = (
+        '{"answer": "I can draft that calendar change for you to review — just tell me '
+        'the title, date, and time.", "grounded": false, "sources": []}'
+    )
+    fake_client = _FakeClient(_FakeResponse(canned))
+    monkeypatch.setattr(ask, "get_client", lambda: fake_client)
+
+    with caplog.at_level(logging_module.INFO, logger="agent.services.ask"):
+        result = await ask.ask_async("testcourse", "can you manage my calendar for me?", user=user)
+
+    assert result["grounded"] is False
+    assert any("calendar-flavored answer" in r.message for r in caplog.records)
+
+
+@pytest.mark.django_db
 async def test_preamble_with_set_braces_before_json_is_still_parsed(isolated_courses_dir, monkeypatch, django_user_model):
     user = await sync_to_async(django_user_model.objects.create_user)(username="preamble-set-braces")
     _seed_course("testcourse", user)

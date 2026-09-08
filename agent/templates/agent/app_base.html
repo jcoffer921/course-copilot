@@ -11,9 +11,11 @@
   {% if modern_shell %}
   <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
   <link rel="stylesheet" href="{% static 'agent/css/app.css' %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}">
+  {% if page_name == "analytics" %}<link rel="stylesheet" href="{% static 'agent/css/analytics.css' %}?v=20260902-1">{% endif %}
   {% if page_name == "practice-quiz-setup" or page_name == "practice-attempt" or page_name == "interactive-flashcards" %}<link rel="stylesheet" href="{% static 'agent/css/interactive_study.css' %}?v={{ page_asset_version }}">{% endif %}
   {% if page_name == "study" and initial_tab == "session" %}<link rel="stylesheet" href="{% static 'agent/css/guided_study.css' %}">{% endif %}
   {% endif %}
+  {% if page_name != "calendar" %}<link rel="stylesheet" href="{% static 'agent/css/notifications.css' %}?v=20260902-1">{% endif %}
   <script>
     window.CURRENT_USER_EMAIL = "{{ user.email|escapejs }}";
     window.CURRENT_USER_NAME = "{{ user.get_full_name|default:user.first_name|default:user.email|escapejs }}";
@@ -45,6 +47,7 @@
       {% include "agent/partials/sidebar.html" %}
       <div class="app-main">
         {% include "agent/partials/topbar.html" %}
+        {% if page_name != "calendar" %}{% include "agent/partials/notifications_center.html" %}{% endif %}
         <main id="main-content" class="app-content" tabindex="-1">
           {% block page_content %}{% endblock %}
         </main>
@@ -58,5 +61,6 @@
 {% include "agent/partials/app_logic.html" %}
   </script>{% endif %}
   <script type="module" src="{% static 'agent/js/core/dialogs.js' %}?v=20260901-1"></script>
+  {% if page_name != "calendar" %}<script type="module" src="{% static 'agent/js/core/notifications.js' %}?v=20260902-1"></script>{% endif %}
 </body>
 </html>

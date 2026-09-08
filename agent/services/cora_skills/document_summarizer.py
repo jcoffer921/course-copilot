@@ -20,13 +20,17 @@ SKILL = CoraSkill(
     triggers=[
         "give me a quick summary of this page",
         "summarize today's lecture",
+        "what was today's lesson about",
+        "let's review today's lesson",
         "teach me what this lecture means and what I need for the exam",
         "what should I understand before tomorrow's lecture",
     ],
     trigger_notes=(
+        "Treat lesson, lecture, and class as synonyms. 'What was today's lesson about?' and "
+        "'what did we cover today?' route to document_summary_quick. "
         "'quick summary'/'tl;dr'/short recap phrasing routes to document_summary_quick "
         "(Haiku). Anything implying the student wants to actually learn/understand the "
-        "material, prepare for an exam, or see how concepts relate routes to "
+        "material, review today's lesson, prepare for an exam, or see how concepts relate routes to "
         "document_summary_deep (Sonnet) — when genuinely ambiguous, default to deep, since a "
         "student asking Cora (rather than just skimming the page themselves) usually wants "
         "more than a shorter copy of the text."

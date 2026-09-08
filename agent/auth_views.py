@@ -198,6 +198,15 @@ def google_calendar_connect(request):
     )
     request.session["google_calendar_oauth_state"] = state
     request.session["google_calendar_oauth_code_verifier"] = flow.code_verifier
+    # Round-trips through Google back to wherever the student actually was
+    # (a Deadlines-tab card, the Calendar page) rather than always dumping
+    # them on Settings — connecting/reconnecting is meant to be a small
+    # detour, not a context switch away from the task they were doing.
+    safe_next = _safe_next(request, request.GET.get("next", ""))
+    if safe_next:
+        request.session["google_calendar_oauth_next"] = safe_next
+    else:
+        request.session.pop("google_calendar_oauth_next", None)
     return redirect(auth_url)
 
 
@@ -206,6 +215,7 @@ def google_calendar_callback(request):
     saved_state = request.session.pop("google_calendar_oauth_state", None)
     returned_state = request.GET.get("state")
     saved_verifier = request.session.pop("google_calendar_oauth_code_verifier", None)
+    next_url = request.session.pop("google_calendar_oauth_next", None) or "settings-apps-page"
     if not saved_state or saved_state != returned_state or not saved_verifier:
         return HttpResponseBadRequest("invalid or expired Calendar OAuth state")
 
@@ -228,9 +238,9 @@ def google_calendar_callback(request):
             request,
             "Google Calendar couldn't be connected. Please try again.",
         )
-        return redirect("settings-apps-page")
+        return redirect(next_url)
     messages.success(request, "Google Calendar connected.")
-    return redirect("settings-apps-page")
+    return redirect(next_url)
 
 
 @require_POST

@@ -5,7 +5,7 @@ import { showToast } from "./core/toast.js";
 
 const page = document.querySelector("[data-page-section='courses']");
 const byId = id => document.getElementById(id);
-const state = { data: null, selected: null, returnFocus: null, menuButton: null, notificationOpen: false };
+const state = { data: null, selected: null, returnFocus: null, menuButton: null };
 
 function icon(name) {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -189,16 +189,6 @@ function closeMenus(restore = false) {
   if (restore) restoreFocus(state.menuButton); state.menuButton = null;
 }
 
-async function loadNotifications() {
-  const status = byId("courses-notification-status"), list = byId("courses-notification-list");
-  try { const data = await apiRequest("/api/notifications/"); const count = data.unread_count || 0; const badge = byId("courses-notification-badge"); badge.textContent = count > 9 ? "9+" : String(count); badge.hidden = !count; status.textContent = data.notifications?.length ? `${count} unread update${count === 1 ? "" : "s"}` : "You’re all caught up."; list.replaceChildren(...(data.notifications || []).slice(0, 8).map(item => { const li = document.createElement("li"); const link = document.createElement("a"); link.href = item.action_url || "/dashboard/"; const strong = document.createElement("strong"); strong.textContent = item.title; const span = document.createElement("span"); span.textContent = item.body || item.message || "Course update"; link.append(strong, span); li.append(link); return li; })); }
-  catch { status.textContent = "Notifications aren’t available right now."; }
-}
-
-function setNotifications(open, restore = true) {
-  state.notificationOpen = open; const popover = byId("courses-notification-popover"), toggle = byId("courses-notification-toggle"); popover.hidden = !open; toggle.setAttribute("aria-expanded", String(open)); toggle.setAttribute("aria-label", open ? "Close notifications" : "Open notifications"); if (open) { loadNotifications(); focusFirst(popover); } else if (restore) toggle.focus();
-}
-
 function bind() {
   document.addEventListener("click", event => {
     const target = event.target;
@@ -210,14 +200,11 @@ function bind() {
     if (menuButton) { const menu = menuButton.nextElementSibling, willOpen = menu.hidden; closeMenus(); menu.hidden = !willOpen; menuButton.setAttribute("aria-expanded", String(willOpen)); state.menuButton = menuButton; if (willOpen) focusFirst(menu); return; }
     const action = target.closest("[data-course-action]");
     if (action) { const card = action.closest(".course-overview-card"), course = card._course, trigger = state.menuButton; closeMenus(); if (action.dataset.courseAction === "open") location.assign(courseUrl(course.id)); else if (action.dataset.courseAction === "edit") openCourseForm(course, trigger); else if (action.dataset.courseAction === "archive") openArchive(course, trigger); else openDelete(course, trigger); return; }
-    if (target.closest("#courses-notification-toggle")) return setNotifications(!state.notificationOpen);
-    if (target.closest("[data-close-notifications]")) return setNotifications(false);
-    if (state.notificationOpen && !target.closest(".courses-notifications")) setNotifications(false, false);
     if (!target.closest(".courses-card-menu")) closeMenus();
   });
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (!byId("course-form-backdrop").hidden) setModal(byId("course-form-backdrop"), false); else if (!byId("course-archive-backdrop").hidden) setModal(byId("course-archive-backdrop"), false); else if (!byId("course-delete-backdrop").hidden) setModal(byId("course-delete-backdrop"), false); else if (state.notificationOpen) setNotifications(false); else closeMenus(true);
+    if (!byId("course-form-backdrop").hidden) setModal(byId("course-form-backdrop"), false); else if (!byId("course-archive-backdrop").hidden) setModal(byId("course-archive-backdrop"), false); else if (!byId("course-delete-backdrop").hidden) setModal(byId("course-delete-backdrop"), false); else closeMenus(true);
   });
   ["course-form-backdrop", "course-archive-backdrop", "course-delete-backdrop"].forEach(id => byId(id).addEventListener("mousedown", event => { if (event.target === event.currentTarget) setModal(event.currentTarget, false); }));
   byId("course-form").addEventListener("submit", saveCourse); byId("course-confirm-archive").addEventListener("click", confirmArchive); byId("course-confirm-delete").addEventListener("click", confirmDelete);
@@ -227,4 +214,4 @@ function bind() {
   byId("courses-retry").addEventListener("click", loadCourses); window.addEventListener("popstate", loadCourses);
 }
 
-if (page) { initNavigation(); bind(); loadCourses(); loadNotifications(); }
+if (page) { initNavigation(); bind(); loadCourses(); }

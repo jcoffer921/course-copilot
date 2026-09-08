@@ -248,7 +248,21 @@ async function loadCalendar() {
 async function loadCalendarConnectionBanner() {
   try {
     const profile = await apiRequest("/api/profile/");
-    $("#cal-reconnect-banner").hidden = !!profile.calendar_connected;
+    const banner = $("#cal-reconnect-banner");
+    banner.hidden = !!profile.calendar_connected;
+    if (profile.calendar_connected) return;
+    // Deadlines always live in OnTrack regardless of this connection —
+    // Google Calendar is an optional mirror of them, so the copy must never
+    // read as though something is unsaved. Lapsed (connected before, grant
+    // since failed) gets different wording than never having connected —
+    // otherwise a routine re-consent prompt reads as OnTrack forgetting.
+    const lapsed = !!profile.calendar_connection_lapsed;
+    $("#cal-reconnect-banner-text").textContent = lapsed
+      ? "Your deadlines are all saved in OnTrack — Google Calendar sync stopped working and needs reconnecting."
+      : "Your deadlines are all saved in OnTrack. Connect Google Calendar to also see them there.";
+    const link = $("#cal-reconnect-banner-link");
+    link.textContent = lapsed ? "Reconnect Google Calendar" : "Connect Google Calendar";
+    link.href = `/accounts/calendar/connect/?next=${encodeURIComponent(location.pathname + location.search)}`;
   } catch (error) { /* non-fatal — the banner just stays hidden */ }
 }
 

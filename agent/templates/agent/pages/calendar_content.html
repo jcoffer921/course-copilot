@@ -13,8 +13,8 @@
     </div>
   </header>
   <div class="cal-banner cal-banner-reconnect" id="cal-reconnect-banner" hidden>
-    <span>Google Calendar isn't connected, so synced deadlines won't reach your calendar.</span>
-    <a href="{% url 'google-calendar-connect' %}">Reconnect Google Calendar</a>
+    <span id="cal-reconnect-banner-text"></span>
+    <a id="cal-reconnect-banner-link" href="{% url 'google-calendar-connect' %}">Connect Google Calendar</a>
   </div>
   <div class="cal-layout">
     <aside class="cal-utility" id="cal-utility" aria-label="Calendar filters">

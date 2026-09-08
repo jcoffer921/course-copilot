@@ -1,0 +1,19 @@
+<div id="site-notifications" class="site-notifications">
+  <button id="site-notification-toggle" class="site-notification-toggle" type="button" aria-label="Open notifications" aria-expanded="false" aria-controls="site-notification-popover">
+    <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-bell"/></svg>
+    <span id="site-notification-badge" class="site-notification-badge" hidden></span>
+  </button>
+  <button id="site-notification-scrim" class="site-notification-scrim" type="button" aria-label="Close notifications" tabindex="-1" hidden></button>
+  <section id="site-notification-popover" class="site-notification-popover" role="dialog" aria-modal="false" aria-labelledby="site-notification-title" hidden>
+    <header class="site-notification-head">
+      <div class="site-notification-title"><span class="site-notification-title-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-bell"/></svg></span><div><strong id="site-notification-title">Notifications</strong><span id="site-notification-summary">Checking for updates…</span></div></div>
+      <button id="site-notification-close" class="site-notification-close" type="button" aria-label="Close notifications"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-close"/></svg></button>
+    </header>
+    <div class="site-notification-toolbar"><span>Recent activity</span><button id="site-notifications-read" type="button" hidden>Mark all as read</button></div>
+    <div id="site-notifications-status" class="site-notifications-status" role="status">
+      <span class="site-notification-spinner" aria-hidden="true"></span><span>Loading notifications…</span>
+      <button id="site-notifications-retry" type="button" hidden>Try again</button>
+    </div>
+    <ul id="site-notifications-list" class="site-notifications-list"></ul>
+  </section>
+</div>

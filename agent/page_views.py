@@ -18,6 +18,7 @@ from .services import support
 from .services.study_sessions import StudySessionNotFoundError
 from .services.storage import COURSE_ID_RE
 from .forms import ContactRequestForm
+from .authentication import is_pilot_owner
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +42,7 @@ PAGE_SCRIPTS = {
     "feedback": "agent/js/feedback.js",
     "practice-attempt": "agent/js/practice_attempt.js",
     "interactive-flashcards": "agent/js/interactive_flashcards.js",
+    "analytics": "agent/js/analytics.js",
 }
 
 
@@ -87,7 +89,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
     modern_page_names = {
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
         "course-mastery", "course-grades", "study-dashboard", "exam", "settings", "profile",
-        "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback",
+        "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback", "analytics",
     }
     modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
     return render(
@@ -101,7 +103,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
             "initial_course_id": _safe_initial_course(request, course_id),
             "page_script": PAGE_SCRIPTS[page_name],
             "page_asset_version": (
-                "calendar-20260902-1" if page_name == "calendar"
+                "calendar-20260904-1" if page_name == "calendar"
                 else "courses-20260826-2" if page_name == "courses"
                 else "workspace-20260826-3" if page_name in ("materials", "course-detail", "course-study", "course-mastery", "course-grades", "study-dashboard")
                 else "quiz-loading-20260831-1" if page_name == "practice-quiz-setup"
@@ -112,6 +114,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
             ),
             "course_id": course_id,
             "enabled_features": _enabled_features(request.user),
+            "can_view_pilot_analytics": is_pilot_owner(request.user),
             **_identity_context(request.user),
             **context,
         },
@@ -191,6 +194,16 @@ def dashboard_page(request):
     return _render_page(
         request, "agent/dashboard.html", page_name="dashboard", page_title="Dashboard",
         initial_tab="dashboard", dashboard_greeting=greeting, dashboard_timezone=settings.TIME_ZONE,
+    )
+
+
+@login_required
+def analytics_page(request):
+    if not is_pilot_owner(request.user):
+        raise Http404()
+    return _render_page(
+        request, "agent/analytics.html", page_name="analytics", page_title="Analytics",
+        initial_tab="analytics",
     )
 
 

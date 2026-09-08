@@ -194,6 +194,14 @@ SCHEDULE_TIME_RE = re.compile(
 SAVE_SITE_INTENT_RE = re.compile(r"\b(save|remember|store|add)\b.*\b(site|link|url|address|book|textbook)\b", re.I)
 URL_RE = re.compile(r"https?://[^\s<>()\"']+", re.I)
 CALENDAR_MENTION_RE = re.compile(r"\bcalendar\b", re.I)
+TODAY_LESSON_RE = re.compile(
+    r"("
+    r"\btoday(?:(?:['\u2019]|\u00e2\u20ac\u2122)?s)?\b[\s\S]{0,40}\b(?:lesson|lesosn|lecture|class)\b"
+    r"|\b(?:lesson|lesosn|lecture|class)\b[\s\S]{0,40}\btoday\b"
+    r"|\bwhat\s+(?:did|do)\s+we\s+(?:cover|learn|discuss)\b[\s\S]{0,40}\btoday\b"
+    r")",
+    re.I,
+)
 
 
 def _decode_loose_json_string(value: str) -> str:
@@ -409,6 +417,14 @@ def _looks_like_deadline_request(question: str) -> bool:
         return True
     weekdays = {match.group(1).lower()[:3] for match in SCHEDULE_WEEKDAY_RE.finditer(text)}
     return len(weekdays) >= 2
+
+
+def _today_lesson_review_depth(question: str) -> str | None:
+    if not TODAY_LESSON_RE.search(question or ""):
+        return None
+    if re.search(r"\b(review|study|understand|teach|walk\s+me\s+through|go\s+over)\b", question, re.I):
+        return "deep"
+    return "quick"
 
 
 def _clock_time(value: str) -> str | None:
@@ -922,7 +938,10 @@ def _format_quiz_answer(question_data: dict) -> str:
     return "\n".join(lines)
 
 
-async def _dispatch_routed_intent(client, intent: str, course_id: str, question: str, syllabus: dict, user=None) -> dict | None:
+async def _dispatch_routed_intent(
+    client, intent: str, course_id: str, question: str, syllabus: dict,
+    user=None, lecture_date: str = None,
+) -> dict | None:
     """Handles every intent_router value except course_qa/unknown, which
     fall through unchanged to ask_async's existing grounded pipeline. Returns
     None for anything unrecognized (defensive; shouldn't happen given
@@ -969,7 +988,9 @@ async def _dispatch_routed_intent(client, intent: str, course_id: str, question:
     if intent in ("document_summary_quick", "document_summary_deep"):
         depth = "quick" if intent == "document_summary_quick" else "deep"
         try:
-            summary = await document_summarizer.summarize(course_id, depth=depth, user=user)
+            summary = await document_summarizer.summarize(
+                course_id, lecture_date=lecture_date, depth=depth, user=user,
+            )
         except document_summarizer.NoTargetDocumentError:
             return {
                 "answer": "I don't have any notes or references to summarize for this course yet.",
@@ -1076,7 +1097,29 @@ async def ask_async(
             )
         return result
 
-    # Free regex checks above already handle save-site and deadline requests.
+    today_lesson_depth = _today_lesson_review_depth(question)
+    if today_lesson_depth:
+        result = await _dispatch_routed_intent(
+            client,
+            f"document_summary_{today_lesson_depth}",
+            course_id,
+            question,
+            syllabus,
+            user=user,
+            lecture_date=date.today().isoformat(),
+        )
+        result = await _structure_result_sources(
+            result, course_id, question, user=user, session_id=session_id,
+        )
+        result["grounding_mode"] = grounding_mode
+        if session_id is not None:
+            result = await sync_to_async(sessions.append_exchange)(
+                course_id, session_id, question, result,
+                client_request_id=client_request_id, user=user,
+            )
+        return result
+
+    # Free regex checks above already handle save-site, deadline, and today's-lesson requests.
     # Everything else gets one cheap Haiku classification before falling
     # through to the full grounded-Sonnet pipeline below — course_qa/unknown
     # (and any classifier failure, which safely defaults to course_qa) fall

@@ -9,6 +9,7 @@ urlpatterns = [
     path("", page_views.app_root, name="ontrack"),
     path("profile/", page_views.profile_page, name="profile-page"),
     path("dashboard/", page_views.dashboard_page, name="dashboard-page"),
+    path("analytics/", page_views.analytics_page, name="analytics-page"),
     path("calendar/", page_views.calendar_page, name="calendar-page"),
     path("courses/", page_views.courses_page, name="courses-page"),
     path("courses/<slug:course_id>/materials/", page_views.course_materials_page, name="course-materials-page"),

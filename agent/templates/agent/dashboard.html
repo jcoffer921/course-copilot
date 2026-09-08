@@ -4,16 +4,7 @@
 <div data-page-section="dashboard" class="dash-page" data-calendar-url="{% url 'calendar-page' %}" data-courses-url="{% url 'courses-page' %}" data-cora-url="{% url 'cora-page' %}" data-study-url="{% url 'study-page' %}" data-first-name="{{ first_name }}" data-timezone="{{ dashboard_timezone }}">
   <header class="dash-header">
     <div class="dash-welcome"><span class="dash-sun" aria-hidden="true">☀</span><div><h1 id="dash-greeting">{{ dashboard_greeting }}, {{ first_name }}</h1><p>Here’s what matters today.</p></div></div>
-    <div class="dash-header-actions">
-      <div class="dash-notifications"><button id="dash-notification-toggle" class="dash-icon-button" type="button" aria-label="Open notifications" aria-expanded="false" aria-controls="dash-notification-popover"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-bell"/></svg><span id="dash-notification-badge" class="dash-notification-badge" hidden></span></button>
-        <section id="dash-notification-popover" class="dash-notification-popover" aria-label="Notifications" aria-live="polite" hidden>
-          <div class="dash-popover-head"><div class="dash-popover-title"><span class="dash-popover-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-bell"/></svg></span><div><strong>Notifications</strong><span id="dash-notification-summary">Checking for updates…</span></div></div><button id="dash-notification-close" class="dash-popover-close" type="button" aria-label="Close notifications"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-close"/></svg></button></div>
-          <div class="dash-popover-toolbar"><span>Recent activity</span><button id="dash-notifications-read" class="dash-link" type="button" hidden>Mark all as read</button></div>
-          <p id="dash-notifications-status" class="dash-notifications-status"><span class="dash-mini-spinner" aria-hidden="true"></span>Loading notifications…</p><ul id="dash-notifications-list"></ul>
-        </section>
-      </div>
-      <span class="dash-user-avatar" aria-label="Signed in as {{ display_name }}">{{ user_initials }}</span>
-    </div>
+    <div class="dash-header-actions"><span class="dash-user-avatar" aria-label="Signed in as {{ display_name }}">{{ user_initials }}</span></div>
   </header>
   <div id="dash-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
   <div id="dash-loading" class="shared-state" role="status">Loading your dashboard…</div>

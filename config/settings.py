@@ -145,6 +145,7 @@ EMAIL_USE_TLS = os.environ.get("DJANGO_EMAIL_USE_TLS", "true").lower() == "true"
 DEFAULT_FROM_EMAIL = os.environ.get("DJANGO_DEFAULT_FROM_EMAIL", "OnTrack <reminders@ontrack.local>")
 ONTRACK_SUPPORT_EMAIL = os.environ.get("ONTRACK_SUPPORT_EMAIL", EMAIL_HOST_USER)
 ONTRACK_BASE_URL = os.environ.get("ONTRACK_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+ONTRACK_PILOT_OWNER_EMAIL = os.environ.get("ONTRACK_PILOT_OWNER_EMAIL", os.environ.get("CLI_OWNER_EMAIL", ""))
 
 LOGGING = {
     "version": 1,

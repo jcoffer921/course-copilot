@@ -142,6 +142,132 @@ def test_calendar_callback_returns_to_connected_apps_after_oauth_failure(client,
 
 
 @pytest.mark.django_db
+def test_calendar_callback_failure_still_returns_to_the_stashed_next(client, django_user_model):
+    # A student who clicks "Reconnect" on the Calendar page, then denies
+    # consent or closes the Google tab, should land back on the Calendar
+    # page (not Settings) with an accurate "still not connected" state — the
+    # failure toast and the reconnect banner must not disagree with each
+    # other. Nothing gets written to GoogleCalendarConnection on this path,
+    # so a lapsed row stays lapsed rather than flipping to some other state.
+    user = django_user_model.objects.create_user(username="calendar-next-failure-user")
+    GoogleCalendarConnection.objects.create(
+        user=user, access_token="stale", refresh_token="stale-refresh",
+        token_expiry=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        grant_failed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    client.force_login(user)
+    session = client.session
+    session["google_calendar_oauth_state"] = "state"
+    session["google_calendar_oauth_code_verifier"] = "verifier"
+    session["google_calendar_oauth_next"] = "/calendar/?course=cs101"
+    session.save()
+
+    with patch("agent.auth_views.google_calendar_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.fetch_token.side_effect = RuntimeError("sensitive provider response")
+        build_flow.return_value = flow
+
+        response = client.get("/accounts/calendar/callback/?state=state&code=abc", follow=True)
+
+    assert response.redirect_chain == [("/calendar/?course=cs101", 302)]
+    assert b"Google Calendar couldn&#x27;t be connected. Please try again." in response.content
+    profile = client.get("/api/profile/").json()
+    assert profile["calendar_connected"] is False
+    assert profile["calendar_connection_lapsed"] is True
+
+
+@pytest.mark.django_db
+@override_settings(ONTRACK_BASE_URL="https://ontrack.example")
+def test_calendar_connect_stashes_a_safe_next_for_the_callback_to_return_to(client, django_user_model):
+    user = django_user_model.objects.create_user(username="calendar-next-user")
+    client.force_login(user)
+    with patch("agent.auth_views.google_calendar_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.authorization_url.return_value = ("https://accounts.google.com/calendar", "state")
+        flow.code_verifier = "verifier"
+        build_flow.return_value = flow
+
+        client.get("/accounts/calendar/connect/?next=/calendar/?course=cs101")
+
+    assert client.session["google_calendar_oauth_next"] == "/calendar/?course=cs101"
+
+
+@pytest.mark.django_db
+@override_settings(ONTRACK_BASE_URL="https://ontrack.example")
+def test_calendar_connect_drops_an_unsafe_next(client, django_user_model):
+    user = django_user_model.objects.create_user(username="calendar-unsafe-next-user")
+    client.force_login(user)
+    with patch("agent.auth_views.google_calendar_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.authorization_url.return_value = ("https://accounts.google.com/calendar", "state")
+        flow.code_verifier = "verifier"
+        build_flow.return_value = flow
+
+        client.get("/accounts/calendar/connect/?next=https://evil.example/phish")
+
+    assert "google_calendar_oauth_next" not in client.session
+
+
+@pytest.mark.django_db
+@override_settings(ONTRACK_BASE_URL="https://ontrack.example")
+def test_calendar_callback_returns_to_the_stashed_next_on_success(client, django_user_model):
+    # A student who clicked "reconnect" from the Deadlines tab (or the
+    # Calendar page) should land back there after Google's consent screen,
+    # not get bounced to Settings — that's a context switch away from
+    # whatever they were actually doing.
+    user = django_user_model.objects.create_user(username="calendar-next-success-user")
+    client.force_login(user)
+    session = client.session
+    session["google_calendar_oauth_state"] = "state"
+    session["google_calendar_oauth_code_verifier"] = "verifier"
+    session["google_calendar_oauth_next"] = "/calendar/?course=cs101"
+    session.save()
+
+    with patch("agent.auth_views.google_calendar_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.credentials = SimpleNamespace(token="a", refresh_token="r", expiry=datetime(2026, 12, 31))
+        build_flow.return_value = flow
+        with patch("agent.auth_views.google_calendar_oauth.save_connection"):
+            response = client.get("/accounts/calendar/callback/?state=state&code=abc")
+
+    assert response.status_code == 302
+    assert response.url == "/calendar/?course=cs101"
+    assert "google_calendar_oauth_next" not in client.session
+
+
+@pytest.mark.django_db
+@override_settings(ONTRACK_BASE_URL="https://ontrack.example")
+def test_successful_callback_clears_a_lapsed_connection_end_to_end(client, django_user_model):
+    # Full round trip through the real view + profiles.build_profile (not
+    # just save_connection in isolation): a lapsed grant reconnects, and the
+    # next /api/profile/ read reports connected + not-lapsed. If this drifted,
+    # the Calendar banner and Apps page status would keep saying "needs
+    # reconnecting" even after a working reconnection.
+    user = django_user_model.objects.create_user(username="lapsed-callback-user")
+    GoogleCalendarConnection.objects.create(
+        user=user, access_token="stale", refresh_token="stale-refresh",
+        token_expiry=datetime(2020, 1, 1, tzinfo=timezone.utc),
+        grant_failed_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    client.force_login(user)
+    session = client.session
+    session["google_calendar_oauth_state"] = "state"
+    session["google_calendar_oauth_code_verifier"] = "verifier"
+    session.save()
+
+    with patch("agent.auth_views.google_calendar_oauth.build_flow") as build_flow:
+        flow = MagicMock()
+        flow.credentials = SimpleNamespace(token="fresh-access", refresh_token="fresh-refresh", expiry=datetime(2026, 12, 31))
+        build_flow.return_value = flow
+        response = client.get("/accounts/calendar/callback/?state=state&code=abc")
+
+    assert response.status_code == 302
+    profile = client.get("/api/profile/").json()
+    assert profile["calendar_connected"] is True
+    assert profile["calendar_connection_lapsed"] is False
+
+
+@pytest.mark.django_db
 def test_calendar_disconnect_is_post_only_and_user_scoped(client, django_user_model):
     owner = django_user_model.objects.create_user(username="owner")
     other = django_user_model.objects.create_user(username="other")
