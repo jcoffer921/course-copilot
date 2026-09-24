@@ -65,6 +65,9 @@ function render(data) {
   $("#metric-calendar").textContent = data.metrics.calendar_connected;
   $("#metric-calendar-detail").textContent = `of ${total} students`;
   $("#metric-llm").textContent = data.metrics.llm_requests.toLocaleString();
+  const totalTokens = data.metrics.llm_input_tokens + data.metrics.llm_output_tokens;
+  const costLabel = `~$${data.metrics.llm_cost_usd.toFixed(2)}${data.metrics.llm_cost_is_partial ? "+" : ""}`;
+  $("#metric-llm-detail").textContent = `${totalTokens.toLocaleString()} tokens, ${costLabel} estimated`;
   renderTimeline(data.timeline);
   renderEngagement(data.engagement);
   renderCourses(data.courses, total);

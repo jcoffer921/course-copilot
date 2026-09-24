@@ -11,8 +11,8 @@ from rest_framework.test import APIClient
 from agent.models import LlmUsage, QuizAttempt, StudyActivity, StudySession, UserSettings
 
 
-def activate(user, status=UserSettings.ACCESS_ACTIVE):
-    UserSettings.objects.create(user=user, access_status=status, tier=UserSettings.TIER_PILOT)
+def activate(user, status=UserSettings.ACCESS_ACTIVE, cohort=""):
+    UserSettings.objects.create(user=user, access_status=status, tier=UserSettings.TIER_PILOT, cohort=cohort)
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def analytics_users(django_user_model):
     student_a = django_user_model.objects.create_user(username="student-a", email="a@example.com")
     student_b = django_user_model.objects.create_user(username="student-b", email="b@example.com")
     activate(owner)
-    activate(student_a)
+    activate(student_a, cohort="fall26-pilot")
     activate(student_b, UserSettings.ACCESS_PENDING)
     return owner, student_a, student_b
 
@@ -67,7 +67,10 @@ def test_summary_uses_real_student_activity_and_excludes_owner(analytics_users):
         user=owner, course_id="owner-course", lecture_id="l1", chunk_id="c1", topic="Owner",
         question="q", correct_answer="a", user_answer="a", correct=True, timestamp=now.isoformat(),
     )
-    LlmUsage.objects.create(user=student, date=timezone.localdate(), count=3)
+    LlmUsage.objects.create(
+        user=student, date=timezone.localdate(), count=3,
+        tokens={"claude-haiku-4-5": {"input": 1000, "output": 500}},
+    )
     LlmUsage.objects.create(user=owner, date=timezone.localdate(), count=99)
 
     api = APIClient()
@@ -81,6 +84,10 @@ def test_summary_uses_real_student_activity_and_excludes_owner(analytics_users):
     assert data["metrics"]["study_sessions"] == 1
     assert data["metrics"]["questions_answered"] == 1
     assert data["metrics"]["llm_requests"] == 3
+    assert data["metrics"]["llm_input_tokens"] == 1000
+    assert data["metrics"]["llm_output_tokens"] == 500
+    assert data["metrics"]["llm_cost_usd"] > 0
+    assert data["metrics"]["llm_cost_is_partial"] is False
     assert data["engagement"]["flashcards"] == 1
     assert all(row["course_id"] != "owner-course" for row in data["courses"])
 
@@ -110,6 +117,8 @@ def test_export_is_per_student_private_and_date_scoped(analytics_users):
     assert len(rows) == 2
     student_row = next(row for row in rows if row["student_id"] == str(student.pk))
     assert student_row["questions_answered"] == "1"
+    assert student_row["email"] == student.email
+    assert student_row["cohort"] == "fall26-pilot"
     output = response.content.decode()
     assert "private question" not in output
     assert "private answer" not in output

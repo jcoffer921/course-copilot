@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from . import storage
-from .client import MODEL_DEFAULT as MODEL, get_client
+from .client import MODEL_DEFAULT as MODEL, create_message, get_client
 
 EXTRACTION_SYSTEM_PROMPT = """You extract structured data from a course syllabus.
 
@@ -188,7 +188,7 @@ def read_source_text_from_upload(upload) -> str:
 # Extraction call
 # --------------------------------------------------------------------------
 
-async def extract_syllabus_async(source_text: str, course_id: str, course_name_hint: str = None) -> dict:
+async def extract_syllabus_async(source_text: str, course_id: str, course_name_hint: str = None, user=None) -> dict:
     client = get_client()
 
     user_prompt = f"course_id to use: {course_id}\n"
@@ -196,7 +196,8 @@ async def extract_syllabus_async(source_text: str, course_id: str, course_name_h
         user_prompt += f"course_name hint (use if it matches the document): {course_name_hint}\n"
     user_prompt += f"\nSyllabus text:\n---\n{source_text}\n---"
 
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         model=MODEL,
         max_tokens=4000,
         system=EXTRACTION_SYSTEM_PROMPT,

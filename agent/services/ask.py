@@ -19,7 +19,7 @@ from . import (
     calendar_events, citations, custom_events, document_summarizer, grades, intent_router,
     mastery, mastery_analyzer, quiz, sessions, storage, study_planner,
 )
-from .client import MODEL_DEFAULT as MODEL, MODEL_HAIKU, get_client
+from .client import MODEL_DEFAULT as MODEL, MODEL_HAIKU, create_message, get_client
 from .storage import CourseNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -748,7 +748,8 @@ async def _extract_deadline_request(client, question: str, course_id: str, sylla
         calendar_messages = [{"role": "user", "content": f"Context:\n{json.dumps(course_context)}\n\nUser request:\n{question}"}]
 
         async def _call_calendar_tool(model: str) -> dict:
-            response = await client.messages.create(
+            response = await create_message(
+                client, user,
                 model=model,
                 max_tokens=8000,
                 system=DEADLINE_EXTRACTION_PROMPT,
@@ -894,8 +895,9 @@ markdown). Never answer an academic/course question here; if the message actuall
 you're happy to help and ask them to go ahead and ask it."""
 
 
-async def _small_talk_reply(client, question: str) -> dict:
-    response = await client.messages.create(
+async def _small_talk_reply(client, user, question: str) -> dict:
+    response = await create_message(
+        client, user,
         model=MODEL_HAIKU,
         max_tokens=150,
         system=SMALL_TALK_SYSTEM_PROMPT,
@@ -953,7 +955,7 @@ async def _dispatch_routed_intent(
     topics = syllabus.get("topics") or []
 
     if intent == "general_assistant":
-        return await _small_talk_reply(client, question)
+        return await _small_talk_reply(client, user, question)
 
     if intent == "study_planner":
         try:
@@ -1056,6 +1058,8 @@ async def ask_async(
         if existing is not None:
             return existing
 
+    # handles common non-Q&A cases before spending any model call
+    # i.e. calendar requests, save a link, lesson review
     if _looks_like_save_site_request(question):
         request = _extract_save_site_request(question)
         site = await sync_to_async(storage.save_site)(
@@ -1124,7 +1128,7 @@ async def ask_async(
     # through to the full grounded-Sonnet pipeline below — course_qa/unknown
     # (and any classifier failure, which safely defaults to course_qa) fall
     # through completely unchanged.
-    routed_intent = await intent_router.classify(client, question, has_current_course=True)
+    routed_intent = await intent_router.classify(client, user, question, has_current_course=True)
     if routed_intent["intent"] not in ("course_qa", "unknown"):
         result = await _dispatch_routed_intent(client, routed_intent["intent"], course_id, question, syllabus, user=user)
         if result is not None:
@@ -1138,7 +1142,7 @@ async def ask_async(
                     client_request_id=client_request_id, user=user,
                 )
             return result
-
+    # allows cora to answer from all course materials (syllabus, notes, references, saved sites) and quiz/flascards/grades
     notes = await sync_to_async(storage.read_notes)(course_id, user)
     references = await sync_to_async(storage.read_references)(course_id, user)
     saved_sites = await sync_to_async(storage.list_saved_sites)(course_id, user=user)
@@ -1247,7 +1251,7 @@ async def ask_async(
     if tools:
         create_kwargs["tools"] = tools
 
-    response = await client.messages.create(**create_kwargs)
+    response = await create_message(client, user, **create_kwargs)
 
     # web_search is a server-side tool — the API runs its own internal search
     # loop and returns results in this same response, so no client-side
@@ -1260,7 +1264,7 @@ async def ask_async(
     while response.stop_reason == "pause_turn" and continuations < MAX_PAUSE_TURN_CONTINUATIONS:
         messages = messages + [{"role": "assistant", "content": response.content}]
         create_kwargs["messages"] = messages
-        response = await client.messages.create(**create_kwargs)
+        response = await create_message(client, user, **create_kwargs)
         continuations += 1
 
     if response.stop_reason == "max_tokens":

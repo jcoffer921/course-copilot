@@ -16,7 +16,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import calendar_events, citations, mastery, quiz, storage
-from .client import CORA_MODELS, get_client
+from .client import CORA_MODELS, create_message, get_client
 
 EXAM_EVENT_TYPE = "test_quiz"
 READINESS_MASTERY_WEIGHT = 0.70
@@ -322,7 +322,8 @@ async def generate_study_guide(user, course_id: str, event_id: str) -> dict:
     user_prompt = "\n\n---\n\n".join(prompt_sections + reference_texts)
 
     client = get_client()
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         # Upgraded from Haiku to the reasoning model: an exam study guide is
         # exam-critical, multi-topic synthesis (document_summarizer's "deep"
         # category), not a quick recap — see agent/services/cora_skills/

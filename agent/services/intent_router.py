@@ -13,7 +13,7 @@ two can't drift apart.
 
 import logging
 
-from .client import CORA_MODELS
+from .client import CORA_MODELS, create_message
 from .cora_skills import CAPABILITIES
 
 logger = logging.getLogger(__name__)
@@ -89,7 +89,7 @@ def _fallback() -> dict:
     return {"intent": _FALLBACK_INTENT, "requires_course_context": True}
 
 
-async def classify(client, question: str, has_current_course: bool) -> dict:
+async def classify(client, user, question: str, has_current_course: bool) -> dict:
     """Never raises. Any failure — network error, malformed or out-of-enum
     tool output — returns the safe course_qa fallback, since a
     classification error must never block a chat message or surface to the
@@ -102,7 +102,8 @@ async def classify(client, question: str, has_current_course: bool) -> dict:
     ask.py's tests, which monkeypatch ask.get_client, able to fully control
     every model call this makes instead of hitting the real API."""
     try:
-        response = await client.messages.create(
+        response = await create_message(
+            client, user,
             model=CORA_MODELS["fast"],
             max_tokens=200,
             system=_SYSTEM_PROMPT,

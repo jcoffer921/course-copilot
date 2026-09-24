@@ -22,6 +22,7 @@ from agent.models import (
 )
 
 from . import course_catalog, storage
+from .llm_usage import estimate_cost_usd
 
 VALID_RANGES = {"7d", "30d", "all"}
 QUALIFYING_PRODUCT_EVENTS = {
@@ -87,6 +88,24 @@ def _course_name(user, course_id):
     except (storage.CourseNotFoundError, storage.CourseMetadataStorageError, storage.SyllabusStorageError, OSError, ValueError):
         return course_id.upper()
     return record["name"]
+
+
+def _token_and_cost_totals(usage_rows):
+    input_tokens = output_tokens = 0
+    cost_usd = 0.0
+    cost_is_partial = False
+    for row in usage_rows:
+        for model, model_totals in row.tokens.items():
+            row_input = model_totals.get("input", 0)
+            row_output = model_totals.get("output", 0)
+            input_tokens += row_input
+            output_tokens += row_output
+            cost = estimate_cost_usd(model, row_input, row_output)
+            if cost is None:
+                cost_is_partial = True
+            else:
+                cost_usd += cost
+    return input_tokens, output_tokens, round(cost_usd, 4), cost_is_partial
 
 
 def build_summary(owner, range_key: str, *, now=None):
@@ -191,6 +210,7 @@ def build_summary(owner, range_key: str, *, now=None):
         "cora": len(message_rows),
         "calendar": 0,
     }
+    llm_input_tokens, llm_output_tokens, llm_cost_usd, llm_cost_is_partial = _token_and_cost_totals(usage)
     return {
         "pilot": {"name": "Student Pilot 2026", "students": total},
         "range": range_key,
@@ -206,6 +226,10 @@ def build_summary(owner, range_key: str, *, now=None):
             "questions_answered": len(quiz_rows),
             "calendar_connected": valid_connections.count(),
             "llm_requests": sum(usage.values_list("count", flat=True)),
+            "llm_input_tokens": llm_input_tokens,
+            "llm_output_tokens": llm_output_tokens,
+            "llm_cost_usd": llm_cost_usd,
+            "llm_cost_is_partial": llm_cost_is_partial,
         },
         "timeline": [{"date": day.isoformat(), "count": len(active_by_day[day])} for day in dates],
         "engagement": engagement,
@@ -217,7 +241,7 @@ def build_summary(owner, range_key: str, *, now=None):
         },
         "definitions": {
             "active_students": "Students with a study session, submitted quiz answer, flashcard review, Cora message, or qualifying product event in the selected period.",
-            "llm_usage": "Student pilot AI requests only. OnTrack does not currently record tokens or provider cost.",
+            "llm_usage": "Student pilot AI requests, tokens, and estimated cost. Cost is estimated from a manually-maintained price table (agent/services/llm_usage.py) and may be partial if a model isn't priced there yet.",
         },
     }
 
@@ -250,6 +274,8 @@ def build_student_export(owner, range_key: str, *, now=None):
         activity_times.extend(timestamp for _, timestamp in quiz_rows)
         rows.append({
             "student_id": student.pk,
+            "email": student.email,
+            "cohort": student.settings.cohort,
             "account_status": student.settings.access_status,
             "created_at": student.date_joined.isoformat(),
             "first_active_at": min(activity_times).isoformat() if activity_times else "",
@@ -273,7 +299,7 @@ def build_student_export(owner, range_key: str, *, now=None):
 
 def render_student_csv(rows):
     fieldnames = [
-        "student_id", "account_status", "created_at", "first_active_at", "last_active_at",
+        "student_id", "email", "cohort", "account_status", "created_at", "first_active_at", "last_active_at",
         "courses_count", "study_sessions", "questions_answered", "first_attempt_accuracy",
         "post_resurfacing_accuracy", "calendar_connected", "calendar_connected_at",
         "calendar_retained_7d", "syllabus_dates_extracted", "syllabus_date_corrections",

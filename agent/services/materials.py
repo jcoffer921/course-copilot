@@ -229,7 +229,9 @@ async def _run_syllabus_extraction(material, data: bytes, filename: str, course_
             sync_to_async(extract_text_from_bytes, thread_sensitive=False)(data, filename),
             timeout,
         )
-        candidate = await asyncio.wait_for(extract_syllabus_async(source_text, course_id, course_name_hint), timeout)
+        candidate = await asyncio.wait_for(
+            extract_syllabus_async(source_text, course_id, course_name_hint, user=material.user), timeout,
+        )
     except asyncio.TimeoutError:
         await _fail(material, "processing_timeout", "Processing took too long. Try a smaller or simpler document.", 504)
     except Exception as exc:

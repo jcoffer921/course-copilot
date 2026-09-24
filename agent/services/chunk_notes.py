@@ -18,7 +18,7 @@ from pathlib import Path
 from asgiref.sync import sync_to_async
 
 from . import storage
-from .client import MODEL_DEFAULT as MODEL, get_client
+from .client import MODEL_DEFAULT as MODEL, create_message, get_client
 from .storage import CourseNotFoundError
 from .syllabus_extraction import extract_text_from_bytes
 
@@ -196,7 +196,8 @@ async def chunk_notes_async(
         f"Lecture source text:\n---\n{source_text}\n---"
     )
 
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         model=MODEL,
         max_tokens=4000,
         system=CHUNKING_SYSTEM_PROMPT,

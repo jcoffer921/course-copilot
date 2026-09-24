@@ -11,7 +11,7 @@ contract and validation rules this implements.
 from asgiref.sync import sync_to_async
 
 from . import storage
-from .client import CORA_MODELS, get_client
+from .client import CORA_MODELS, create_message, get_client
 from .cora_json import parse_model_json
 
 QUICK_SYSTEM_PROMPT = """You are Cora's quick-summary tool for OnTrack. Write a short, plain-language recap of \
@@ -110,7 +110,8 @@ async def summarize(
     client = get_client()
 
     if depth == "deep":
-        response = await client.messages.create(
+        response = await create_message(
+            client, user,
             model=CORA_MODELS["reasoning"],
             max_tokens=2000,
             system=DEEP_SYSTEM_PROMPT,
@@ -132,7 +133,8 @@ async def summarize(
             "likely_testable": [str(x) for x in data.get("likely_testable") or []],
         }
 
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         model=CORA_MODELS["fast"],
         max_tokens=600,
         system=QUICK_SYSTEM_PROMPT,

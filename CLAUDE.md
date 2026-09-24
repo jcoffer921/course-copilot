@@ -14,6 +14,11 @@ OnTrack is an AI agent scoped to the current semester's coursework, built on the
 - Course content is user-scoped on disk: `courses/<user.pk>/<course_id>/...`, not a shared `courses/<course_id>/` — two students can each have their own `cs101` without colliding. The 9 CLI dev-tool commands (never used by real students) resolve a single designated owner account via the `CLI_OWNER_EMAIL` env var (see `agent/services/cli_owner.py`) instead of taking a `--user` flag. Pre-existing flat-layout course data needs a one-time `python manage.py migrate_course_ownership --apply` to move it under an owner's `<user.pk>/`.
 - Google Calendar API for deadline sync is optional and uses a separate `GoogleCalendarConnection`; identity sign-in never requests Calendar access
 - Private mutable-state ownership is non-null. Migrations abort rather than guessing ownership when unexpected anonymous rows exist.
+- Access control has two independent axes on `UserSettings`, both set at signup and never inferred per-request: `access_status` (`pending`/`active`/`suspended`, the actual sign-in gate — `agent/middleware.py`'s `AccessStatusMiddleware` enforces it for pages, `agent/authentication.py`'s `ActiveAccessPermission` for the API) and `tier` (`pilot`/`full`, resolved through `agent/services/entitlements.py` — both tiers unlock the same feature set and request cap today, kept as a real mapping so a future split touches one function). `ALLOWED_GOOGLE_EMAILS` only decides which of those a new signup starts at; it is not itself a sign-in gate. `UserSettings.cohort` (optional, set once at signup from `?cohort=`, see the Pilot instrumentation note below) tags which recruitment/pilot cohort a student joined from.
+- Pilot instrumentation, added after the v1 build order below: `agent/services/llm_usage.py` enforces `entitlements.daily_request_limit()` at `AIAPIView.initial()` (the one pre-request choke point every Anthropic-calling view goes through); `agent/services/analytics.py` composes an owner-only pilot dashboard (`/analytics/`) and CSV export (`/api/analytics/export/`) purely from data other services already own; `agent/services/pilot_checks.py` runs repeatable pre-launch checks (DB, migrations, private storage, Anthropic/Google OAuth/SMTP config, public HTTPS URL, latest backup); `agent/services/backups.py` makes verified, checksummed zip backups of `db.sqlite3` + `courses/`. None of this is in the original build order because none of it existed yet when that order was written.
+
+## Git conventions
+- Never add Claude/Anthropic as a co-author (no `Co-Authored-By: Claude ...` trailer) on commits or PRs in this repo.
 
 ## Non-negotiable constraints
 - Never fabricate course content. Ground every answer in real material only: this course's syllabus/notes, a user-uploaded reference document, or — only when that material genuinely doesn't cover the question, and only from a domain the user has explicitly approved for this course — real, cited web content. Never invent facts, never blend web content into an answer as if it were the course's own material, and never search the web outside an approved domain list.
@@ -32,20 +37,27 @@ course-copilot/
     wsgi.py                 # kept for tooling compat only — not how this project runs
   agent/                  # Django app: services + async DRF views + CLI commands
     models.py               # Django ORM, in db.sqlite3 alongside the built-in auth tables:
-                            # GoogleAccount/GoogleCalendarConnection/UserSettings plus mutable per-user
-                            # state models (FlashcardProgress — now also carrying spaced-repetition
-                            # scheduling fields: suspended/last_reviewed/next_review/rating/interval_days/
-                            # review_count — GradeItem, CalendarSyncRecord, CourseMaterial, CustomEvent,
-                            # Notification, SavedSite, QuizAttempt, MasteryScore — now also carrying a
-                            # "reason" string alongside status — CourseSession/SessionMessage,
-                            # StudySession/StudyActivity, RecommendationDismissal, ExamPlan) — never
-                            # extracted/generated content, which stays in per-course JSON (see Schemas below)
+                            # GoogleAccount/GoogleCalendarConnection/UserSettings (access_status,
+                            # tier, cohort — see the Stack section's Access control note) plus
+                            # mutable per-user state models (FlashcardProgress — now also carrying
+                            # spaced-repetition scheduling fields: suspended/last_reviewed/next_review/
+                            # rating/interval_days/review_count — GradeItem, CalendarSyncRecord,
+                            # CourseMaterial, CustomEvent, Notification, SavedSite, QuizAttempt,
+                            # MasteryScore — now also carrying a "reason" string alongside status —
+                            # CourseSession/SessionMessage, StudySession/StudyActivity,
+                            # RecommendationDismissal, ExamPlan, LlmUsage, ProductMetric,
+                            # ServiceHeartbeat) — never extracted/generated content, which stays in
+                            # per-course JSON (see Schemas below)
     auth_views.py           # Google Sign-In: login redirect, OAuth callback, logout — plain
-                            # Django views (browser-redirect flow), not DRF
+                            # Django views (browser-redirect flow), not DRF; also sets
+                            # UserSettings.cohort from a signup-time ?cohort= query param
     page_views.py           # authenticated browser-page rendering; no API/business logic
     page_urls.py            # named browser routes mounted separately from /api/
     authentication.py       # DRF authentication class controlling 401-vs-403 on an
-                            # unauthenticated request
+                            # unauthenticated request; also home of ActiveAccessPermission
+                            # (the API-side access_status gate — see Stack section)
+    middleware.py            # AccessStatusMiddleware: the page-side access_status gate —
+                            # see the Stack section's Access control note
     serializers.py          # DRF request serializers for views.py's APIViews
     services/
       client.py              # shared AsyncAnthropic init + MODEL constants (+ the CORA_MODELS
@@ -150,6 +162,51 @@ course-copilot/
                                  # dashboard's 7-dot strip
       google_oauth.py              # Google Sign-In: email allow-list + OAuth 2.0
                                  # Authorization Code flow helpers
+      google_calendar_oauth.py      # Calendar's own OAuth 2.0 flow — separate consent screen,
+                                 # separate stored credentials from google_oauth.py's identity
+                                 # sign-in; see the Stack section's Calendar-optionality note
+      course_catalog.py             # owned course metadata CRUD + archive lifecycle;
+                                 # composes GET /api/courses/overview/ (the Courses page)
+      course_overview.py            # /courses/<course_id>/ landing-page composition, calling
+                                 # only existing services (exams, recommendations, mastery,
+                                 # grades, calendar_events, sessions, study_sessions) — each
+                                 # section fails independently, never blanking the whole page
+      interactive_study.py          # resumable practice-attempt and flashcard-deck sessions
+                                 # backing StudySession.state; answer keys and card definitions
+                                 # stay redacted from every response until explicit
+                                 # finalization/reveal (see the StudySession schema below)
+      entitlements.py               # UserSettings.tier -> feature-gate set and the daily
+                                 # Anthropic-request cap — the one place a tier check belongs;
+                                 # see the Stack section's Access control note
+      llm_usage.py                  # per-user daily Anthropic request cap, checked once at
+                                 # AIAPIView.initial() — see the Stack section's Pilot
+                                 # instrumentation note
+      metrics.py                    # ProductMetric event logging (record()) behind a small
+                                 # ALLOWED_METADATA whitelist — a field not on that whitelist
+                                 # is silently dropped, not stored; never a general-purpose sink
+      analytics.py                  # owner-only pilot analytics dashboard + CSV export — see
+                                 # the Stack section's Pilot instrumentation note
+      profiles.py                   # authenticated /profile/ composition — reuses
+                                 # dashboard/course_catalog/streak/entitlements, no competing store
+      accounts.py                   # owned account data export (export_account_data) and
+                                 # deletion (delete_account, requires the literal confirmation
+                                 # phrase "DELETE MY ACCOUNT") — the only place a user's DB row
+                                 # and course directory are removed together
+      notifications.py              # in-app Notification rows + idempotent reminder/overdue-
+                                 # deadline email delivery; a notification_key makes generation
+                                 # safe to call repeatedly without duplicating rows or emails
+      operations.py                 # ServiceHeartbeat + health_snapshot() backing the ops
+                                 # health-check endpoint
+      pilot_checks.py               # repeatable pre-launch checks for a closed pilot — see
+                                 # the Stack section's Pilot instrumentation note
+      backups.py                    # verified zip backups of db.sqlite3 + courses/ with a
+                                 # sha256 manifest; restore_backup requires the literal
+                                 # confirmation phrase "RESTORE ONTRACK" and always moves the
+                                 # pre-restore state aside first rather than overwriting in place
+      support.py                    # emails a stored ContactRequest to ONTRACK_SUPPORT_EMAIL;
+                                 # a no-op (returns False) if that setting is unset
+      email_domain.py                # SPF/DKIM/DMARC TXT-record checks for the outbound
+                                 # sending domain — a pilot_checks-adjacent deliverability check
     views.py               # async DRF views (adrf.views.APIView)
     urls.py
     management/commands/
@@ -248,11 +305,21 @@ course-copilot/
 Browser pages are URL-addressable and remain separate from the JSON API:
 `/dashboard/`, `/calendar/`, `/courses/`, `/courses/<course_id>/`,
 `/courses/<course_id>/materials/`, `/courses/<course_id>/study/`,
-`/courses/<course_id>/mastery/`, `/cora/`, `/study/`, `/profile/`,
-`/courses/<course_id>/exams/<exam_id>/`, and `/settings/`. Authenticated `/`
-redirects to `/dashboard/`; anonymous `/` renders the public welcome page.
-`/login/` and `/signup/` both use the existing Google identity flow, with the
-latter explaining that first sign-in creates the account.
+`/courses/<course_id>/study/quiz/`,
+`/courses/<course_id>/study/quizzes/<quiz_id>/attempts/<attempt_id>/`,
+`/courses/<course_id>/study/flashcards/<deck_id>/`,
+`/courses/<course_id>/mastery/`, `/courses/<course_id>/grades/`, `/cora/`,
+`/study/`, `/profile/`, `/courses/<course_id>/exams/<exam_id>/`, `/settings/`
+(plus `/settings/profile/`, `/settings/account/`, `/settings/preferences/`,
+`/settings/notifications/`, `/settings/privacy/`, `/settings/apps/`,
+`/settings/subscription/`, `/settings/data/` — same view, a `section` param
+that only affects which panel is scrolled into view/expanded on load),
+`/analytics/` (owner-only pilot dashboard, see the Stack section's Pilot
+instrumentation note), `/feedback/`, `/privacy/`, and `/contact/`.
+Authenticated `/` redirects to `/dashboard/`; anonymous `/` renders the
+public welcome page. `/login/` and `/signup/` both use the existing Google
+identity flow, with the latter explaining that first sign-in creates the
+account.
 `/study/?course=&topic=` and `/cora/?q=` prefill (never auto-submit) the guided-session
 setup and the Cora chat input respectively — `window.ONTRACK_INITIAL_TOPIC`/
 `_QUESTION`, both `|escapejs`-embedded free text capped at 255/500 chars server-side

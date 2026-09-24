@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from asgiref.sync import sync_to_async
 
 from . import mastery, storage
-from .client import MODEL_DEFAULT as MODEL_ASSESSMENT, MODEL_HAIKU, get_client
+from .client import MODEL_DEFAULT as MODEL_ASSESSMENT, MODEL_HAIKU, create_message, get_client
 from .storage import CourseNotFoundError
 
 FLASHCARD_SYSTEM_PROMPT = """You are the low-cost data gatherer and flashcard maker for OnTrack. \
@@ -257,7 +257,7 @@ async def generate_flashcards_async(
     if web_search_tool:
         create_kwargs["tools"] = [web_search_tool]
 
-    response = await client.messages.create(**create_kwargs)
+    response = await create_message(client, user, **create_kwargs)
     last_non_text = max((i for i, b in enumerate(response.content) if b.type != "text"), default=-1)
     raw = "".join(
         block.text for block in response.content[last_non_text + 1:] if block.type == "text"
@@ -344,7 +344,8 @@ async def generate_assessment_question_async(
             f"{json.dumps(flashcard_context or [], indent=2)}"
         )
 
-        response = await client.messages.create(
+        response = await create_message(
+            client, user,
             model=MODEL_ASSESSMENT,
             max_tokens=1024,
             system=ASSESSMENT_SYSTEM_PROMPT,

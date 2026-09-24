@@ -13,7 +13,7 @@ import json
 from asgiref.sync import sync_to_async
 
 from . import calendar_events, recommendations, reminders, storage, streak, study_sessions
-from .client import CORA_MODELS, get_client
+from .client import CORA_MODELS, create_message, get_client
 from .cora_json import parse_model_json
 
 DEADLINE_WINDOW_DAYS = 21
@@ -107,7 +107,8 @@ async def generate_plan(user, available_minutes: int = None, course_ids: list[st
         raise NoStudyContextError("no courses available yet to build a study plan from")
 
     client = get_client()
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         model=CORA_MODELS["reasoning"],
         max_tokens=1500,
         system=SYSTEM_PROMPT,

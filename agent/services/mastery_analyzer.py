@@ -11,7 +11,7 @@ import json
 from asgiref.sync import sync_to_async
 
 from . import mastery, quiz
-from .client import CORA_MODELS, get_client
+from .client import CORA_MODELS, create_message, get_client
 from .cora_json import parse_model_json
 
 SYSTEM_PROMPT = """You are Cora's mastery-interpretation tool for OnTrack. You are given a topic's \
@@ -65,7 +65,8 @@ async def analyze(user, course_id: str, topic: str = None) -> dict:
 
     client = get_client()
     context = {"mastery_scores": scores, "recent_attempts": attempts}
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         model=CORA_MODELS["reasoning"],
         max_tokens=1000,
         system=SYSTEM_PROMPT,

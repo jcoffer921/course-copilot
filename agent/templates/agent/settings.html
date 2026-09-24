@@ -33,9 +33,7 @@
             <div class="settings-identity">
               <div class="settings-avatar" aria-hidden="true">{{ user_initials }}</div>
               <div><strong id="profile-identity-name">{{ display_name }}</strong><span id="profile-identity-email">{{ user.email }}</span></div>
-              <button class="btn btn-secondary" type="button" disabled title="Profile photos are not supported yet">Change photo</button>
             </div>
-            <p class="settings-availability-note">Profile photos will be available when secure image storage is supported.</p>
             <form id="profile-form" class="settings-form">
               <div class="settings-form-grid">
                 <label>Full name<input id="settings-display-name" name="display_name" class="input" maxlength="150" autocomplete="name" required></label>
@@ -59,7 +57,7 @@
         </div>
         <aside class="settings-context-column">
           <section class="settings-context-card"><h3>Account summary</h3><dl><div><dt>Member since</dt><dd id="summary-member">—</dd></div><div><dt>Courses enrolled</dt><dd id="summary-courses">—</dd></div><div><dt>Quizzes completed</dt><dd id="summary-quizzes">—</dd></div><div><dt>Current streak</dt><dd id="summary-streak">—</dd></div></dl><a href="{% url 'study-page' %}" class="settings-text-link">View my activity <span aria-hidden="true">→</span></a></section>
-          <section class="settings-help-card"><h3>Need help?</h3><p>Contact the OnTrack team for account or product support.</p><button class="btn btn-secondary" type="button" disabled>Help center unavailable</button><a class="settings-text-link" href="{% url 'contact-page' %}">Contact support</a></section>
+          <section class="settings-help-card"><h3>Need help?</h3><p>Contact the OnTrack team for account or product support.</p><a class="settings-text-link" href="{% url 'contact-page' %}">Contact support</a></section>
         </aside>
       </div>
 
@@ -68,7 +66,6 @@
       <div class="settings-stack">
         <section class="settings-card settings-action-card"><div><span class="settings-card-kicker">Email address</span><h3 id="account-email">—</h3><p>Your email is verified and managed through Google Sign-In.</p></div><button class="btn btn-secondary" type="button" disabled>Change email</button></section>
         <section id="password" class="settings-card settings-action-card" tabindex="-1"><div><span class="settings-card-kicker">Password</span><h3>Google-managed sign-in</h3><p>OnTrack does not store a password for this account. Change your password with Google.</p></div><button class="btn btn-secondary" type="button" disabled>Change password</button></section>
-        <section class="settings-card"><span class="settings-card-kicker">Active sessions</span><h3>Session management</h3><p class="settings-muted">Device-level session controls are not supported yet. Signing out ends this browser session.</p><form action="{% url 'google-logout' %}" method="post">{% csrf_token %}<button class="btn btn-secondary" type="submit">Sign out of this session</button></form></section>
         <section class="settings-card settings-security-card"><span class="settings-card-kicker">Security</span><h3><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-check"/></svg> Verified Google identity</h3><p>Identity access is separate from optional Calendar access. Two-factor authentication is managed by Google.</p></section>
         <section id="delete-account" class="settings-card settings-danger-zone" tabindex="-1"><div><span class="settings-card-kicker">Danger zone</span><h3>Delete account</h3><p>Permanently remove your profile, courses, materials, study history, plans, and connections. This cannot be undone.</p></div><button id="delete-open" class="btn settings-danger-button" type="button">Delete account</button></section>
       </div>
@@ -115,7 +112,6 @@
         <div class="settings-primary-column settings-stack">
           <section class="settings-card settings-action-card"><div><span class="settings-card-kicker">Course materials</span><h3><span id="material-count">—</span> uploaded files</h3><p>Manage syllabi, notes, slides, and reference documents from their course workspace.</p></div><a class="btn btn-secondary" href="{% url 'courses-page' %}">Manage course materials →</a></section>
           <section id="export" class="settings-card" tabindex="-1"><span class="settings-card-kicker">Export your data</span><h3>Download a copy of your OnTrack account data</h3><p>Your JSON export includes profile details, settings, courses, materials metadata, plans, and study history. Credentials are excluded.</p><a id="export-download" class="btn btn-primary" href="/api/profile/export/" download>Download my data</a></section>
-          <section class="settings-card"><span class="settings-card-kicker">Generated study data</span><h3>Clear generated content</h3><p class="settings-muted">Selective clearing is not available because the backend does not yet define safe, complete deletion semantics.</p><button class="btn btn-secondary" type="button" disabled>Clear generated data</button></section>
         </div>
         <aside class="settings-context-column"><section class="settings-context-card"><h3>Storage summary</h3><p class="storage-total" id="storage-total">—</p><p>Uploaded course materials tracked by OnTrack.</p><div class="storage-bar" aria-hidden="true"><span></span></div><small>Generated JSON content is not included in this figure.</small></section></aside>
       </div>

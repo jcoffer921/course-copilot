@@ -588,10 +588,13 @@ class RecommendationDismissal(models.Model):
 
 
 class LlmUsage(models.Model):
-    """One row per user per calendar day, counting Anthropic-calling
-    requests (not tokens — see agent/services/llm_usage.py) so a daily cap
-    can be enforced and inspected without an extra Google/Anthropic
-    round-trip."""
+    """One row per user per calendar day. `count` is Anthropic-calling
+    requests, checked pre-request so a daily cap can be enforced without an
+    extra Google/Anthropic round-trip. `tokens` is per-model totals —
+    {"<model id>": {"input": int, "output": int}} — recorded post-request
+    (token counts only exist once a response comes back) by
+    agent/services/client.py's create_message(); see agent/services/
+    llm_usage.py for both call sites."""
 
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -600,6 +603,7 @@ class LlmUsage(models.Model):
     )
     date = models.DateField()
     count = models.PositiveIntegerField(default=0)
+    tokens = models.JSONField(default=dict, blank=True)
 
     class Meta:
         constraints = [

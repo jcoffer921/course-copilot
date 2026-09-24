@@ -46,7 +46,7 @@ def _tool_response(intent, requires_course_context=True):
 async def test_classify_returns_the_models_chosen_intent():
     client = _FakeClient(_tool_response("study_planner"))
 
-    result = await intent_router.classify(client, "what should I study tonight", has_current_course=True)
+    result = await intent_router.classify(client, None, "what should I study tonight", has_current_course=True)
 
     assert result == {"intent": "study_planner", "requires_course_context": True}
 
@@ -54,7 +54,7 @@ async def test_classify_returns_the_models_chosen_intent():
 async def test_classify_falls_back_to_course_qa_when_no_tool_use_block_present():
     client = _FakeClient(_FakeResponse([_FakeTextBlock("I'm not going to use the tool.")]))
 
-    result = await intent_router.classify(client, "some question", has_current_course=True)
+    result = await intent_router.classify(client, None, "some question", has_current_course=True)
 
     assert result["intent"] == "course_qa"
 
@@ -62,7 +62,7 @@ async def test_classify_falls_back_to_course_qa_when_no_tool_use_block_present()
 async def test_classify_falls_back_to_course_qa_on_api_error():
     client = _FakeClient(error=RuntimeError("network exploded"))
 
-    result = await intent_router.classify(client, "some question", has_current_course=True)
+    result = await intent_router.classify(client, None, "some question", has_current_course=True)
 
     assert result["intent"] == "course_qa"
 
@@ -70,7 +70,7 @@ async def test_classify_falls_back_to_course_qa_on_api_error():
 async def test_classify_normalizes_unknown_to_course_qa():
     client = _FakeClient(_tool_response("unknown"))
 
-    result = await intent_router.classify(client, "??? gibberish ???", has_current_course=True)
+    result = await intent_router.classify(client, None, "??? gibberish ???", has_current_course=True)
 
     assert result["intent"] == "course_qa"
 
@@ -78,7 +78,7 @@ async def test_classify_normalizes_unknown_to_course_qa():
 async def test_classify_falls_back_to_course_qa_on_out_of_enum_intent():
     client = _FakeClient(_tool_response("delete_everything"))
 
-    result = await intent_router.classify(client, "some question", has_current_course=True)
+    result = await intent_router.classify(client, None, "some question", has_current_course=True)
 
     assert result["intent"] == "course_qa"
 

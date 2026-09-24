@@ -16,7 +16,7 @@ import re
 from asgiref.sync import sync_to_async
 
 from . import storage
-from .client import MODEL_DEFAULT as MODEL, get_client
+from .client import MODEL_DEFAULT as MODEL, create_message, get_client
 from .storage import CourseNotFoundError
 
 DOMAIN_SUGGESTION_SYSTEM_PROMPT = """You propose a short list of real, authoritative web domains \
@@ -60,7 +60,8 @@ async def suggest_domains(course_id: str, user) -> list[str]:
         f"topics: {json.dumps(syllabus.get('topics', []), indent=2)}"
     )
 
-    response = await client.messages.create(
+    response = await create_message(
+        client, user,
         model=MODEL,
         max_tokens=1024,
         system=DOMAIN_SUGGESTION_SYSTEM_PROMPT,

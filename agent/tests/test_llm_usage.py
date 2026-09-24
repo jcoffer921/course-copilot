@@ -1,12 +1,14 @@
 from datetime import timedelta
 
 import pytest
+from asgiref.sync import sync_to_async
 from django.utils import timezone
 from rest_framework.exceptions import Throttled
 from rest_framework.test import APIClient
 
 from agent.models import LlmUsage, UserSettings
 from agent.services import entitlements, llm_usage
+from agent.services.client import create_message
 
 AI_ROUTES = [
     "/api/courses/cs101/quiz/generate/",
@@ -108,3 +110,86 @@ def test_llm_usage_command_reports_no_usage(capsys):
 
     output = capsys.readouterr().out
     assert "No LLM requests recorded" in output
+
+
+@pytest.mark.django_db
+def test_record_usage_accumulates_tokens_across_multiple_calls(django_user_model):
+    user = django_user_model.objects.create_user(username="token-accum-user")
+
+    llm_usage.record_usage(user, "claude-haiku-4-5", 100, 50)
+    llm_usage.record_usage(user, "claude-haiku-4-5", 40, 10)
+
+    row = LlmUsage.objects.get(user=user, date=timezone.localdate())
+    assert row.tokens["claude-haiku-4-5"] == {"input": 140, "output": 60}
+
+
+@pytest.mark.django_db
+def test_record_usage_keeps_per_model_totals_separate(django_user_model):
+    user = django_user_model.objects.create_user(username="per-model-user")
+
+    llm_usage.record_usage(user, "claude-haiku-4-5", 100, 50)
+    llm_usage.record_usage(user, "claude-sonnet-4-6", 500, 200)
+
+    row = LlmUsage.objects.get(user=user, date=timezone.localdate())
+    assert row.tokens["claude-haiku-4-5"] == {"input": 100, "output": 50}
+    assert row.tokens["claude-sonnet-4-6"] == {"input": 500, "output": 200}
+
+
+@pytest.mark.django_db
+def test_record_usage_rolls_over_at_calendar_day(django_user_model):
+    """Yesterday's token totals are untouched by a call recorded today —
+    tokens roll over on the same calendar-day boundary as the request cap."""
+    user = django_user_model.objects.create_user(username="token-day-boundary-user")
+    yesterday = timezone.localdate() - timedelta(days=1)
+    LlmUsage.objects.create(user=user, date=yesterday, count=1, tokens={"claude-haiku-4-5": {"input": 999, "output": 999}})
+
+    llm_usage.record_usage(user, "claude-haiku-4-5", 10, 5)
+
+    assert LlmUsage.objects.get(user=user, date=yesterday).tokens["claude-haiku-4-5"] == {"input": 999, "output": 999}
+    assert LlmUsage.objects.get(user=user, date=timezone.localdate()).tokens["claude-haiku-4-5"] == {"input": 10, "output": 5}
+
+
+class _FakeUsage:
+    def __init__(self, input_tokens, output_tokens):
+        self.input_tokens = input_tokens
+        self.output_tokens = output_tokens
+
+
+class _FakeResponse:
+    def __init__(self, input_tokens=10, output_tokens=5):
+        self.usage = _FakeUsage(input_tokens, output_tokens)
+
+
+class _FakeMessages:
+    async def create(self, **kwargs):
+        return _FakeResponse()
+
+
+class _FakeClient:
+    def __init__(self):
+        self.messages = _FakeMessages()
+
+
+async def test_create_message_records_usage_for_the_calling_user(django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(username="create-message-user")
+
+    await create_message(_FakeClient(), user, model="claude-haiku-4-5", max_tokens=10, messages=[])
+
+    row = await sync_to_async(LlmUsage.objects.get)(user=user, date=timezone.localdate())
+    assert row.tokens["claude-haiku-4-5"] == {"input": 10, "output": 5}
+
+
+async def test_create_message_returns_response_even_when_usage_write_fails(django_user_model, monkeypatch):
+    """Recording usage must never break a request that already succeeded —
+    an exception in record_usage() is logged and swallowed, not raised."""
+    user = await sync_to_async(django_user_model.objects.create_user)(username="usage-write-fails-user")
+
+    def _boom(*_args, **_kwargs):
+        raise RuntimeError("usage table unreachable")
+
+    monkeypatch.setattr(llm_usage, "record_usage", _boom)
+
+    response = await create_message(_FakeClient(), user, model="claude-haiku-4-5", max_tokens=10, messages=[])
+
+    assert response.usage.input_tokens == 10
+    assert not await sync_to_async(LlmUsage.objects.filter(user=user).exists)()
