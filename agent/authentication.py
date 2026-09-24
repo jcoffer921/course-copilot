@@ -66,3 +66,21 @@ class PilotOwnerPermission(BasePermission):
         if not is_pilot_owner(request.user):
             raise NotFound()
         return True
+
+
+def is_faculty(user) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    from .models import UserSettings
+
+    settings_row, _ = UserSettings.objects.get_or_create(user=user)
+    return settings_row.role == UserSettings.ROLE_FACULTY
+
+
+class FacultyPermission(BasePermission):
+    """Conceal the faculty planning surface from every non-faculty account."""
+
+    def has_permission(self, request, view):
+        if not is_faculty(request.user):
+            raise NotFound()
+        return True

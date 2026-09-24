@@ -59,9 +59,17 @@ class UserSettings(models.Model):
         (TIER_FULL, "Full"),
     ]
 
+    ROLE_STUDENT = "student"
+    ROLE_FACULTY = "faculty"
+    ROLE_CHOICES = [
+        (ROLE_STUDENT, "Student"),
+        (ROLE_FACULTY, "Faculty"),
+    ]
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="settings")
     access_status = models.CharField(max_length=16, choices=ACCESS_STATUS_CHOICES, default=ACCESS_PENDING, db_index=True)
     tier = models.CharField(max_length=16, choices=TIER_CHOICES, default=TIER_PILOT)
+    role = models.CharField(max_length=16, choices=ROLE_CHOICES, default=ROLE_STUDENT, db_index=True)
     cohort = models.CharField(max_length=100, blank=True, default="")
     bio = models.TextField(blank=True, default="")
     university = models.CharField(max_length=150, blank=True, default="")
