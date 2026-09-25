@@ -16,6 +16,7 @@ OnTrack is an AI agent scoped to the current semester's coursework, built on the
 - Private mutable-state ownership is non-null. Migrations abort rather than guessing ownership when unexpected anonymous rows exist.
 - Access control has two independent axes on `UserSettings`, both set at signup and never inferred per-request: `access_status` (`pending`/`active`/`suspended`, the actual sign-in gate — `agent/middleware.py`'s `AccessStatusMiddleware` enforces it for pages, `agent/authentication.py`'s `ActiveAccessPermission` for the API) and `tier` (`pilot`/`full`, resolved through `agent/services/entitlements.py` — both tiers unlock the same feature set and request cap today, kept as a real mapping so a future split touches one function). `ALLOWED_GOOGLE_EMAILS` only decides which of those a new signup starts at; it is not itself a sign-in gate. `UserSettings.cohort` (optional, set once at signup from `?cohort=`, see the Pilot instrumentation note below) tags which recruitment/pilot cohort a student joined from.
 - Pilot instrumentation, added after the v1 build order below: `agent/services/llm_usage.py` enforces `entitlements.daily_request_limit()` at `AIAPIView.initial()` (the one pre-request choke point every Anthropic-calling view goes through); `agent/services/analytics.py` composes an owner-only pilot dashboard (`/analytics/`) and CSV export (`/api/analytics/export/`) purely from data other services already own; `agent/services/pilot_checks.py` runs repeatable pre-launch checks (DB, migrations, private storage, Anthropic/Google OAuth/SMTP config, public HTTPS URL, latest backup); `agent/services/backups.py` makes verified, checksummed zip backups of `db.sqlite3` + `courses/`. None of this is in the original build order because none of it existed yet when that order was written.
+- Faculty planning (backend in progress, see `docs/superpowers/plans/2026-09-24-faculty-view-excel-import.md`): `UserSettings.role` (`student`/`faculty`) plus `agent.authentication.FacultyPermission` gate a faculty-only surface the same way `PilotOwnerPermission` gates analytics. `agent/services/requirements_extraction.py` turns a faculty-uploaded program-requirements `.xlsx` into structured JSON (never written to disk/DB by itself); `agent/services/program_requirements.py` is the one place a confirmed `ProgramRequirement` row gets written, via `POST /api/faculty/requirements/import/` (extract only) and `.../confirm/` (create, or 409-then-overwrite on a `(user, program_name, catalog_year)` collision). `agent/services/academic_planner.py` then holds an AI planning chat grounded against exactly one `ProgramRequirement`, dropping any model-proposed course not present in it; all student-specific state (details, conversation, draft plan) lives only in `request.session["faculty_plan_session"]` via `POST /api/faculty/plan/chat/` and `.../plan/reset/` — never the database, same rule this doc's stack notes already hold content extraction to. The faculty-facing page/templates are not built yet.
 
 ## Git conventions
 - Never add Claude/Anthropic as a co-author (no `Co-Authored-By: Claude ...` trailer) on commits or PRs in this repo.
@@ -38,16 +39,19 @@ course-copilot/
   agent/                  # Django app: services + async DRF views + CLI commands
     models.py               # Django ORM, in db.sqlite3 alongside the built-in auth tables:
                             # GoogleAccount/GoogleCalendarConnection/UserSettings (access_status,
-                            # tier, cohort — see the Stack section's Access control note) plus
-                            # mutable per-user state models (FlashcardProgress — now also carrying
-                            # spaced-repetition scheduling fields: suspended/last_reviewed/next_review/
-                            # rating/interval_days/review_count — GradeItem, CalendarSyncRecord,
-                            # CourseMaterial, CustomEvent, Notification, SavedSite, QuizAttempt,
-                            # MasteryScore — now also carrying a "reason" string alongside status —
-                            # CourseSession/SessionMessage, StudySession/StudyActivity,
-                            # RecommendationDismissal, ExamPlan, LlmUsage, ProductMetric,
-                            # ServiceHeartbeat) — never extracted/generated content, which stays in
-                            # per-course JSON (see Schemas below)
+                            # tier, cohort, role — see the Stack section's Access control and
+                            # Faculty planning notes) plus mutable per-user state models
+                            # (FlashcardProgress — now also carrying spaced-repetition scheduling
+                            # fields: suspended/last_reviewed/next_review/rating/interval_days/
+                            # review_count — GradeItem, CalendarSyncRecord, CourseMaterial,
+                            # CustomEvent, Notification, SavedSite, QuizAttempt, MasteryScore — now
+                            # also carrying a "reason" string alongside status — CourseSession/
+                            # SessionMessage, StudySession/StudyActivity, RecommendationDismissal,
+                            # ExamPlan, LlmUsage, ProductMetric, ServiceHeartbeat,
+                            # ProgramRequirement — a faculty member's confirmed program-requirements
+                            # structure, the source of truth academic_planner.py grounds against)
+                            # — never extracted/generated content, which stays in per-course JSON
+                            # (see Schemas below)
     auth_views.py           # Google Sign-In: login redirect, OAuth callback, logout — plain
                             # Django views (browser-redirect flow), not DRF; also sets
                             # UserSettings.cohort from a signup-time ?cohort= query param
