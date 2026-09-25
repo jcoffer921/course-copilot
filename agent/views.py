@@ -11,6 +11,7 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from .authentication import ActiveAccessPermission, FacultyPermission, PilotOwnerPermission
+from .models import ProgramRequirement
 from .throttles import AIUserBurstThrottle, AIUserDailyThrottle
 
 from .serializers import (
@@ -30,6 +31,7 @@ from .serializers import (
     CreateRecurringEventsRequestSerializer,
     DeleteCustomEventRequestSerializer,
     DismissRecommendationRequestSerializer,
+    FacultyPlanChatRequestSerializer,
     ImportRequirementsRequestSerializer,
     MasteryInsightRequestSerializer,
     ExtractSyllabusRequestSerializer,
@@ -61,7 +63,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
+from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -298,6 +300,90 @@ class FacultyRequirementsConfirmView(APIView):
             {"program_requirement": program_requirements.serialize(row)},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+FACULTY_PLAN_SESSION_KEY = "faculty_plan_session"
+
+
+def _default_faculty_plan_session(program_requirement_id) -> dict:
+    return {
+        "program_requirement_id": str(program_requirement_id),
+        "student_details": {},
+        "conversation": [],
+        "draft_plan": None,
+    }
+
+
+def _read_faculty_plan_session(request):
+    return request.session.get(FACULTY_PLAN_SESSION_KEY)
+
+
+def _write_faculty_plan_session(request, state: dict):
+    request.session[FACULTY_PLAN_SESSION_KEY] = state
+
+
+def _clear_faculty_plan_session(request):
+    request.session.pop(FACULTY_PLAN_SESSION_KEY, None)
+
+
+class FacultyPlanChatView(AIAPIView):
+    """
+    POST /api/faculty/plan/chat/
+    body: {"program_requirement_id": "...", "message": "..."}
+    All student-specific state (details gathered, conversation, draft plan)
+    lives only in request.session — never written to disk or the database.
+    """
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def post(self, request):
+        serializer = FacultyPlanChatRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        requirement_id = serializer.validated_data["program_requirement_id"]
+        message = serializer.validated_data["message"]
+
+        try:
+            row = await sync_to_async(ProgramRequirement.objects.get)(
+                user=request.user, requirement_id=requirement_id,
+            )
+        except ProgramRequirement.DoesNotExist:
+            return Response({"detail": "Program requirement not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        state = await sync_to_async(_read_faculty_plan_session)(request)
+        if not state or state.get("program_requirement_id") != str(requirement_id):
+            state = _default_faculty_plan_session(requirement_id)
+
+        try:
+            result = await academic_planner.plan_chat_async(
+                row.requirements, state["student_details"], state["conversation"], message, request.user,
+            )
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_502_BAD_GATEWAY)
+
+        state["conversation"] = state["conversation"] + [
+            {"role": "user", "content": message},
+            {"role": "assistant", "content": result["reply"]},
+        ]
+        state["student_details"] = result["student_details"]
+        state["draft_plan"] = result["draft_plan"]
+        await sync_to_async(_write_faculty_plan_session)(request, state)
+
+        return Response(
+            {"reply": result["reply"], "draft_plan": result["draft_plan"]}, status=status.HTTP_200_OK,
+        )
+
+
+class FacultyPlanResetView(APIView):
+    """POST /api/faculty/plan/reset/ — clears the session-only planning
+    state so faculty can start over with a new student."""
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def post(self, request):
+        await sync_to_async(_clear_faculty_plan_session)(request)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 class CourseView(APIView):

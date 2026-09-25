@@ -10,6 +10,8 @@ urlpatterns = [
     path("feedback/", views.PilotFeedbackView.as_view(), name="pilot-feedback"),
     path("faculty/requirements/import/", views.FacultyRequirementsImportView.as_view(), name="faculty-requirements-import"),
     path("faculty/requirements/confirm/", views.FacultyRequirementsConfirmView.as_view(), name="faculty-requirements-confirm"),
+    path("faculty/plan/chat/", views.FacultyPlanChatView.as_view(), name="faculty-plan-chat"),
+    path("faculty/plan/reset/", views.FacultyPlanResetView.as_view(), name="faculty-plan-reset"),
     path("courses/overview/", views.CoursesOverviewView.as_view(), name="courses-overview"),
     # slug converter ([-a-zA-Z0-9_]+) rejects "/" and ".." in course_id at the
     # routing layer, before it can reach storage.py as a path segment.

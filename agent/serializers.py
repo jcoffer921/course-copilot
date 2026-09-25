@@ -198,6 +198,11 @@ class ConfirmRequirementsRequestSerializer(serializers.Serializer):
         return value
 
 
+class FacultyPlanChatRequestSerializer(serializers.Serializer):
+    program_requirement_id = serializers.UUIDField()
+    message = serializers.CharField(allow_blank=False, max_length=4000)
+
+
 class AskRequestSerializer(serializers.Serializer):
     question = serializers.CharField(allow_blank=False, max_length=4000)
     session_id = serializers.CharField(required=False, allow_blank=False, default=None)
