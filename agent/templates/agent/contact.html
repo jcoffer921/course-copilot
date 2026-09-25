@@ -1,0 +1,21 @@
+{% load static %}
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Contact &amp; Support · OnTrack</title><link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}"><link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}"><link rel="stylesheet" href="{% static 'agent/css/app.css' %}?v=contact-20260901-1"></head>
+<body class="contact-body"><main class="contact-shell">
+  <header class="contact-topbar"><a class="contact-brand" href="{% if user.is_authenticated %}{% url 'dashboard-page' %}{% else %}{% url 'google-login' %}{% endif %}"><img src="{% static 'agent/images/ontrack-icon.png' %}" alt=""><span>OnTrack</span></a><nav><a href="{% url 'privacy-page' %}">Privacy</a>{% if user.is_authenticated %}<a href="{% url 'feedback-page' %}">Send feedback</a><a class="contact-nav-primary" href="{% url 'dashboard-page' %}">Back to app</a>{% else %}<a class="contact-nav-primary" href="{% url 'google-login' %}">Sign in</a>{% endif %}</nav></header>
+  <section class="contact-hero"><p class="support-eyebrow">Contact &amp; support</p><h1>How can we help?</h1><p>Questions, account trouble, privacy requests, or pilot conversations—send us a note and it will reach the right place.</p></section>
+  <div class="contact-grid">
+    <article class="contact-form-card">
+      {% if submitted %}<div class="contact-success" role="status"><span>✓</span><div><h2>Your message is on its way.</h2><p>We received your request and will reply to the email you provided.</p></div></div>{% endif %}
+      <h2>Send a message</h2><p class="contact-form-intro">We aim to respond within two business days during the pilot.</p>
+      <form method="post" novalidate>{% csrf_token %}{{ form.website }}
+        {% if form.non_field_errors %}<div class="support-form-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+        <div class="contact-field-row"><label>Your name{{ form.name }}{% for error in form.name.errors %}<small class="field-error">{{ error }}</small>{% endfor %}</label><label>Email address{{ form.email }}{% for error in form.email.errors %}<small class="field-error">{{ error }}</small>{% endfor %}</label></div>
+        <label>What can we help with?{{ form.topic }}{% for error in form.topic.errors %}<small class="field-error">{{ error }}</small>{% endfor %}</label>
+        <label>Subject{{ form.subject }}{% for error in form.subject.errors %}<small class="field-error">{{ error }}</small>{% endfor %}</label>
+        <label>Message{{ form.message }}{% for error in form.message.errors %}<small class="field-error">{{ error }}</small>{% endfor %}</label>
+        <p class="contact-form-note">Do not include passwords, authentication codes, or highly sensitive course information.</p><button class="btn btn-primary" type="submit">Send message</button>
+      </form>
+    </article>
+    <aside class="contact-options"><article><span class="contact-option-icon">?</span><h2>Product feedback</h2><p>Share an idea or usability issue without opening a support request.</p>{% if user.is_authenticated %}<a href="{% url 'feedback-page' %}">Open feedback page →</a>{% else %}<a href="{% url 'google-login' %}">Sign in to send feedback →</a>{% endif %}</article><article><span class="contact-option-icon">⌁</span><h2>Privacy &amp; data</h2><p>Learn what OnTrack stores or how to export and delete your account data.</p><a href="{% url 'privacy-page' %}">Read privacy notice →</a></article><article class="contact-email-card"><p>Prefer email?</p><a href="mailto:{{ support_email }}">{{ support_email }}</a></article></aside>
+  </div>
+</main></body></html>

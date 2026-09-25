@@ -1,6 +1,7 @@
 import pytest
 
-from agent.services import dashboard, mastery, storage
+from agent.models import CourseMaterial
+from agent.services import dashboard, material_files, mastery, storage
 
 pytestmark = pytest.mark.django_db
 
@@ -19,13 +20,21 @@ def user(django_user_model):
 
 
 def _seed_course(course_id, topics, grading, dates, user, notes_count=0):
-    storage.write_syllabus(course_id, {
+    syllabus = {
         "course_id": course_id,
         "course_name": course_id.upper(),
         "dates": dates,
         "grading": grading,
         "topics": topics,
-    }, user)
+    }
+    storage.write_syllabus(course_id, syllabus, user)
+    key = material_files.object_storage.save(user, course_id, ".pdf", b"%PDF-test")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename=f"{course_id}-syllabus.pdf",
+        material_type=CourseMaterial.TYPE_SYLLABUS, source_key="syllabus",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_CONFIRMED,
+        storage_key=key, size_bytes=9, content_type="application/pdf", extracted_data=syllabus,
+    )
     for i in range(notes_count):
         lecture_id = f"lecture{i + 1:02d}"
         storage.write_notes(course_id, lecture_id, {
@@ -60,20 +69,23 @@ def test_build_dashboard_composes_course_data(isolated_courses_dir, user):
     assert course["grading"] == [{"component": "HW", "weight_pct": 100}]
     assert [t["topic"] for t in course["weak_topics"]] == ["A"]
     assert course["topics"] == [
-        {"topic": "A", "score": pytest.approx(0.65), "status": "developing"},
-        {"topic": "B", "score": None, "status": "unassessed"},
-        {"topic": "C", "score": None, "status": "unassessed"},
+        {
+            "topic": "A", "score": pytest.approx(0.65), "status": "needs_review",
+            "reason": "65% mastery over 1 attempt(s) — needs more practice.",
+        },
+        {"topic": "B", "score": None, "status": "not_started", "reason": "Not started yet."},
+        {"topic": "C", "score": None, "status": "not_started", "reason": "Not started yet."},
     ]
 
 
-def test_build_dashboard_topics_all_unassessed_without_quiz_history(isolated_courses_dir, user):
+def test_build_dashboard_topics_all_not_started_without_quiz_history(isolated_courses_dir, user):
     _seed_course("psyc201", topics=["X", "Y"], grading=[], dates=[], user=user)
 
     data = dashboard.build_dashboard(user=user)
 
     assert data["courses"]["psyc201"]["topics"] == [
-        {"topic": "X", "score": None, "status": "unassessed"},
-        {"topic": "Y", "score": None, "status": "unassessed"},
+        {"topic": "X", "score": None, "status": "not_started", "reason": "Not started yet."},
+        {"topic": "Y", "score": None, "status": "not_started", "reason": "Not started yet."},
     ]
 
 
@@ -117,6 +129,7 @@ def test_build_dashboard_course_without_notes_or_mastery(isolated_courses_dir, u
     assert course["quiz_attempts_count"] == 0
     assert course["quiz_correct_count"] == 0
     assert course["weak_topics"] == []
+    assert course["mastery_pct"] is None
     assert course["next_deadline"] is None
 
 
@@ -144,14 +157,153 @@ def test_build_dashboard_next_deadline_uncapped_but_top_level_deadlines_windowed
 
     data = dashboard.build_dashboard(user=user)
 
-    assert data["courses"]["cs101"]["next_deadline"] == {
+    next_deadline = data["courses"]["cs101"]["next_deadline"]
+    assert {
+        key: next_deadline[key]
+        for key in ("course_id", "date", "title", "type", "key")
+    } == {
         # reminders.upcoming_deadlines() normalizes syllabus date types through
         # storage.normalize_date_type() — "exam" is a legacy alias for "test_quiz" —
         # and tags each deadline with its replaces_syllabus_key-matching "key".
         "course_id": "cs101", "date": far_date, "title": "Midterm", "type": "test_quiz",
         "key": f"cs101|{far_date}|Midterm|test_quiz",
     }
+    assert next_deadline["source"] == "syllabus"
+    assert next_deadline["all_day"] is True
     assert data["deadlines"] == []
+    # Top-level next_deadline/next_exam are derived from the windowed
+    # `deadlines` list (14 days), not the uncapped per-course one above.
+    assert data["next_deadline"] is None
+    assert data["next_exam"] is None
+
+
+def test_build_dashboard_top_level_next_deadline_and_next_exam(isolated_courses_dir, user):
+    from datetime import date, timedelta
+
+    hw_date = (date.today() + timedelta(days=2)).isoformat()
+    exam_date = (date.today() + timedelta(days=5)).isoformat()
+    _seed_course(
+        "cs101", topics=["A"], grading=[],
+        dates=[
+            {"date": exam_date, "title": "Midterm", "type": "test_quiz"},
+            {"date": hw_date, "title": "Homework 1", "type": "hw"},
+        ],
+        user=user,
+    )
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert data["next_deadline"]["title"] == "Homework 1"  # soonest overall
+    assert data["next_exam"]["title"] == "Midterm"  # soonest test_quiz specifically
+
+
+def test_build_dashboard_streak_week_is_present(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["A"], grading=[], dates=[], user=user)
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert [day["label"] for day in data["streak_week"]] == ["M", "T", "W", "T", "F", "S", "S"]
+
+
+def test_build_dashboard_today_plan_prefers_deadlines_with_effort_estimates(isolated_courses_dir, user):
+    from datetime import date, timedelta
+
+    from agent.services import custom_events
+
+    due = (date.today() + timedelta(days=1)).isoformat()
+    _seed_course("cs101", topics=["A"], grading=[], dates=[], user=user)
+    custom_events.create_event(
+        "cs101", due, None, "Build a To-Do List App", "project", user=user, estimated_effort_minutes=90,
+    )
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert len(data["today_plan"]) == 1
+    task = data["today_plan"][0]
+    assert task["kind"] == "deadline"
+    assert task["title"] == "Build a To-Do List App"
+    assert task["effort_minutes"] == 90
+    assert task["course_id"] == "cs101"
+
+
+def test_build_dashboard_today_plan_never_fabricates_an_effort_estimate(isolated_courses_dir, user):
+    from datetime import date, timedelta
+
+    due = (date.today() + timedelta(days=1)).isoformat()
+    _seed_course(
+        "cs101", topics=["A"], grading=[],
+        dates=[{"date": due, "title": "Reading", "type": "class"}],  # no estimated_effort_minutes on a syllabus date
+        user=user,
+    )
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert all(task["title"] != "Reading" for task in data["today_plan"])
+
+
+def test_build_dashboard_today_plan_fills_remaining_slots_with_recommendations(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["Recursion"], grading=[], dates=[], user=user)
+    storage.write_notes("cs101", "recursion-content", {
+        "lecture_id": "recursion-content", "topics": ["Recursion"],
+        "chunks": [{"id": "recursion", "topic": "Recursion", "text": "A base case ends recursion."}],
+    }, user)
+    key = material_files.object_storage.save(user, "cs101", ".docx", b"course-content")
+    CourseMaterial.objects.create(
+        user=user, course_id="cs101", original_filename="recursion.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="recursion-content",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=key, size_bytes=14,
+    )
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert len(data["today_plan"]) == 1
+    task = data["today_plan"][0]
+    assert task["kind"] == "recommendation"
+    assert task["course_id"] == "cs101"
+    assert task["title"] == "Review Recursion"
+    assert task["effort_minutes"] == dashboard.RECOMMENDATION_TASK_EFFORT_MINUTES
+
+
+def test_course_mastery_pct_averages_syllabus_topics_including_unstarted_as_zero(isolated_courses_dir, user):
+    _seed_course("cs101", topics=["A", "B"], grading=[], dates=[], user=user)
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-01T00:00:00"}, user=user)
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-02T00:00:00"}, user=user)
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-03T00:00:00"}, user=user)
+    storage.append_quiz_attempt("cs101", {"topic": "A", "correct": True, "timestamp": "2026-01-04T00:00:00"}, user=user)
+    # A's score after 4 correct answers is high (~0.92); B has never been
+    # touched, so it must drag the course average down rather than being
+    # skipped — (0.92 + 0)/2 ≈ 46%, not A's own ~92%.
+    mastery.rebuild_scores("cs101", user=user)
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert data["courses"]["cs101"]["mastery_pct"] == pytest.approx(46, abs=2)
+
+
+def test_course_mastery_pct_is_none_without_syllabus_topics(isolated_courses_dir, user):
+    _seed_course("cs101", topics=[], grading=[], dates=[], user=user)
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert data["courses"]["cs101"]["mastery_pct"] is None
+
+
+def test_build_dashboard_today_plan_skips_completed_deadlines(isolated_courses_dir, user):
+    from datetime import date, timedelta
+
+    from agent.services import custom_events
+
+    due = (date.today() + timedelta(days=1)).isoformat()
+    _seed_course("cs101", topics=["A"], grading=[], dates=[], user=user)
+    event = custom_events.create_event(
+        "cs101", due, None, "Finished already", "hw", user=user, estimated_effort_minutes=30,
+    )
+    custom_events.update_event(event["id"], user=user, completed=True)
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert all(task["title"] != "Finished already" for task in data["today_plan"])
 
 
 def test_build_dashboard_isolates_corrupt_course(isolated_courses_dir, user):
@@ -195,6 +347,41 @@ def test_build_dashboard_drafts_empty_when_none_exist(isolated_courses_dir, user
     data = dashboard.build_dashboard(user=user)
 
     assert data["drafts"] == []
+
+
+def test_build_dashboard_isolates_two_users_with_same_course_slug(isolated_courses_dir, django_user_model):
+    alice = django_user_model.objects.create_user(username="alice")
+    bob = django_user_model.objects.create_user(username="bob")
+    _seed_course("cs101", topics=["Alice topic"], grading=[], dates=[], user=alice)
+    _seed_course("cs101", topics=["Bob topic"], grading=[], dates=[], user=bob)
+    storage.append_quiz_attempt(
+        "cs101", {"topic": "Alice topic", "correct": True, "timestamp": "2026-01-01T00:00:00Z"}, user=alice,
+    )
+    mastery.rebuild_scores("cs101", user=alice)
+
+    alice_data = dashboard.build_dashboard(user=alice)
+    bob_data = dashboard.build_dashboard(user=bob)
+
+    assert [topic["topic"] for topic in alice_data["courses"]["cs101"]["topics"]] == ["Alice topic"]
+    assert [topic["topic"] for topic in bob_data["courses"]["cs101"]["topics"]] == ["Bob topic"]
+    assert alice_data["courses"]["cs101"]["quiz_attempts_count"] == 1
+    assert bob_data["courses"]["cs101"]["quiz_attempts_count"] == 0
+    assert bob_data["courses"]["cs101"]["mastery_pct"] is None
+
+
+def test_dashboard_uses_server_course_color_and_display_name_for_deadlines(isolated_courses_dir, user):
+    from datetime import date, timedelta
+
+    due = (date.today() + timedelta(days=2)).isoformat()
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Computer Science", "topics": ["A"], "grading": [],
+        "dates": [{"date": due, "title": "Project", "type": "project"}],
+    }, user)
+
+    data = dashboard.build_dashboard(user=user)
+
+    assert data["courses"]["cs101"]["course_color"] == data["next_deadline"]["course_color"]
+    assert data["next_deadline"]["course_name"] == "Computer Science"
 
 
 def test_build_dashboard_marks_synced_deadlines(isolated_courses_dir, user):

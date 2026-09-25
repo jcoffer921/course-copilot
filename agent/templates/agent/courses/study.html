@@ -1,0 +1,31 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div data-page-section="course-study" class="course-workspace course-learning-page" data-course-id="{{ course_id }}">
+  {% include "agent/partials/course_header.html" %}{% include "agent/partials/course_tabs.html" %}
+  <main>
+    <div id="course-study-status" class="course-workspace-status" role="status" aria-live="polite">Loading study plan...</div>
+    <div id="course-study-error" class="course-workspace-error" hidden><h2>Study plan couldn't load</h2><p></p><button class="btn btn-secondary" type="button">Try again</button></div>
+    <div id="course-study-content" hidden>
+      <header class="learning-page-heading">
+        <div><h1 id="course-study-title">Study this course</h1><p>Practice the topics that need attention</p></div>
+        <form id="course-study-start" class="study-controls">
+          <label>Topic<select id="study-topic" required></select></label>
+          <fieldset><legend>Time</legend><div class="duration-options"><label><input type="radio" name="duration" value="15"><span>15</span></label><label><input type="radio" name="duration" value="30"><span>30</span></label><label><input type="radio" name="duration" value="45" checked><span>45</span></label><label><input type="radio" name="duration" value="60"><span>60</span></label><small>min</small></div></fieldset>
+          <label>Mode<select id="study-mode"><option value="mixed">Mixed review</option><option value="flashcards">Flashcards</option><option value="quiz">Quiz</option></select></label>
+          <button class="btn btn-primary" type="submit">Start session</button>
+        </form>
+      </header>
+      <div id="study-feedback" class="materials-alert" role="status" aria-live="polite" hidden></div>
+      <section class="study-feature-grid">
+        <article class="learning-card study-recommended"><h2>Recommended session</h2><div class="study-recommendation-head"><span class="course-card-icon purple">✦</span><div><h3 id="study-rec-topic">Starter review</h3><p id="study-rec-reason"></p></div></div><div id="study-rec-evidence" class="recommendation-evidence compact" hidden><span class="recommendation-evidence-label">Based on your course files</span><div id="study-rec-sources" class="recommendation-sources"></div></div><ol id="study-rec-steps" class="study-steps"></ol><p class="study-total">Estimated time: <strong id="study-rec-time">45 min</strong></p><button id="start-recommended" class="btn btn-primary" type="button">Start recommended session</button></article>
+        <article class="learning-card"><h2>Due for review</h2><div class="due-summary"><div id="study-due-ring" class="mastery-ring" role="img" aria-label="Flashcards due"><strong id="study-due-count">0</strong><span>cards due</span></div><ul id="study-due-topics"></ul></div><a id="review-flashcards" class="btn btn-secondary" href="{% url 'interactive-flashcards-page' course_id=course_id deck_id='due' %}">Review flashcards</a></article>
+        <article class="learning-card study-quiz-card" id="practice-quiz"><h2>Practice quiz</h2><span class="course-card-icon green">?</span><h3 id="study-quiz-topic">Choose a topic</h3><p>Grounded practice from your confirmed materials</p><p>Resumable attempt</p><p class="grounded-label">✓ Source-grounded</p><a id="start-quiz" class="btn btn-primary" href="{% url 'practice-quiz-setup-page' course_id=course_id %}">Start practice quiz</a></article>
+      </section>
+      <section class="study-lower-grid">
+        <article class="learning-card"><h2>Recent study activity</h2><div id="study-history"></div></article>
+        <article class="learning-card"><h2>Study tools</h2><nav class="study-tool-list" aria-label="Course study tools"><a href="{% url 'interactive-flashcards-page' course_id=course_id deck_id='due' %}">Flashcards <span>›</span></a><a href="#practice-quiz">Practice exams <span>›</span></a><a href="{% url 'cora-page' %}?course={{ course_id|urlencode }}">Short recall <span>›</span></a><a href="#study-topic">Browse all topics <span>›</span></a></nav></article>
+      </section>
+    </div>
+  </main>
+</div>
+{% endblock %}

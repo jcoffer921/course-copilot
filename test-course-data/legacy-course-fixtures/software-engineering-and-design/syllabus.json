@@ -1,0 +1,130 @@
+{
+  "course_id": "software-engineering-and-design",
+  "course_name": "Software Engineering and Design",
+  "dates": [
+    {
+      "date": "2026-08-25",
+      "title": "Syllabus / Overview of Software Engineering / Project Team Formation",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-01",
+      "title": "Software Process: Waterfall Model, Prototyping, Agile / Projects Assignment to Teams",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-08",
+      "title": "Requirement Analysis: Functional and Non-functional Requirements",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-15",
+      "title": "Use Case for Requirement Analysis / Project Management / Trello",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-22",
+      "title": "Class Presentation: Project Proposal",
+      "type": "other"
+    },
+    {
+      "date": "2026-09-24",
+      "title": "Project Proposal Submission (including requirement analysis and timeline)",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-09-29",
+      "title": "Design and Modeling",
+      "type": "other"
+    },
+    {
+      "date": "2026-10-06",
+      "title": "Design Patterns / Version Control / Git / GitHub / Software Testing",
+      "type": "other"
+    },
+    {
+      "date": "2026-10-13",
+      "title": "Class Presentation: Project Updates (20% implementation)",
+      "type": "other"
+    },
+    {
+      "date": "2026-10-15",
+      "title": "Project Progress Report I (including design specification) Submission",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-10-20",
+      "title": "Sit-with-the-team: Code Review",
+      "type": "other"
+    },
+    {
+      "date": "2026-10-27",
+      "title": "Sit-with-the-team: Code Review",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-03",
+      "title": "Class Presentation: Project Updates (70% implementation)",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-05",
+      "title": "Project Progress Report II (including test strategy specification) Submission",
+      "type": "assignment"
+    },
+    {
+      "date": "2026-11-10",
+      "title": "Sit-with-the-team: Code Review",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-17",
+      "title": "Sit-with-the-team: Code Review",
+      "type": "other"
+    },
+    {
+      "date": "2026-11-24",
+      "title": "Thanksgiving Holiday (No Classes)",
+      "type": "other"
+    },
+    {
+      "date": "2026-12-01",
+      "title": "Final Project Presentation",
+      "type": "other"
+    },
+    {
+      "date": "2026-12-08",
+      "title": "Final Project Submission",
+      "type": "assignment"
+    }
+  ],
+  "grading": [
+    {
+      "component": "Other",
+      "weight_pct": 20
+    },
+    {
+      "component": "Projects",
+      "weight_pct": 80
+    }
+  ],
+  "topics": [
+    "Overview of Software Engineering",
+    "Software Process",
+    "Waterfall Model",
+    "Prototyping",
+    "Agile Software Development",
+    "Requirement Analysis",
+    "Functional Requirements",
+    "Non-functional Requirements",
+    "Use Case for Requirement Analysis",
+    "Project Management",
+    "Trello",
+    "Design and Modeling",
+    "Design Patterns",
+    "Version Control",
+    "Git",
+    "GitHub",
+    "Software Testing"
+  ]
+}

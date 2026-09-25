@@ -36,7 +36,7 @@ def _unique_reference_id(course_id: str, base_id: str, user) -> str:
 
 
 async def ingest_reference(course_id: str, file_bytes: bytes, filename: str, user, title: str = None) -> dict:
-    text = extract_text_from_bytes(file_bytes, filename)
+    text = await sync_to_async(extract_text_from_bytes, thread_sensitive=False)(file_bytes, filename)
 
     resolved_title = (title or "").strip() or Path(filename).stem
     base_id = _slugify(resolved_title)

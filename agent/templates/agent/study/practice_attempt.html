@@ -1,0 +1,87 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div class="is-page practice-page" data-page-section="practice-attempt" data-course-id="{{ course_id }}" data-quiz-id="{{ quiz_id }}" data-attempt-id="{{ attempt_id }}" data-course-practice="{% if course_practice %}true{% else %}false{% endif %}">
+  <nav class="is-breadcrumb" aria-label="Breadcrumb">
+    <a href="{% url 'courses-page' %}">Courses</a><span aria-hidden="true">/</span>
+    <a href="{% url 'course-detail-page' course_id=course_id %}" id="pa-course">Course</a><span aria-hidden="true">/</span>
+    <a href="{% url 'course-study-page' course_id=course_id %}">Study</a><span aria-hidden="true">/</span>
+    <span aria-current="page">Practice Quiz</span>
+  </nav>
+  <div class="practice-heading-row">
+    <div>
+      <a class="quiz-back-link" href="{% url 'practice-quiz-setup-page' course_id=course_id %}">&larr; Back to quiz setup</a>
+      <header class="quiz-page-heading practice-header">
+        <h1 id="pa-title">Practice Quiz</h1>
+        <div class="quiz-course-context">
+          <span class="quiz-course-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-assignment"/></svg></span>
+          <strong id="pa-course-code">Course</strong><span aria-hidden="true">&bull;</span><span id="pa-course-name">Loading course...</span>
+        </div>
+      </header>
+    </div>
+    <a id="pa-exit" class="btn btn-secondary is-exit" href="{% if course_practice %}{% url 'practice-quiz-setup-page' course_id=course_id %}{% else %}{% url 'exam-detail-page' course_id=course_id exam_id=quiz_id %}{% endif %}">Exit quiz</a>
+  </div>
+  <div id="pa-alert" class="materials-alert is-page-alert" role="status" aria-live="polite" hidden></div>
+  <div id="pa-save-status" class="sr-only" role="status" aria-live="polite"></div>
+  <div id="pa-loading" class="shared-state is-loading-card" role="status">Loading your saved attempt...</div>
+  <div id="pa-error" class="shared-state shared-state-error is-loading-card" hidden>
+    <h2>Couldn't load this quiz</h2><p>Something went wrong while loading your saved attempt.</p>
+    <button id="pa-retry" class="btn btn-secondary" type="button">Try again</button>
+  </div>
+  <div id="pa-content" class="is-layout practice-layout" hidden>
+    <main class="is-workspace">
+      <section class="is-question-card" aria-labelledby="pa-question">
+        <div class="practice-question-top">
+          <strong id="pa-question-meta">Question 1 of 1</strong>
+          <button id="pa-flag" class="is-bookmark" type="button" aria-pressed="false"><span aria-hidden="true">&#9734;</span> Bookmark</button>
+        </div>
+        <div class="is-progress practice-question-progress" role="progressbar" aria-label="Current question position" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="pa-progress"></span></div>
+        <div class="is-source">
+          <span class="source-topic-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-study"/></svg></span>
+          <span id="pa-topic"></span><span class="source-divider" aria-hidden="true"></span>
+          <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg><span id="pa-source"></span>
+        </div>
+        <h2 id="pa-question"></h2>
+        <fieldset id="pa-choices" class="is-choices"><legend class="sr-only">Choose one answer</legend></fieldset>
+        <div class="practice-hint-panel">
+          <span class="practice-hint-icon" aria-hidden="true">&#9788;</span>
+          <span><strong>Need a hint?</strong><small>Hints aren't available for this quiz yet.</small></span>
+          <button class="btn btn-secondary" type="button" disabled aria-describedby="pa-hint-unavailable">Show hint</button>
+          <span id="pa-hint-unavailable" class="sr-only">This quiz does not provide grounded hints.</span>
+        </div>
+        <div id="pa-result" class="is-result" hidden></div>
+        <footer>
+          <button id="pa-previous" class="btn btn-secondary" type="button">&larr; <span>Previous</span></button>
+          <button id="pa-submit" class="btn btn-primary" type="button">Next question <span aria-hidden="true">&rarr;</span></button>
+        </footer>
+      </section>
+    </main>
+    <aside class="is-aside">
+      <section class="is-panel quiz-progress-panel">
+        <h2>Quiz progress</h2>
+        <div class="quiz-progress-summary">
+          <div id="pa-ring" class="quiz-progress-ring" role="img" aria-label="0 percent complete"><span><strong id="pa-percent">0%</strong><small>Complete</small></span></div>
+          <p><strong id="pa-answered">0 / 0</strong><span>Questions<br>answered</span></p>
+        </div>
+        <div class="quiz-time-row"><span><strong>Time elapsed</strong><span><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-clock"/></svg><b id="pa-timer" aria-label="Elapsed time">00:00</b></span></span></div>
+        <div class="quiz-navigator-section"><h3>Question navigator</h3><div id="pa-grid" class="pa-grid" aria-label="Question navigation"></div></div>
+        <div class="pa-legend" aria-label="Question status legend">
+          <strong>Legend</strong>
+          <span><i class="legend-mark answered" aria-hidden="true">&#10003;</i>Answered</span>
+          <span><i class="legend-mark current" aria-hidden="true"></i>Current</span>
+          <span><i class="legend-mark unanswered" aria-hidden="true"></i>Not answered</span>
+          <span><i class="legend-flag" aria-hidden="true">&#9733;</i>Bookmarked</span>
+        </div>
+        <div class="quiz-grounding-note quiz-sidebar-grounding">
+          <span class="quiz-grounding-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span>
+          <span><strong>Grounded in your materials</strong><small>All questions are generated only from your confirmed syllabus and uploaded notes.</small></span>
+        </div>
+      </section>
+    </aside>
+    <section class="practice-cora-strip" aria-labelledby="pa-cora-title">
+      <span class="practice-cora-icon" aria-hidden="true"><svg class="ot-icon"><use href="#ot-icon-cora"/></svg></span>
+      <span><strong id="pa-cora-title">Ask Cora about this question</strong><small>Want more help? Cora can explain the concept behind this question.</small></span>
+      <a id="pa-cora" class="btn btn-secondary" href="{% url 'cora-page' %}?course={{ course_id|urlencode }}">Ask Cora</a>
+    </section>
+  </div>
+</div>
+{% endblock %}

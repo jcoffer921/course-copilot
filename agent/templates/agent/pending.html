@@ -1,0 +1,37 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Awaiting access — OnTrack</title>
+<link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+<link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+<style>
+  body{display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+  .pending-wrap{width:100%;max-width:360px;padding:0 var(--space-4);display:flex;flex-direction:column;align-items:center}
+  .brand-mark{width:96px;height:96px;margin-bottom:var(--space-4)}
+  .brand-mark img{width:100%;height:100%;display:block}
+  .pending-card{width:100%;background:var(--color-surface);border-radius:calc(var(--radius-lg) * 1.15);box-shadow:var(--shadow-md);padding:var(--space-8) var(--space-6);display:flex;flex-direction:column;align-items:stretch;text-align:center;gap:var(--space-2)}
+  .pending-card h1{font-family:var(--font-heading);font-weight:var(--font-heading-weight);font-size:24px;margin:0 0 4px;line-height:1.15}
+  .pending-card .sub{margin:0 0 var(--space-4);font-size:14px;opacity:.75;line-height:1.55}
+  .pending-signedin{font-size:13px;opacity:.7;margin-bottom:var(--space-4)}
+  .pending-signout button{width:100%;min-height:44px;background:transparent;color:var(--color-text);border:1px solid color-mix(in srgb, var(--color-text) 18%, transparent);border-radius:999px;font-family:var(--font-body);font-weight:600;font-size:14.5px;cursor:pointer}
+  .pending-signout button:hover{background:color-mix(in srgb, var(--color-text) 6%, transparent)}
+</style>
+</head>
+<body>
+  <div class="pending-wrap">
+    <div class="brand-mark"><img src="{% static 'agent/images/ontrack-trans.png' %}" alt="OnTrack"></div>
+    <div class="pending-card">
+      <h1>You're on the list</h1>
+      <p class="sub">Your OnTrack account is waiting on approval. You'll be able to sign in and get started as soon as it's confirmed.</p>
+      <p class="pending-signedin">Signed in as {{ user.email }}</p>
+      <form class="pending-signout" action="{% url 'google-logout' %}" method="post">
+        {% csrf_token %}
+        <button type="submit">Sign out</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

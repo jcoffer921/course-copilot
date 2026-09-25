@@ -11,17 +11,22 @@ def isolated_courses_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def owner(django_user_model):
+    return django_user_model.objects.create_user(username="calendar-owner")
+
+
 def test_read_calendar_sync_returns_empty_list_when_file_absent(isolated_courses_dir):
     assert storage.read_calendar_sync("cs101") == []
 
 
-def test_append_calendar_sync_record_writes_and_reads_back(isolated_courses_dir):
+def test_append_calendar_sync_record_writes_and_reads_back(isolated_courses_dir, owner):
     storage.append_calendar_sync_record("cs101", {
         "date": "2026-09-01", "title": "Midterm", "type": "exam",
         "google_event_id": "evt-123", "synced_at": "2026-08-20T00:00:00+00:00",
-    })
+    }, user=owner)
 
-    records = storage.read_calendar_sync("cs101")
+    records = storage.read_calendar_sync("cs101", user=owner)
 
     assert records == [{
         "date": "2026-09-01", "title": "Midterm", "type": "exam",
@@ -29,11 +34,11 @@ def test_append_calendar_sync_record_writes_and_reads_back(isolated_courses_dir)
     }]
 
 
-def test_append_calendar_sync_record_accumulates_across_calls(isolated_courses_dir):
-    storage.append_calendar_sync_record("cs101", {"date": "2026-09-01", "title": "Midterm", "type": "exam", "google_event_id": "evt-1", "synced_at": "x"})
-    storage.append_calendar_sync_record("cs101", {"date": "2026-09-15", "title": "Final", "type": "exam", "google_event_id": "evt-2", "synced_at": "x"})
+def test_append_calendar_sync_record_accumulates_across_calls(isolated_courses_dir, owner):
+    storage.append_calendar_sync_record("cs101", {"date": "2026-09-01", "title": "Midterm", "type": "exam", "google_event_id": "evt-1", "synced_at": "x"}, user=owner)
+    storage.append_calendar_sync_record("cs101", {"date": "2026-09-15", "title": "Final", "type": "exam", "google_event_id": "evt-2", "synced_at": "x"}, user=owner)
 
-    records = storage.read_calendar_sync("cs101")
+    records = storage.read_calendar_sync("cs101", user=owner)
 
     assert len(records) == 2
     assert {r["google_event_id"] for r in records} == {"evt-1", "evt-2"}

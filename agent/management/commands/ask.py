@@ -38,7 +38,13 @@ class Command(BaseCommand):
         self.stdout.write(result["answer"])
         self.stdout.write("")
         if result["grounded"]:
-            sources = ", ".join(result["sources"]) or "none"
-            self.stdout.write(self.style.SUCCESS(f"grounded: true (sources: {sources})"))
+            # result["sources"] holds resolved structured citations (dicts), not
+            # the model's raw string labels, by the time ask_async returns.
+            sources = result["sources"]
+            labels = ", ".join(source.get("title") or source.get("material_id", "") for source in sources) or "none"
+            self.stdout.write(self.style.SUCCESS(f"grounded: true (sources: {labels})"))
+            for source in sources:
+                for image in source.get("images", []):
+                    self.stdout.write(f"  figure: {image['path']}")
         else:
             self.stdout.write(self.style.WARNING("grounded: false — not covered by this course's materials"))

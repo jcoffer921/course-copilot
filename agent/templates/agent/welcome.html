@@ -1,0 +1,41 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OnTrack · Your academic workspace</title>
+  <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'agent/css/auth.css' %}?v=20260902-1">
+</head>
+<body class="welcome-page">
+  <header class="public-header">
+    <a class="public-brand" href="{% url 'ontrack' %}" aria-label="OnTrack home">
+      <img src="{% static 'agent/images/ontrack-icon.png' %}" alt=""><span>OnTrack</span>
+    </a>
+    <nav aria-label="Public navigation">
+      <a href="{% url 'privacy-page' %}">Privacy</a>
+      <a href="{% url 'contact-page' %}">Help</a>
+    </nav>
+  </header>
+  <main class="welcome-main">
+    <section class="welcome-copy" aria-labelledby="welcome-title">
+      <p class="auth-eyebrow">Built for students</p>
+      <h1 id="welcome-title">Stay organized.<br>Stay focused.<br><em>Stay OnTrack.</em></h1>
+      <p>The all-in-one academic platform built for student success.</p>
+      <div class="welcome-actions">
+        <a class="auth-primary" href="{% url 'login-page' %}">Log in <span aria-hidden="true">→</span></a>
+        <a class="auth-secondary" href="{% url 'signup-page' %}">Create account</a>
+      </div>
+    </section>
+    <div class="welcome-visual" aria-hidden="true">
+      <div class="welcome-orbit orbit-one"></div><div class="welcome-orbit orbit-two"></div>
+      <div class="welcome-card card-course"><span>Today</span><strong>Focused study</strong><i></i><i></i><i></i></div>
+      <div class="welcome-card card-progress"><span>Weekly progress</span><strong>Keep it going</strong><b>↑</b></div>
+      <div class="welcome-sun"></div>
+    </div>
+  </main>
+  <footer class="public-footer">Plan better. Learn smarter. Achieve more.</footer>
+</body>
+</html>

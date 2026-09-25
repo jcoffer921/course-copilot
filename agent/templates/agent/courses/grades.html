@@ -1,0 +1,82 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div data-page-section="course-grades" class="course-workspace course-learning-page" data-course-id="{{ course_id }}">
+  {% include "agent/partials/course_header.html" %}{% include "agent/partials/course_tabs.html" %}
+  <main>
+    <div id="course-grades-status" class="course-workspace-status" role="status" aria-live="polite">Loading grades…</div>
+    <div id="course-grades-error" class="course-workspace-error" hidden><h2>Grades couldn’t load</h2><p></p><button class="btn btn-secondary" type="button">Try again</button></div>
+    <div id="course-grades-content" hidden>
+      <header class="learning-page-heading">
+        <div><h1>Grades</h1><p>Track your progress with grades you enter</p></div>
+        <div class="grades-header-actions">
+          <button id="grades-add-btn" class="btn btn-primary" type="button"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-plus"/></svg>Add grade</button>
+        </div>
+      </header>
+
+      <section class="grades-summary-grid">
+        <article class="learning-card grades-summary-current"><span>Current grade</span><strong id="grades-current-pct" class="summary-number">—</strong><p id="grades-current-detail">No grades entered yet.</p></article>
+        <article class="learning-card"><span>Points earned</span><strong id="grades-points" class="summary-number">— / —</strong><p>Entered by you</p></article>
+        <article class="learning-card"><span>Assignments graded</span><strong id="grades-graded-count" class="summary-number">0</strong><p id="grades-graded-detail"></p></article>
+        <article class="learning-card cora-recommendation grades-goal-card"><span>Goal</span><strong id="grades-goal-letter">—</strong><p id="grades-goal-detail">Add grades to set a goal.</p><label class="grades-goal-picker" for="grades-goal-target">Goal grade<select id="grades-goal-target" disabled></select></label></article>
+      </section>
+
+      <section class="grades-main-grid">
+        <article class="learning-card">
+          <h2>Grade breakdown</h2>
+          <div class="grades-breakdown-head"><span>Category</span><span>Weight</span><span>Your average</span><span>Weighted contribution</span></div>
+          <div id="grades-breakdown-list"></div>
+          <div class="grades-breakdown-total"><span>Calculated total</span><span>100%</span><span></span><strong id="grades-breakdown-total-pct">—</strong></div>
+        </article>
+
+        <article class="learning-card grades-whatif-card">
+          <h2>What-if calculator</h2>
+          <form id="grades-whatif-form">
+            <label>If I score
+              <select id="grades-whatif-item"></select>
+            </label>
+            <label class="grades-whatif-pct-label">Hypothetical score
+              <span class="grades-whatif-pct"><input id="grades-whatif-pct" type="number" min="0" max="200" step="0.1" value="90" required><span aria-hidden="true">%</span></span>
+            </label>
+            <p class="grades-projected-label">My projected course grade</p>
+            <strong id="grades-whatif-result" class="grades-projected-pct">—</strong>
+            <p id="grades-whatif-error" class="grades-form-error" role="alert" hidden></p>
+            <button class="btn btn-primary" type="submit">Try scenarios</button>
+            <p class="grades-whatif-note">Projection only — not an official grade</p>
+          </form>
+        </article>
+      </section>
+
+      <section class="learning-card grades-gradebook">
+        <header class="grades-gradebook-head">
+          <h2>Gradebook</h2>
+          <div class="grades-gradebook-controls">
+            <label>Filter <select id="grades-filter-category"><option value="all">All categories</option></select></label>
+            <label>Sort <select id="grades-sort"><option value="newest">Newest</option><option value="oldest">Oldest</option><option value="highest">Highest score</option><option value="lowest">Lowest score</option></select></label>
+          </div>
+        </header>
+        <div class="grades-table-head"><span>Assignment</span><span>Category</span><span>Due</span><span>Score</span><span>Weight</span><span></span></div>
+        <div id="grades-item-list"></div>
+        <p id="grades-empty" class="learning-empty" hidden>No grades entered yet. Add your first grade to start tracking your progress.</p>
+      </section>
+    </div>
+  </main>
+
+  <div id="grades-form-backdrop" class="grades-modal-backdrop" hidden aria-hidden="true">
+    <section class="grades-modal" role="dialog" aria-modal="true" aria-labelledby="grades-form-title">
+      <header><div><span class="grades-modal-kicker">Grades</span><h2 id="grades-form-title">Add grade</h2></div><button type="button" class="grades-modal-close" data-close-grade-form aria-label="Close">×</button></header>
+      <form id="grades-item-form">
+        <input id="grades-item-id" type="hidden">
+        <label>Category<select id="grades-item-component" required></select></label>
+        <label>Title<input id="grades-item-title" maxlength="200" required></label>
+        <div class="grades-form-grid">
+          <label>Score<input id="grades-item-score" type="number" min="0" step="0.01" required></label>
+          <label>Out of<input id="grades-item-max" type="number" min="0.01" step="0.01" required></label>
+        </div>
+        <label>Date <span>Optional</span><input id="grades-item-date" type="date"></label>
+        <p id="grades-form-error" class="grades-form-error" role="alert" hidden></p>
+        <footer><button id="grades-item-delete" class="btn btn-secondary grades-danger-btn" type="button" hidden>Delete</button><button type="button" class="btn btn-secondary" data-close-grade-form>Cancel</button><button class="btn btn-primary" type="submit" id="grades-item-save">Save grade</button></footer>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

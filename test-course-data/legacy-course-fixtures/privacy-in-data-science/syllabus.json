@@ -1,0 +1,44 @@
+{
+  "course_id": "privacy-in-data-science",
+  "course_name": "Privacy in Data Science",
+  "dates": [],
+  "grading": [
+    {
+      "component": "Other",
+      "weight_pct": 10
+    },
+    {
+      "component": "Homework",
+      "weight_pct": 40
+    },
+    {
+      "component": "Projects",
+      "weight_pct": 20
+    },
+    {
+      "component": "Tests",
+      "weight_pct": 30
+    }
+  ],
+  "topics": [
+    "Information Theory and Entropy",
+    "Ethics and Economics of Privacy",
+    "Anonymization",
+    "k-Anonymity",
+    "Threats to anonymization",
+    "Symmetric and Public-Key Cryptography",
+    "Introduction to Privacy Preserving Data Mining",
+    "Differential Privacy",
+    "Novel applications and Privacy issues in Big Data: IoT, Social Networks",
+    "Core Technical Methods (Data Encryption, Authentication Controls, Access Control Lists, Data Masking & Tokenization, Endpoint Protection)",
+    "Operational & Infrastructure Best Practices (Secure Backup Strategy, Regular Software Patching, Data Minimization & Retention, Network Segmentation, Physical Security Measures)",
+    "Anonymization design (Data Classification Layer, Core Technical Architecture Techniques, Formal Privacy Guardrails, Implementation Best Practices)",
+    "Data Security Core Principles (Confidentiality, Integrity, Availability, Authenticity)",
+    "Data Security Essential Techniques & Best Practices (Encryption, Access Control, Backups & Recovery, Data Masking & Redaction)",
+    "Python for Data Privacy Essential Techniques (Differential Privacy, Synthetic Data, De-identification & Masking, K-Anonymity)",
+    "Python Core Security Use Cases (Data Encryption, Network & Log Analysis, Malware Analysis, Automation)",
+    "Python Essential Security Libraries (Cryptography, Scapy, Paramiko, Requests)",
+    "Python Secure Coding Practices (Input Validation, Dependency Management)",
+    "Python Firewalls (managing OS firewall rules, building packet-filtering scripts, configuring backend services)"
+  ]
+}

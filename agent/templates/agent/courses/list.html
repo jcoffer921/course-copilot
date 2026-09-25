@@ -1,0 +1,46 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<section class="courses-page" data-page-section="courses" data-overview-api="{% url 'courses-overview' %}" data-course-api-base="/api/courses/" data-course-page-base="/courses/" aria-labelledby="courses-title">
+  <header class="courses-header">
+    <div class="courses-heading"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-book"/></svg><div><h1 id="courses-title">Your courses</h1><p id="courses-semester-label">Loading semester…</p></div></div>
+    <div class="courses-header-actions">
+      <div class="courses-account-row">
+        <span class="courses-avatar" aria-label="Signed in as {{ display_name }}">{{ user_initials }}</span>
+      </div>
+      <div class="courses-controls-row">
+        <button class="courses-button courses-button-primary" type="button" data-add-course><span aria-hidden="true">＋</span> Add course</button>
+        <label class="sr-only" for="courses-semester">Semester</label><select id="courses-semester" class="courses-select"></select>
+      </div>
+    </div>
+  </header>
+
+  <div id="courses-loading" class="courses-state" role="status"><span class="courses-spinner" aria-hidden="true"></span>Loading your courses…</div>
+  <div id="courses-error" class="courses-state courses-error" hidden><strong>Courses couldn’t load.</strong><span id="courses-error-copy"></span><button class="courses-button" id="courses-retry" type="button">Try again</button></div>
+  <div id="courses-content" hidden>
+    <div id="courses-warning" class="courses-warning" hidden></div>
+    <div id="courses-success" class="courses-success" role="status" hidden></div>
+    <section class="courses-summary" aria-label="Semester summary">
+      <article class="courses-summary-card"><span class="courses-summary-icon green"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-book"/></svg></span><div><strong id="courses-active-count">0</strong><span>Active courses</span></div></article>
+      <article class="courses-summary-card"><span class="courses-summary-icon orange"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-calendar"/></svg></span><div><strong id="courses-deadline-count">0</strong><span>Upcoming deadlines</span></div></article>
+      <article class="courses-summary-card"><span class="courses-summary-icon purple"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-trend"/></svg></span><div><strong id="courses-mastery-average">—</strong><span>Average mastery</span></div></article>
+      <button id="courses-archive-toggle" class="courses-archive-toggle" type="button"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-archive"/></svg><span>Archive courses</span></button>
+    </section>
+    <div id="courses-mode-heading" class="courses-mode-heading" hidden><strong>Archived courses</strong><span>Preserved courses are excluded from active summaries and planning.</span></div>
+    <div id="courses-empty" class="courses-empty" hidden><h2 id="courses-empty-title">No courses yet</h2><p id="courses-empty-copy">Create a course to organize materials, deadlines, and study activity. You can upload a syllabus afterward.</p><button class="courses-button courses-button-primary" type="button" data-add-course>Add course</button></div>
+    <div id="courses-grid" class="courses-grid"></div>
+  </div>
+
+  <div id="course-form-backdrop" class="courses-modal-backdrop" hidden aria-hidden="true"><section class="courses-modal" role="dialog" aria-modal="true" aria-labelledby="course-form-title"><header><div><span class="courses-kicker">Course details</span><h2 id="course-form-title">Add course</h2></div><button type="button" class="courses-modal-close" data-close-course-form aria-label="Close">×</button></header><form id="course-form">
+    <input id="course-edit-id" type="hidden"><label id="course-id-field">Course ID <span>Used safely in links; cannot change later.</span><input id="course-id" maxlength="64" pattern="[A-Za-z0-9_-]+" placeholder="cmpsc221" required></label>
+    <div class="courses-form-grid"><label>Course name<input id="course-name" maxlength="255" required></label><label>Course code<input id="course-code" maxlength="64" placeholder="CMPSC 221"></label></div>
+    <div class="courses-form-grid"><label>Semester<input id="course-semester-input" list="course-semester-options" pattern="(spring|summer|fall|winter)-[0-9]{4}" placeholder="fall-2026" required><datalist id="course-semester-options"></datalist></label><label>Instructor <span>Optional</span><input id="course-instructor" maxlength="150"></label></div>
+    <fieldset><legend>Course color</legend><div id="course-color-options" class="courses-color-options"></div></fieldset>
+    <label id="course-semester-confirm" class="courses-confirm-row" hidden><input type="checkbox" id="course-confirm-move"><span>Move this course to the selected semester. All existing course data will stay attached.</span></label>
+    <p id="course-form-error" class="courses-form-error" role="alert" hidden></p><footer><button class="courses-button" type="button" data-close-course-form>Cancel</button><button class="courses-button courses-button-primary" id="course-save" type="submit">Save course</button></footer>
+  </form></section></div>
+
+  <div id="course-archive-backdrop" class="courses-modal-backdrop" hidden aria-hidden="true"><section class="courses-modal courses-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="course-archive-title"><header><div><span class="courses-kicker">Preserve course data</span><h2 id="course-archive-title">Archive course?</h2></div></header><p id="course-archive-copy"></p><footer><button class="courses-button" type="button" data-cancel-archive>Cancel</button><button class="courses-button courses-button-primary" id="course-confirm-archive" type="button">Archive course</button></footer></section></div>
+
+  <div id="course-delete-backdrop" class="courses-modal-backdrop" hidden aria-hidden="true"><section class="courses-modal courses-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="course-delete-title"><header><div><span class="courses-kicker danger">Permanent action</span><h2 id="course-delete-title">Delete course?</h2></div></header><p id="course-delete-copy"></p><label>Type the course ID to confirm<input id="course-delete-confirmation" autocomplete="off"></label><p id="course-delete-error" class="courses-form-error" role="alert" hidden></p><footer><button class="courses-button" type="button" data-cancel-delete>Cancel</button><button class="courses-button courses-danger-button" id="course-confirm-delete" type="button">Delete permanently</button></footer></section></div>
+</section>
+{% endblock %}

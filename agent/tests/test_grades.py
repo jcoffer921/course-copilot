@@ -243,6 +243,56 @@ def test_update_item_rejects_invalid_update(isolated_courses_dir, user):
     assert storage.read_grades("cs101", user=user)["items"][0]["max_points"] == 100  # unchanged
 
 
+def test_project_grade_substitutes_hypothetical_score_on_existing_item(isolated_courses_dir, user):
+    _seed_syllabus("cs101", [
+        {"component": "Homework", "weight_pct": 50},
+        {"component": "Midterm", "weight_pct": 50},
+    ], user)
+    _seed_items("cs101", [
+        {"id": "1", "component": "Homework", "title": "HW1", "score": 90, "max_points": 100},
+        {"id": "2", "component": "Midterm", "title": "Midterm", "score": 70, "max_points": 100},
+    ], user)
+
+    result = grades.project_grade("cs101", 90, 100, item_id="2", user=user)
+
+    assert result["baseline_pct"] == 80.0  # (90+70)/2
+    assert result["projected_pct"] == 90.0  # (90+90)/2
+    assert result["delta_pct"] == pytest.approx(10.0)
+    # the real stored item is untouched — this is read-only
+    assert storage.read_grades("cs101", user=user)["items"][1]["score"] == 70
+
+
+def test_project_grade_appends_hypothetical_item_for_upcoming_assignment(isolated_courses_dir, user):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}], user)
+    _seed_items("cs101", [{"id": "1", "component": "Homework", "title": "HW1", "score": 80, "max_points": 100}], user)
+
+    result = grades.project_grade("cs101", 100, 100, component="Homework", title="HW2", user=user)
+
+    assert result["baseline_pct"] == 80.0
+    assert result["projected_pct"] == 90.0  # (80+100)/2
+    stored = storage.read_grades("cs101", user=user)["items"]
+    assert len(stored) == 1 and stored[0]["id"] == "1" and stored[0]["score"] == 80  # nothing written
+
+
+def test_project_grade_raises_for_unknown_item_id(isolated_courses_dir, user):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}], user)
+
+    with pytest.raises(grades.ItemNotFoundError):
+        grades.project_grade("cs101", 90, 100, item_id="nope", user=user)
+
+
+def test_project_grade_rejects_unknown_component(isolated_courses_dir, user):
+    _seed_syllabus("cs101", [{"component": "Homework", "weight_pct": 100}], user)
+
+    with pytest.raises(ValueError):
+        grades.project_grade("cs101", 90, 100, component="Nonexistent", user=user)
+
+
+def test_project_grade_raises_without_syllabus(isolated_courses_dir, user):
+    with pytest.raises(storage.CourseNotFoundError):
+        grades.project_grade("cs101", 90, 100, component="Homework", user=user)
+
+
 def test_grade_needed_solves_flat_score_for_remaining_items(isolated_courses_dir, user):
     # One category, 100% weight, 4 total items, 2 entered averaging 80%.
     # To reach 90% overall: (80*2 + p*2)/4 = 90 -> p = 100.

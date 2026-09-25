@@ -1,0 +1,77 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<section class="profile-page" data-page-section="profile">
+  <div id="profile-loading" class="shared-state" role="status">Loading profile…</div>
+  <div id="profile-error" class="shared-state shared-state-error" hidden>
+    <h2>Couldn't load your profile</h2><p>Your information is still safe. Try again in a moment.</p>
+    <button id="profile-retry" class="btn btn-secondary" type="button">Try again</button>
+  </div>
+  <div id="profile-content" hidden>
+    <header class="profile-hero">
+      <div class="profile-identity">
+        <div class="profile-avatar" aria-hidden="true">{{ user_initials }}</div>
+        <div class="profile-identity-copy">
+          <p class="profile-eyebrow">Student profile</p>
+          <h1 id="profile-name">{{ display_name }}</h1>
+          <p id="profile-email">{{ user.email }}</p>
+          <p id="profile-bio" class="profile-bio"></p>
+        </div>
+        <a class="btn btn-secondary profile-edit" href="{% url 'settings-profile-page' %}">Edit profile</a>
+      </div>
+      <dl class="profile-stats">
+        <div><dd id="profile-course-count">—</dd><dt>Courses</dt></div>
+        <div id="profile-progress-stat"><dd id="profile-progress">—</dd><dt>Overall progress</dt></div>
+        <div><dd id="profile-streak">—</dd><dt>Day streak</dt></div>
+      </dl>
+    </header>
+
+    <div class="profile-tabs" role="tablist" aria-label="Profile sections">
+      <button type="button" role="tab" id="profile-tab-overview" aria-controls="profile-panel-overview" aria-selected="true" data-profile-tab="overview">Overview</button>
+      <button type="button" role="tab" id="profile-tab-personal" aria-controls="profile-panel-personal" aria-selected="false" tabindex="-1" data-profile-tab="personal">Personal information</button>
+      <button type="button" role="tab" id="profile-tab-academics" aria-controls="profile-panel-academics" aria-selected="false" tabindex="-1" data-profile-tab="academics">Academics</button>
+      <button type="button" role="tab" id="profile-tab-activity" aria-controls="profile-panel-activity" aria-selected="false" tabindex="-1" data-profile-tab="activity">Activity</button>
+    </div>
+
+    <section id="profile-panel-overview" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-overview" data-profile-panel="overview">
+      <div class="profile-overview-grid">
+        <article class="profile-card">
+          <header><div><span class="profile-card-kicker">Profile</span><h2>Personal information</h2></div><a href="{% url 'settings-profile-page' %}">Edit information <span aria-hidden="true">→</span></a></header>
+          <dl class="profile-detail-grid">
+            <div><dt>Full name</dt><dd data-profile-value="display_name">—</dd></div>
+            <div><dt>Username</dt><dd data-profile-value="username">—</dd></div>
+            <div><dt>Email</dt><dd data-profile-value="email">—</dd></div>
+            <div><dt>Major / program</dt><dd data-profile-value="major">Not added</dd></div>
+            <div><dt>Graduation year</dt><dd data-profile-value="graduation_year">Not added</dd></div>
+            <div><dt>University</dt><dd data-profile-value="university">Not added</dd></div>
+          </dl>
+        </article>
+        <article class="profile-card profile-about-card">
+          <header><div><span class="profile-card-kicker">Introduction</span><h2>About me</h2></div></header>
+          <p id="profile-about-text"></p>
+          <a id="profile-about-action" class="btn btn-secondary" href="{% url 'settings-profile-page' %}#bio">Edit bio</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="profile-panel-personal" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-personal" data-profile-panel="personal" hidden>
+      <article class="profile-card">
+        <header><div><span class="profile-card-kicker">Account identity</span><h2>Personal information</h2></div><a class="btn btn-secondary" href="{% url 'settings-profile-page' %}">Edit personal information</a></header>
+        <div class="profile-section-block"><h3>Contact</h3><dl class="profile-detail-grid"><div><dt>Full name</dt><dd data-profile-value="display_name">—</dd></div><div><dt>Email</dt><dd data-profile-value="email">—</dd></div><div><dt>Username</dt><dd data-profile-value="username">—</dd></div></dl></div>
+        <div class="profile-section-block"><h3>Academic identity</h3><dl class="profile-detail-grid"><div><dt>University</dt><dd data-profile-value="university">Not added</dd></div><div><dt>Major / program</dt><dd data-profile-value="major">Not added</dd></div><div><dt>Graduation year</dt><dd data-profile-value="graduation_year">Not added</dd></div></dl></div>
+        <div class="profile-section-block"><h3>Profile</h3><dl class="profile-detail-grid"><div class="profile-detail-wide"><dt>Bio</dt><dd data-profile-value="bio">Not added</dd></div><div><dt>Timezone</dt><dd data-profile-value="timezone">—</dd></div></dl></div>
+      </article>
+    </section>
+
+    <section id="profile-panel-academics" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-academics" data-profile-panel="academics" hidden>
+      <div class="profile-section-heading"><div><span class="profile-card-kicker">Your learning</span><h2>Academics</h2></div><a href="{% url 'courses-page' %}">View all courses <span aria-hidden="true">→</span></a></div>
+      <div class="profile-metric-row"><article><span>Courses enrolled</span><strong id="academic-courses">—</strong></article><article id="academic-mastery-card"><span>Overall mastery</span><strong id="academic-mastery">—</strong></article><article><span>Quizzes completed</span><strong id="academic-quizzes">—</strong></article></div>
+      <article class="profile-card"><header><div><span class="profile-card-kicker">Current semester</span><h2>Current courses</h2></div></header><div id="profile-course-list" class="profile-course-list"></div><div id="profile-courses-empty" class="profile-empty" hidden><h3>You haven't added any courses yet.</h3><p>Add a course to start tracking your academic progress.</p><a class="btn btn-primary" href="{% url 'courses-page' %}">Add a course</a></div></article>
+    </section>
+
+    <section id="profile-panel-activity" class="profile-panel" role="tabpanel" aria-labelledby="profile-tab-activity" data-profile-panel="activity" hidden>
+      <div class="profile-section-heading"><div><span class="profile-card-kicker">Study history</span><h2>Recent activity</h2></div><a href="{% url 'study-page' %}">Go to Study <span aria-hidden="true">→</span></a></div>
+      <article class="profile-card"><ol id="profile-activity-list" class="profile-activity-list"></ol><div id="profile-activity-empty" class="profile-empty" hidden><h3>Your study activity will appear here.</h3><p>Start a grounded study session when you're ready.</p><a class="btn btn-primary" href="{% url 'study-page' %}">Start studying</a></div></article>
+    </section>
+  </div>
+</section>
+{% endblock %}

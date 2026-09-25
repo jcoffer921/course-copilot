@@ -1,0 +1,22 @@
+{
+  "session_id": "7429ac15902945ca86a8b0bed17ca441",
+  "course_id": "software-engineering-and-design",
+  "created_at": "2026-08-22T14:27:02.380506+00:00",
+  "updated_at": "2026-08-22T14:27:10.487131+00:00",
+  "messages": [
+    {
+      "role": "user",
+      "content": "run me through this course and need to know",
+      "timestamp": "2026-08-22T14:27:10.484137+00:00"
+    },
+    {
+      "role": "assistant",
+      "content": "Sure! Here's a quick overview of **Software Engineering and Design**:\n\n**What it's about**\nThe course walks you through the full software development lifecycle \u2014 from planning and requirements all the way through design, implementation, testing, and final delivery. You'll work in a team on a real project.\n\n**Big topics covered**\n- Software processes: Waterfall, Prototyping, Agile\n- Requirement Analysis (functional & non-functional, use cases)\n- Project Management (including Trello)\n- Design, Modeling, and Design Patterns\n- Version Control with Git/GitHub\n- Software Testing\n\n**How you're graded**\n\n| Component | Weight |\n|-----------|--------|\n| Projects | 80% |\n| Other | 20% |\n\nThe project is clearly the heart of this course \u2014 80% of your grade depends on it.\n\n**Key deadlines to know**\n- **Sep 24** \u2014 Project Proposal (requirements + timeline)\n- **Oct 15** \u2014 Progress Report I (design specification)\n- **Nov 5** \u2014 Progress Report II (test strategy)\n- **Dec 8** \u2014 Final Project Submission\n\nThere are also class **presentations** along the way (Sep 22, Oct 13, Nov 3, Dec 1) and several **code review sessions** with your team in October and November.\n\nWant me to dig deeper into any of these \u2014 deadlines, topics, or what to expect at each milestone?",
+      "timestamp": "2026-08-22T14:27:10.487131+00:00",
+      "sources": [
+        "syllabus"
+      ],
+      "grounded": true
+    }
+  ]
+}

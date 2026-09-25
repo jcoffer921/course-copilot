@@ -12,21 +12,23 @@ def isolated_courses_dir(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_recent_attempts_newest_first(isolated_courses_dir):
-    storage.append_quiz_attempt("cs101", {"topic": "A", "timestamp": "2026-01-01T00:00:00"})
-    storage.append_quiz_attempt("cs101", {"topic": "B", "timestamp": "2026-01-03T00:00:00"})
-    storage.append_quiz_attempt("cs101", {"topic": "C", "timestamp": "2026-01-02T00:00:00"})
+def test_recent_attempts_newest_first(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="recent-owner")
+    storage.append_quiz_attempt("cs101", {"topic": "A", "timestamp": "2026-01-01T00:00:00"}, user=user)
+    storage.append_quiz_attempt("cs101", {"topic": "B", "timestamp": "2026-01-03T00:00:00"}, user=user)
+    storage.append_quiz_attempt("cs101", {"topic": "C", "timestamp": "2026-01-02T00:00:00"}, user=user)
 
-    attempts = quiz.recent_attempts("cs101")
+    attempts = quiz.recent_attempts("cs101", user=user)
 
     assert [a["topic"] for a in attempts] == ["B", "C", "A"]
 
 
-def test_recent_attempts_respects_limit(isolated_courses_dir):
+def test_recent_attempts_respects_limit(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="limit-owner")
     for i in range(5):
-        storage.append_quiz_attempt("cs101", {"topic": str(i), "timestamp": f"2026-01-0{i + 1}T00:00:00"})
+        storage.append_quiz_attempt("cs101", {"topic": str(i), "timestamp": f"2026-01-0{i + 1}T00:00:00"}, user=user)
 
-    attempts = quiz.recent_attempts("cs101", limit=2)
+    attempts = quiz.recent_attempts("cs101", limit=2, user=user)
 
     assert len(attempts) == 2
     assert [a["topic"] for a in attempts] == ["4", "3"]
@@ -116,23 +118,23 @@ def test_pick_chunk_weights_weak_topics_above_strong_topics(isolated_courses_dir
             "topic": "Weak",
             "correct": False,
             "timestamp": f"2026-01-0{index + 1}T00:00:00",
-        })
+        }, user=user)
         storage.append_quiz_attempt("cs101", {
             "topic": "Developing",
             "correct": True,
             "timestamp": f"2026-01-1{index + 1}T00:00:00",
-        })
+        }, user=user)
         storage.append_quiz_attempt("cs101", {
             "topic": "Strong",
             "correct": True,
             "timestamp": f"2026-01-2{index + 1}T00:00:00",
-        })
+        }, user=user)
     storage.append_quiz_attempt("cs101", {
         "topic": "Developing",
         "correct": False,
         "timestamp": "2026-01-13T00:00:00",
-    })
-    mastery.rebuild_scores("cs101")
+    }, user=user)
+    mastery.rebuild_scores("cs101", user=user)
 
     captured = {}
 
@@ -232,3 +234,82 @@ async def test_generate_assessment_question_uses_sonnet_with_flashcard_context(i
     assert question["model"] == quiz.MODEL_ASSESSMENT
     assert call["model"] == quiz.MODEL_ASSESSMENT
     assert "Closure" in call["messages"][0]["content"]
+    assert question["explanation"] == ""
+
+
+async def test_generate_assessment_question_returns_model_explanation(isolated_courses_dir, monkeypatch, django_user_model):
+    user = await sync_to_async(django_user_model.objects.create_user)(
+        username="assessment-explanation", email="assessment-explanation@example.com",
+    )
+    await sync_to_async(_seed_quizzable_course)(user)
+    response = _FakeResponse(
+        '{"question":"Which statement best describes a closure?","choices":["Captured state","A loop","A class","A file"],'
+        '"correct_answer":"Captured state","explanation":"A closure captures variables from its outer scope."}'
+    )
+    monkeypatch.setattr(quiz, "get_client", lambda: _FakeClient(response))
+
+    question = await quiz.generate_assessment_question_async("cs101", chunk_id="chunk1", flashcards=[], user=user)
+
+    assert question["explanation"] == "A closure captures variables from its outer scope."
+
+
+@pytest.mark.parametrize("payload", [
+    '{"question":"Q?","choices":["A","B","C"],"correct_answer":"A"}',
+    '{"question":"Q?","choices":["A","A","C","D"],"correct_answer":"A"}',
+    '{"question":"Q?","choices":["A","B","C","D"],"correct_answer":"E"}',
+])
+async def test_generate_assessment_question_rejects_malformed_multiple_choice_output(
+    isolated_courses_dir, monkeypatch, django_user_model, payload,
+):
+    user, _ = await sync_to_async(django_user_model.objects.get_or_create)(username="malformed-question-owner")
+    await sync_to_async(_seed_quizzable_course)(user)
+    monkeypatch.setattr(quiz, "get_client", lambda: _FakeClient(_FakeResponse(payload)))
+
+    with pytest.raises(ValueError):
+        await quiz.generate_assessment_question_async("cs101", chunk_id="chunk1", flashcards=[], user=user)
+
+
+def test_record_attempt_rejects_chunk_that_does_not_belong_to_this_course(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="record-owner")
+    _seed_quizzable_course(user, course_id="cs101")
+
+    with pytest.raises(quiz.InvalidChunkReferenceError):
+        quiz.record_attempt(
+            "cs101", "other-lecture", "other-chunk", "A",
+            "Q?", "correct", "correct", user=user,
+        )
+
+
+def test_record_attempt_rejects_chunk_belonging_to_a_different_users_course(isolated_courses_dir, django_user_model):
+    owner = django_user_model.objects.create_user(username="chunk-owner")
+    attacker = django_user_model.objects.create_user(username="chunk-attacker")
+    _seed_quizzable_course(owner, course_id="cs101")
+    # Attacker owns a course with the same course_id but genuinely different
+    # chunks, so owner's real "lecture01"/"chunk1" combo is never part of
+    # anything the attacker actually has.
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Attacker Course", "dates": [], "grading": [], "topics": ["B"],
+    }, attacker)
+    storage.write_notes("cs101", "attacker-lecture", {
+        "lecture_id": "attacker-lecture", "source": "notes", "topics": ["B"],
+        "chunks": [{"id": "attacker-chunk", "topic": "B", "text": "Unrelated attacker content."}],
+    }, attacker)
+
+    with pytest.raises(quiz.InvalidChunkReferenceError):
+        quiz.record_attempt(
+            "cs101", "lecture01", "chunk1", "A",
+            "Q?", "correct", "correct", user=attacker,
+        )
+    assert quiz.recent_attempts("cs101", user=owner) == []
+
+
+def test_record_attempt_accepts_a_real_owned_chunk(isolated_courses_dir, django_user_model):
+    user = django_user_model.objects.create_user(username="record-valid-owner")
+    _seed_quizzable_course(user, course_id="cs101")
+
+    result = quiz.record_attempt(
+        "cs101", "lecture01", "chunk1", "A",
+        "Q?", "correct", "correct", user=user,
+    )
+
+    assert result["correct"] is True

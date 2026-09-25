@@ -1,0 +1,228 @@
+{% verbatim %}
+  <sc-if value="{{ addClassOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-4)">{{ addClassModalTitle }}</div>
+
+        <sc-if value="{{ !addClassIdLocked }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+            <div>
+              <div style="font-size:13px;margin-bottom:4px">Class name</div>
+              <input class="input" value="{{ addClassName }}" onChange="{{ onAddClassNameChange }}" style="width:100%"/>
+            </div>
+            <div style="font-size:12px;opacity:.55">Will be added as <strong>{{ addClassId }}</strong></div>
+          </div>
+        </sc-if>
+
+        <div style="margin-bottom:var(--space-4)">
+          <div style="font-size:13px;margin-bottom:4px">Syllabus <sc-if value="{{ !addClassIdLocked }}" hint-placeholder-val="{{ true }}">(optional — add it now or later)</sc-if></div>
+          <input type="file" accept=".pdf,.pptx,.docx,.txt,.md" onChange="{{ onAddClassFileChange }}" style="font-size:13px"/>
+        </div>
+
+        <sc-if value="{{ addClassError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ addClassError }}</p>
+        </sc-if>
+
+        <sc-if value="{{ addClassLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Adding your class…</div>
+        </sc-if>
+
+        <sc-if value="{{ !addClassLoading }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeAddClass }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ submitAddClass }}">{{ addClassSubmitLabel }}</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ uploadPickerOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:320px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-4)">Upload notes — choose a class</div>
+        <sc-if value="{{ uploadPickerEmpty }}" hint-placeholder-val="{{ false }}">
+          <p class="card-body" style="margin:0 0 var(--space-4)">No classes with a syllabus yet — add a class first.</p>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:var(--space-4)">
+          <sc-for list="{{ uploadPickerItems }}" as="item" hint-placeholder-count="2">
+            <div style="padding:8px 10px;border-radius:var(--radius-lg);cursor:pointer;font-size:13.5px" onClick="{{ item.onClick }}">{{ item.name }}</div>
+          </sc-for>
+        </div>
+        <button type="button" class="btn btn-secondary" onClick="{{ closeUploadPicker }}">Cancel</button>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ deleteCourseOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:360px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-3)">Delete {{ deleteCourseName }}?</div>
+        <p class="card-body" style="margin:0 0 var(--space-4)">This permanently removes its syllabus, notes, quiz history, and chats. This can't be undone.</p>
+        <sc-if value="{{ deleteCourseError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deleteCourseError }}</p>
+        </sc-if>
+        <sc-if value="{{ deleteCourseLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Deleting…</div>
+        </sc-if>
+        <sc-if value="{{ !deleteCourseLoading }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeDeleteCourse }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ confirmDeleteCourse }}">Delete</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ deadlineModalOpen }}" hint-placeholder-val="{{ false }}">
+    <div class="deadline-modal-backdrop">
+      <div class="deadline-modal">
+        <div class="deadline-modal-head">
+          <div>
+            <div class="card-title" style="margin:0">{{ deadlineModalTitle }}</div>
+            <div style="font-size:13px;opacity:.62;margin-top:3px">{{ deadlineModalSubtitle }}</div>
+          </div>
+          <button type="button" class="deadline-modal-close" onClick="{{ closeDeadlineModal }}" title="Close"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+
+        <div class="deadline-modal-body">
+          <div>
+            <div class="deadline-field-label">Title</div>
+            <input class="input" value="{{ deadlineTitle }}" onChange="{{ onDeadlineTitleChange }}" placeholder="Project draft, lab report, midterm..." style="width:100%"/>
+          </div>
+          <div>
+            <div class="deadline-field-label">Course</div>
+            <select class="input" value="{{ deadlineCourseId }}" onChange="{{ onDeadlineCourseChange }}" style="width:100%">
+              <option value="">General (all courses)</option>
+              <sc-for list="{{ deadlineCourseOptions }}" as="c" hint-placeholder-count="2">
+                <option value="{{ c.id }}">{{ c.name }}</option>
+              </sc-for>
+            </select>
+          </div>
+          <div class="deadline-field-grid">
+            <div>
+              <div class="deadline-field-label">Date</div>
+              <input class="input" type="date" value="{{ deadlineDate }}" onChange="{{ onDeadlineDateChange }}" style="width:100%"/>
+            </div>
+            <div>
+              <div class="deadline-field-label">Type</div>
+              <select class="input" value="{{ deadlineType }}" onChange="{{ onDeadlineTypeChange }}" style="width:100%">
+                <sc-for list="{{ deadlineTypeOptions }}" as="opt" hint-placeholder-count="5">
+                  <option value="{{ opt.value }}">{{ opt.label }}</option>
+                </sc-for>
+              </select>
+            </div>
+          </div>
+          <div class="deadline-field-grid">
+            <div>
+              <div class="deadline-field-label">Start time</div>
+              <input class="input" type="time" value="{{ deadlineTime }}" onChange="{{ onDeadlineTimeChange }}" style="width:100%"/>
+            </div>
+            <div>
+              <div class="deadline-field-label">End time</div>
+              <input class="input" type="time" value="{{ deadlineEndTime }}" onChange="{{ onDeadlineEndTimeChange }}" style="width:100%"/>
+            </div>
+          </div>
+          <div>
+            <div class="deadline-field-label">Estimated effort (minutes)</div>
+            <input class="input" type="number" min="1" step="1" value="{{ deadlineEstimatedEffort }}" onChange="{{ onDeadlineEstimatedEffortChange }}" placeholder="Optional" style="width:100%"/>
+          </div>
+          <label class="deadline-complete-label">
+            <input type="checkbox" checked="{{ deadlineCompleted }}" onChange="{{ onDeadlineCompletedChange }}" style="width:17px;height:17px;accent-color:var(--color-accent)"/>
+            Mark complete
+          </label>
+
+          <sc-if value="{{ deadlineModalError }}" hint-placeholder-val="{{ false }}">
+            <p class="deadline-status error" style="margin:0">{{ deadlineModalError }}</p>
+          </sc-if>
+
+          <sc-if value="{{ deadlineModalLoading }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13px;opacity:.7;padding:8px 0">Saving...</div>
+          </sc-if>
+        </div>
+
+        <sc-if value="{{ !deadlineModalLoading }}" hint-placeholder-val="{{ true }}">
+          <div class="deadline-modal-actions">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeDeadlineModal }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ submitDeadlineModal }}">{{ deadlineSubmitLabel }}</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ deleteDeadlineOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+      <div class="card elev-md" style="padding:var(--space-6);width:360px;max-width:90vw">
+        <div class="card-title" style="margin:0 0 var(--space-3)">Delete {{ deleteDeadlineTitle }}?</div>
+        <p class="card-body" style="margin:0 0 var(--space-4)">This can't be undone. If this deadline was already added to Google Calendar, that event stays — this only removes it from OnTrack.</p>
+        <sc-if value="{{ deleteDeadlineError }}" hint-placeholder-val="{{ false }}">
+          <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ deleteDeadlineError }}</p>
+        </sc-if>
+        <sc-if value="{{ deleteDeadlineLoading }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:13px;opacity:.7;padding:8px 0">Deleting…</div>
+        </sc-if>
+        <sc-if value="{{ !deleteDeadlineLoading }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn btn-secondary" onClick="{{ closeDeleteDeadline }}">Cancel</button>
+            <button type="button" class="btn btn-primary" onClick="{{ confirmDeleteDeadline }}">Delete</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </sc-if>
+        <sc-if value="{{ uploadModalOpen }}" hint-placeholder-val="{{ false }}">
+          <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;z-index:50">
+            <div class="card elev-md" style="padding:var(--space-6);width:420px;max-width:90vw">
+              <div class="card-title" style="margin:0 0 var(--space-4)">Upload notes — {{ uploadModalCourseUpper }}</div>
+
+              <sc-if value="{{ hasUploadConflict }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:13.5px;margin-bottom:var(--space-4)">
+                  <p style="margin:0 0 8px">A lecture called "{{ uploadLectureId }}" already exists for this course:</p>
+                  <div class="card elev-sm" style="padding:12px;margin-bottom:12px">
+                    <div style="font-weight:600">{{ uploadConflictPreview.lecture_id }} ({{ uploadConflictPreview.source }})</div>
+                    <div style="opacity:.7;font-size:12.5px">{{ uploadConflictTopicsText }}</div>
+                  </div>
+                  <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-secondary" onClick="{{ cancelConflict }}">Cancel</button>
+                    <button type="button" class="btn btn-primary" onClick="{{ confirmOverwrite }}">Overwrite</button>
+                  </div>
+                </div>
+              </sc-if>
+
+              <sc-if value="{{ !hasUploadConflict }}" hint-placeholder-val="{{ true }}">
+                <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:var(--space-4)">
+                  <div>
+                    <div style="font-size:13px;margin-bottom:4px">File (PDF, PPTX, DOCX, TXT, or MD)</div>
+                    <input type="file" accept=".pdf,.pptx,.docx,.txt,.md" onChange="{{ onUploadFileChange }}" style="font-size:13px"/>
+                  </div>
+                  <div>
+                    <div style="font-size:13px;margin-bottom:4px">Lecture ID</div>
+                    <input class="input" value="{{ uploadLectureId }}" onChange="{{ onUploadLectureIdChange }}" style="width:100%"/>
+                  </div>
+                  <div>
+                    <div style="font-size:13px;margin-bottom:4px">Date (optional)</div>
+                    <input class="input" placeholder="YYYY-MM-DD" value="{{ uploadDate }}" onChange="{{ onUploadDateChange }}" style="width:100%"/>
+                  </div>
+                </div>
+
+                <sc-if value="{{ uploadError }}" hint-placeholder-val="{{ false }}">
+                  <p style="font-size:13px;color:var(--color-accent-700);margin:0 0 var(--space-4)">{{ uploadError }}</p>
+                </sc-if>
+
+                <sc-if value="{{ uploadLoading }}" hint-placeholder-val="{{ false }}">
+                  <div style="font-size:13px;opacity:.7;padding:8px 0">Chunking your notes… this can take a few seconds.</div>
+                </sc-if>
+
+                <sc-if value="{{ !uploadLoading }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-secondary" onClick="{{ closeUpload }}">Cancel</button>
+                    <button type="button" class="btn btn-primary" onClick="{{ submitUpload }}">Upload</button>
+                  </div>
+                </sc-if>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+{% endverbatim %}

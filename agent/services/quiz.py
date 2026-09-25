@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from asgiref.sync import sync_to_async
 
 from . import mastery, storage
-from .client import MODEL_DEFAULT as MODEL_ASSESSMENT, MODEL_HAIKU, get_client
+from .client import MODEL_DEFAULT as MODEL_ASSESSMENT, MODEL_HAIKU, create_message, get_client
 from .storage import CourseNotFoundError
 
 FLASHCARD_SYSTEM_PROMPT = """You are the low-cost data gatherer and flashcard maker for OnTrack. \
@@ -54,6 +54,8 @@ Rules:
 - If flashcards are provided, use them as vocabulary/source context for the question, but do not \
 write a simple "What does TERM mean?" card check unless the source material cannot support anything \
 more advanced.
+- Write a short "explanation" (one or two sentences) of why the correct answer is correct, \
+grounded only in the provided source material.
 - Output ONLY valid JSON matching the schema below. No preamble, no markdown \
 fences, no commentary.
 
@@ -62,7 +64,8 @@ Schema:
   "question": "string",
   "question_type": "multiple_choice|true_false|open_ended",
   "choices": ["string"],
-  "correct_answer": "string"
+  "correct_answer": "string",
+  "explanation": "string"
 }
 
 "correct_answer" must be an exact copy of one choice when choices are present.
@@ -75,6 +78,12 @@ WEB_SEARCH_MAX_USES = 3
 class NoChunksAvailableError(Exception):
     """Raised when there's nothing to quiz from yet — no chunked notes exist
     for this course (or for the requested topic/chunk)."""
+
+
+class InvalidChunkReferenceError(Exception):
+    """Raised when a quiz submission references a lecture/chunk that isn't
+    actually part of this course for this user — blocks forging quiz/mastery
+    history against a chunk from another course or another user's data."""
 
 
 def _now() -> str:
@@ -142,6 +151,19 @@ def _all_chunks(course_id: str, user) -> list:
                 "text": c.get("text"),
             })
     return chunks
+
+
+def available_topics(course_id: str, user) -> list[str]:
+    """Return distinct topics that currently have usable, grounded note chunks."""
+    topics = []
+    seen = set()
+    for chunk in _all_chunks(course_id, user):
+        topic = str(chunk.get("topic") or "").strip()
+        if not topic or not str(chunk.get("text") or "").strip() or topic in seen:
+            continue
+        seen.add(topic)
+        topics.append(topic)
+    return topics
 
 
 def _topic_quiz_weight(score) -> float:
@@ -235,7 +257,7 @@ async def generate_flashcards_async(
     if web_search_tool:
         create_kwargs["tools"] = [web_search_tool]
 
-    response = await client.messages.create(**create_kwargs)
+    response = await create_message(client, user, **create_kwargs)
     last_non_text = max((i for i, b in enumerate(response.content) if b.type != "text"), default=-1)
     raw = "".join(
         block.text for block in response.content[last_non_text + 1:] if block.type == "text"
@@ -262,7 +284,7 @@ async def generate_flashcards_async(
     if not flashcards:
         raise ValueError(f"model did not return any usable flashcards: {data}")
 
-    await sync_to_async(storage.remember_generated_flashcards)(course_id, flashcards, user=user)
+    await sync_to_async(storage.remember_generated_flashcards)(course_id, flashcards, user=user, topic=chunk["topic"])
 
     return {
         "lecture_id": chunk["lecture_id"],
@@ -322,7 +344,8 @@ async def generate_assessment_question_async(
             f"{json.dumps(flashcard_context or [], indent=2)}"
         )
 
-        response = await client.messages.create(
+        response = await create_message(
+            client, user,
             model=MODEL_ASSESSMENT,
             max_tokens=1024,
             system=ASSESSMENT_SYSTEM_PROMPT,
@@ -347,6 +370,16 @@ async def generate_assessment_question_async(
     if normalized_type == "open_ended":
         choices = []
     correct_answer = data.get("correct_answer", "")
+    question_text = str(data.get("question", "")).strip()
+    if not question_text:
+        raise ValueError(f"model did not return a question: {data}")
+    if normalized_type == "multiple_choice":
+        if not isinstance(choices, list) or len(choices) != 4:
+            raise ValueError(f"model must return exactly four multiple-choice answers: {data}")
+        if any(not isinstance(choice, str) or not choice.strip() for choice in choices):
+            raise ValueError(f"model returned an invalid multiple-choice answer: {data}")
+        if len({choice.strip().casefold() for choice in choices}) != 4:
+            raise ValueError(f"model returned duplicate multiple-choice answers: {data}")
     if choices and correct_answer not in choices:
         raise ValueError(f"model's correct_answer isn't among its own choices: {data}")
     if not correct_answer:
@@ -359,9 +392,10 @@ async def generate_assessment_question_async(
         "mode": "assessment",
         "question_type": normalized_type,
         "model": MODEL_ASSESSMENT,
-        "question": data.get("question", ""),
+        "question": question_text,
         "choices": choices,
         "correct_answer": correct_answer,
+        "explanation": clean_flashcard_text(data.get("explanation", "")),
     }
 
 
@@ -371,7 +405,18 @@ def record_attempt(
 ) -> dict:
     """Logs one quiz attempt to quiz_history.json and immediately rebuilds
     mastery_scores.json from it, so mastery is always current with what's
-    actually been answered — callers never need to remember to rebuild."""
+    actually been answered — callers never need to remember to rebuild.
+
+    Validates lecture_id/chunk_id resolve to a real chunk this user's course
+    actually has, so a submission can't forge quiz/mastery history against a
+    chunk from another course (or another user's course, since chunk lookup
+    is already user-scoped)."""
+    chunks = _all_chunks(course_id, user)
+    if not any(c["lecture_id"] == lecture_id and c["chunk_id"] == chunk_id for c in chunks):
+        raise InvalidChunkReferenceError(
+            f"chunk '{chunk_id}' in lecture '{lecture_id}' does not belong to course '{course_id}'"
+        )
+
     def normalized_answer(value: str) -> str:
         return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
 

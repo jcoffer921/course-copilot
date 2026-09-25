@@ -4,9 +4,9 @@ from datetime import date, timedelta
 import pytest
 from rest_framework.test import APIClient
 
-from agent.models import CalendarSyncRecord, CourseSession, FlashcardProgress, GradeItem, MasteryScore, QuizAttempt, SavedSite
+from agent.models import CalendarSyncRecord, CourseMaterial, CourseSession, FlashcardProgress, GradeItem, MasteryScore, Notification, QuizAttempt, SavedSite
 from agent import views
-from agent.services import ask, storage
+from agent.services import ask, material_files, storage
 
 
 @pytest.fixture
@@ -30,6 +30,28 @@ def _seed_syllabus(course_id, user):
     }, user)
 
 
+def _seed_recommendation_material(course_id, user):
+    key = material_files.object_storage.save(user, course_id, ".pdf", b"%PDF-test")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename="course-syllabus.pdf",
+        material_type=CourseMaterial.TYPE_SYLLABUS, source_key="syllabus",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_CONFIRMED,
+        storage_key=key, size_bytes=9, content_type="application/pdf",
+        extracted_data={"course_id": course_id, "course_name": "Test", "dates": [], "grading": [], "topics": ["A"]},
+    )
+    storage.write_notes(course_id, "recommendation-a", {
+        "lecture_id": "recommendation-a", "topics": ["A"],
+        "chunks": [{"id": "a", "topic": "A", "text": "Processed course content for A."}],
+    }, user)
+    notes_key = material_files.object_storage.save(user, course_id, ".docx", b"course-content")
+    CourseMaterial.objects.create(
+        user=user, course_id=course_id, original_filename="course-notes.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="recommendation-a",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=notes_key, size_bytes=14,
+    )
+
+
 def test_profile_get_uses_display_name_and_settings(api_client):
     api_client.user.first_name = "Jordan Lee"
     api_client.user.email = "jordan@example.com"
@@ -41,6 +63,8 @@ def test_profile_get_uses_display_name_and_settings(api_client):
     assert response.data["display_name"] == "Jordan Lee"
     assert response.data["email"] == "jordan@example.com"
     assert response.data["notifications_enabled"] is False
+    assert response.data["email_notifications_enabled"] is False
+    assert response.data["study_reminder_time"] == "09:00"
 
 
 def test_profile_patch_updates_name_username_and_notifications(api_client):
@@ -59,6 +83,50 @@ def test_profile_patch_updates_name_username_and_notifications(api_client):
     assert api_client.user.username == "alex"
 
 
+def test_profile_patch_updates_notification_channels_independently(api_client):
+    response = api_client.patch(
+        "/api/profile/",
+        {"notifications_enabled": True, "email_notifications_enabled": False},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["notifications_enabled"] is True
+    assert response.data["email_notifications_enabled"] is False
+
+    response = api_client.patch(
+        "/api/profile/",
+        {"notifications_enabled": False, "email_notifications_enabled": True},
+        format="json",
+    )
+    assert response.status_code == 200
+    assert response.data["notifications_enabled"] is False
+    assert response.data["email_notifications_enabled"] is True
+
+
+def test_profile_patch_validates_and_persists_study_preferences(api_client):
+    response = api_client.patch("/api/profile/", {
+        "timezone": "America/Los_Angeles", "preferred_session_minutes": 60,
+        "available_study_days": [1, 3, 5], "reminder_lead_minutes": 30,
+        "study_reminder_time": "18:30",
+    }, format="json")
+
+    assert response.status_code == 200
+    assert response.data["timezone"] == "America/Los_Angeles"
+    assert response.data["available_study_days"] == [1, 3, 5]
+    assert response.data["study_reminder_time"] == "18:30"
+
+
+def test_profile_patch_rejects_invalid_timezone_and_duplicate_days(api_client):
+    response = api_client.patch("/api/profile/", {
+        "timezone": "Mars/Olympus", "available_study_days": [1, 1],
+    }, format="json")
+
+    assert response.status_code == 400
+    assert "timezone" in response.data
+    assert "available_study_days" in response.data
+
+
 def test_profile_patch_rejects_duplicate_username(api_client, django_user_model):
     django_user_model.objects.create_user(username="taken")
 
@@ -68,6 +136,7 @@ def test_profile_patch_rejects_duplicate_username(api_client, django_user_model)
 
 
 def test_references_post_then_get(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
     upload = io.BytesIO(b"Some reference content.")
     upload.name = "chapter1.txt"
 
@@ -269,6 +338,232 @@ def test_flashcards_generate_regenerate_flag_bypasses_saved_deck(isolated_course
     assert response.data["flashcards"][0]["term"] == "New"
 
 
+def test_flashcard_review_schedules_next_review(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+
+    response = api_client.post(
+        "/api/courses/cs101/flashcards/review/",
+        {"key": "card-1", "rating": "good"},
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["rating"] == "good"
+    assert response.data["review_count"] == 1
+    assert response.data["next_review"] is not None
+
+
+def test_flashcard_review_rejects_invalid_rating(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+
+    response = api_client.post(
+        "/api/courses/cs101/flashcards/review/",
+        {"key": "card-1", "rating": "meh"},
+        format="json",
+    )
+
+    assert response.status_code == 400
+
+
+def test_flashcard_review_of_suspended_card_returns_conflict(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    api_client.post("/api/courses/cs101/flashcards/review/", {"key": "card-1", "rating": "good"}, format="json")
+    api_client.post("/api/courses/cs101/flashcards/suspend/", {"key": "card-1"}, format="json")
+
+    response = api_client.post(
+        "/api/courses/cs101/flashcards/review/",
+        {"key": "card-1", "rating": "good"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+def test_flashcard_suspend_and_due_queue(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    storage.remember_generated_flashcards("cs101", [
+        {"key": "card-1", "term": "A", "definition": "One"},
+        {"key": "card-2", "term": "B", "definition": "Two"},
+    ], user=api_client.user)
+
+    suspend_response = api_client.post(
+        "/api/courses/cs101/flashcards/suspend/", {"key": "card-2"}, format="json",
+    )
+    assert suspend_response.status_code == 200
+    assert suspend_response.data["suspended"] is True
+
+    due_response = api_client.get("/api/courses/cs101/flashcards/due/")
+    assert due_response.status_code == 200
+    due_keys = {card["key"] for card in due_response.data["cards"]}
+    assert "card-1" in due_keys
+    assert "card-2" not in due_keys
+
+
+def test_flashcards_due_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
+    _seed_syllabus("cs101", api_client.user)
+    storage.remember_generated_flashcards("cs101", [{"key": "card-1", "term": "A", "definition": "One"}], user=api_client.user)
+
+    other = django_user_model.objects.create_user(username="due-other")
+    other_client = APIClient()
+    other_client.force_authenticate(user=other)
+
+    response = other_client.get("/api/courses/cs101/flashcards/due/")
+
+    assert response.status_code == 404
+    assert "card-1" not in str(response.data)
+
+
+def test_quiz_record_rejects_forged_chunk_reference(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test", "dates": [], "grading": [], "topics": ["A"],
+    }, api_client.user)
+    storage.write_notes("cs101", "lecture01", {
+        "lecture_id": "lecture01", "source": "notes", "topics": ["A"],
+        "chunks": [{"id": "chunk1", "topic": "A", "text": "Real chunk text."}],
+    }, api_client.user)
+
+    response = api_client.post(
+        "/api/courses/cs101/quiz/record/",
+        {
+            "lecture_id": "someone-elses-lecture", "chunk_id": "someone-elses-chunk", "topic": "A",
+            "question": "Q?", "correct_answer": "yes", "user_answer": "yes",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert QuizAttempt.objects.count() == 0
+
+
+def test_quiz_record_accepts_a_real_owned_chunk(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test", "dates": [], "grading": [], "topics": ["A"],
+    }, api_client.user)
+    storage.write_notes("cs101", "lecture01", {
+        "lecture_id": "lecture01", "source": "notes", "topics": ["A"],
+        "chunks": [{"id": "chunk1", "topic": "A", "text": "Real chunk text."}],
+    }, api_client.user)
+
+    response = api_client.post(
+        "/api/courses/cs101/quiz/record/",
+        {
+            "lecture_id": "lecture01", "chunk_id": "chunk1", "topic": "A",
+            "question": "Q?", "correct_answer": "yes", "user_answer": "yes",
+        },
+        format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["correct"] is True
+    assert QuizAttempt.objects.count() == 1
+
+
+def test_study_session_lifecycle_via_api(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+
+    start = api_client.post(
+        "/api/courses/cs101/study/sessions/",
+        {"topic": "A", "duration_minutes": 15, "mode": "mixed"},
+        format="json",
+    )
+    assert start.status_code == 201
+    session_id = start.data["session_id"]
+
+    activity = api_client.post(
+        f"/api/courses/cs101/study/sessions/{session_id}/activities/",
+        {"kind": "flashcard_reviewed", "payload": {"key": "card-1"}},
+        format="json",
+    )
+    assert activity.status_code == 201
+
+    complete = api_client.post(f"/api/courses/cs101/study/sessions/{session_id}/complete/")
+    assert complete.status_code == 200
+    assert complete.data["summary"]["flashcards_reviewed"] == 1
+
+    detail = api_client.get(f"/api/courses/cs101/study/sessions/{session_id}/")
+    assert detail.status_code == 200
+    assert len(detail.data["activities"]) == 3
+
+    history = api_client.get("/api/courses/cs101/study/sessions/")
+    assert history.status_code == 200
+    assert history.data["sessions"][0]["session_id"] == session_id
+
+
+def test_guided_study_plan_api_returns_owned_note_and_reference_grounding(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    storage.write_notes("cs101", "lecture-a", {
+        "lecture_id": "lecture-a", "topics": ["A"],
+        "chunks": [{"id": "a-1", "topic": "A", "text": "Course note evidence."}],
+    }, api_client.user)
+    storage.write_reference("cs101", "reference-a", {
+        "reference_id": "reference-a", "title": "Reference for A",
+        "source_filename": "reference.txt", "text": "Supporting material for topic A.",
+    }, api_client.user)
+    notes_key = material_files.object_storage.save(api_client.user, "cs101", ".docx", b"course-notes")
+    CourseMaterial.objects.create(
+        user=api_client.user, course_id="cs101", original_filename="lecture-a.docx",
+        material_type=CourseMaterial.TYPE_NOTES, source_key="lecture-a",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=notes_key, size_bytes=12,
+    )
+    reference_key = material_files.object_storage.save(api_client.user, "cs101", ".pdf", b"%PDF-reference")
+    CourseMaterial.objects.create(
+        user=api_client.user, course_id="cs101", original_filename="reference-a.pdf",
+        material_type=CourseMaterial.TYPE_REFERENCE, source_key="reference-a",
+        processing_status=CourseMaterial.STATUS_READY, review_status=CourseMaterial.REVIEW_NOT_REQUIRED,
+        storage_key=reference_key, size_bytes=14,
+    )
+
+    response = api_client.get(
+        "/api/courses/cs101/study/plan/",
+        {"duration_minutes": 15, "mode": "mixed"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["topic"] == "A"
+    assert response.data["grounded"] is True
+    assert response.data["can_generate"] is True
+    assert response.data["has_course_materials"] is True
+    assert response.data["source_counts"] == {"notes": 1, "references": 1, "files": 2}
+
+
+def test_study_session_start_rejects_missing_owned_course_and_unconfirmed_topic(isolated_courses_dir, api_client):
+    missing = api_client.post("/api/courses/private/study/sessions/", {"topic": "A"}, format="json")
+    assert missing.status_code == 404
+    _seed_syllabus("cs101", api_client.user)
+    invalid_topic = api_client.post("/api/courses/cs101/study/sessions/", {"topic": "Not confirmed"}, format="json")
+    assert invalid_topic.status_code == 400
+
+
+def test_study_session_activity_after_completion_is_rejected(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    start = api_client.post("/api/courses/cs101/study/sessions/", {}, format="json")
+    session_id = start.data["session_id"]
+    api_client.post(f"/api/courses/cs101/study/sessions/{session_id}/complete/")
+
+    response = api_client.post(
+        f"/api/courses/cs101/study/sessions/{session_id}/activities/",
+        {"kind": "quiz_answered", "payload": {"correct": True}},
+        format="json",
+    )
+
+    assert response.status_code == 409
+
+
+def test_study_session_detail_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
+    _seed_syllabus("cs101", api_client.user)
+    start = api_client.post("/api/courses/cs101/study/sessions/", {}, format="json")
+    session_id = start.data["session_id"]
+
+    other = django_user_model.objects.create_user(username="study-session-other-api")
+    other_client = APIClient()
+    other_client.force_authenticate(user=other)
+
+    response = other_client.get(f"/api/courses/cs101/study/sessions/{session_id}/")
+
+    assert response.status_code == 404
+
+
 def test_quiz_history_rejects_malformed_limit(isolated_courses_dir, api_client):
     _seed_syllabus("cs101", api_client.user)
 
@@ -283,6 +578,185 @@ def test_reminders_rejects_malformed_within_days(api_client):
 
     assert response.status_code == 400
     assert response.data == {"detail": "within_days must be an integer"}
+
+
+def test_recommendations_endpoint_returns_ranked_candidates(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    _seed_recommendation_material("cs101", api_client.user)
+
+    response = api_client.get("/api/recommendations/")
+
+    assert response.status_code == 200
+    assert response.data["recommendations"][0]["course_id"] == "cs101"
+    assert response.data["recommendations"][0]["topic"] == "A"
+    assert response.data["recommendations"][0]["status"] == "not_started"
+
+
+def test_recommendations_endpoint_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
+    _seed_syllabus("cs101", api_client.user)
+    _seed_recommendation_material("cs101", api_client.user)
+
+    other = django_user_model.objects.create_user(username="recommendations-other")
+    other_client = APIClient()
+    other_client.force_authenticate(user=other)
+
+    response = other_client.get("/api/recommendations/")
+
+    assert response.status_code == 200
+    assert response.data["recommendations"] == []
+
+
+def test_recommendations_dismiss_hides_it_from_future_results(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    _seed_recommendation_material("cs101", api_client.user)
+
+    dismiss_response = api_client.post(
+        "/api/recommendations/dismiss/", {"course_id": "cs101", "topic": "A"}, format="json",
+    )
+    assert dismiss_response.status_code == 200
+
+    response = api_client.get("/api/recommendations/")
+    assert response.data["recommendations"] == []
+
+
+def test_recommendations_dismiss_rejects_invalid_course_id(isolated_courses_dir, api_client):
+    bad_id = "x" * 65
+
+    response = api_client.post(
+        "/api/recommendations/dismiss/", {"course_id": bad_id, "topic": "A"}, format="json",
+    )
+
+    assert response.status_code == 400
+
+
+def test_mastery_insight_returns_the_analyzer_result(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101", api_client.user)
+
+    async def fake_analyze(user, course_id, topic=None):
+        assert course_id == "cs101"
+        assert topic == "A"
+        return {"insight": "Misses base cases.", "recommended_action": "Review base cases.", "confidence": "medium"}
+
+    monkeypatch.setattr(views.mastery_analyzer, "analyze", fake_analyze)
+
+    response = api_client.post("/api/courses/cs101/mastery/insight/", {"topic": "A"}, format="json")
+
+    assert response.status_code == 200
+    assert response.data == {"insight": "Misses base cases.", "recommended_action": "Review base cases.", "confidence": "medium"}
+
+
+def test_mastery_insight_404s_for_missing_course(isolated_courses_dir, api_client):
+    response = api_client.post("/api/courses/does-not-exist/mastery/insight/", {}, format="json")
+
+    assert response.status_code == 404
+
+
+def test_mastery_insight_returns_422_when_no_data_yet(isolated_courses_dir, api_client, monkeypatch):
+    _seed_syllabus("cs101", api_client.user)
+
+    async def fake_analyze(user, course_id, topic=None):
+        raise views.mastery_analyzer.NoMasteryDataError("nothing to analyze yet")
+
+    monkeypatch.setattr(views.mastery_analyzer, "analyze", fake_analyze)
+
+    response = api_client.post("/api/courses/cs101/mastery/insight/", {}, format="json")
+
+    assert response.status_code == 422
+
+
+def test_study_plan_endpoint_returns_the_planner_result(isolated_courses_dir, api_client, monkeypatch):
+    async def fake_generate_plan(user, available_minutes=None, course_ids=None):
+        assert available_minutes == 90
+        return {"plan": [{"course_id": "cs101", "course_name": "Test", "topic": "A", "activity": "Quiz", "minutes": 30, "reason": "Weak.", "priority": 1}], "summary": "Focus on A."}
+
+    monkeypatch.setattr(views.study_planner, "generate_plan", fake_generate_plan)
+
+    response = api_client.get("/api/study-plan/?available_minutes=90")
+
+    assert response.status_code == 200
+    assert response.data["summary"] == "Focus on A."
+    assert response.data["plan"][0]["topic"] == "A"
+
+
+def test_study_plan_endpoint_returns_422_when_no_context(isolated_courses_dir, api_client, monkeypatch):
+    async def fake_generate_plan(user, available_minutes=None, course_ids=None):
+        raise views.study_planner.NoStudyContextError("no courses yet")
+
+    monkeypatch.setattr(views.study_planner, "generate_plan", fake_generate_plan)
+
+    response = api_client.get("/api/study-plan/")
+
+    assert response.status_code == 422
+
+
+def test_study_plan_endpoint_rejects_a_non_positive_available_minutes(isolated_courses_dir, api_client):
+    response = api_client.get("/api/study-plan/?available_minutes=0")
+
+    assert response.status_code == 400
+
+
+def _seed_exam_course(course_id, user, *, title="Midterm", date="2026-03-01"):
+    storage.write_syllabus(course_id, {
+        "course_id": course_id, "course_name": "Test", "dates": [{"date": date, "title": title, "type": "test_quiz"}],
+        "grading": [], "topics": ["A"],
+    }, user)
+    from agent.services import calendar_events
+    return next(e["id"] for e in calendar_events.all_events(user, course_ids=[course_id]) if e["type"] == "test_quiz")
+
+
+def test_exams_list_and_workspace_endpoints(isolated_courses_dir, api_client):
+    event_id = _seed_exam_course("cs101", api_client.user)
+
+    list_response = api_client.get("/api/courses/cs101/exams/")
+    assert list_response.status_code == 200
+    assert list_response.data["exams"][0]["id"] == event_id
+
+    workspace_response = api_client.get(f"/api/courses/cs101/exams/{event_id}/")
+    assert workspace_response.status_code == 200
+    assert workspace_response.data["event"]["title"] == "Midterm"
+    assert workspace_response.data["topics"][0]["topic"] == "A"
+
+
+def test_exam_workspace_404s_for_unknown_event(isolated_courses_dir, api_client):
+    _seed_exam_course("cs101", api_client.user)
+
+    response = api_client.get("/api/courses/cs101/exams/not-a-real-event/")
+
+    assert response.status_code == 404
+
+
+def test_exam_plan_patch_updates_included_topics(isolated_courses_dir, api_client):
+    event_id = _seed_exam_course("cs101", api_client.user)
+
+    response = api_client.patch(
+        f"/api/courses/cs101/exams/{event_id}/plan/", {"included_topics": []}, format="json",
+    )
+
+    assert response.status_code == 200
+    assert response.data["included_topics"] == []
+
+
+def test_exam_plan_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
+    event_id = _seed_exam_course("cs101", api_client.user)
+
+    other = django_user_model.objects.create_user(username="exam-plan-other")
+    other_client = APIClient()
+    other_client.force_authenticate(user=other)
+
+    response = other_client.patch(
+        f"/api/courses/cs101/exams/{event_id}/plan/", {"included_topics": []}, format="json",
+    )
+
+    assert response.status_code == 404
+
+
+def test_exam_study_guide_rejects_when_nothing_selected(isolated_courses_dir, api_client):
+    event_id = _seed_exam_course("cs101", api_client.user)
+    api_client.patch(f"/api/courses/cs101/exams/{event_id}/plan/", {"included_topics": []}, format="json")
+
+    response = api_client.post(f"/api/courses/cs101/exams/{event_id}/study-guide/")
+
+    assert response.status_code == 422
 
 
 def test_flashcard_progress_patch_and_reset(isolated_courses_dir, api_client):
@@ -360,6 +834,7 @@ def test_deadline_post_accepts_duration_completion_and_legacy_category(isolated_
             "title": "Midterm",
             "type": "exam",
             "completed": True,
+            "estimated_effort_minutes": 75,
         },
         format="json",
     )
@@ -368,6 +843,8 @@ def test_deadline_post_accepts_duration_completion_and_legacy_category(isolated_
     assert response.data["type"] == "test_quiz"
     assert response.data["end_time"] == "10:30"
     assert response.data["completed"] is True
+    assert response.data["source"] == "manual"
+    assert response.data["estimated_effort_minutes"] == 75
 
 
 def test_deadline_post_rejects_bad_duration_and_category(isolated_courses_dir, api_client):
@@ -430,6 +907,26 @@ def test_notifications_endpoint_generates_overdue_deadline_once(isolated_courses
 
     assert mark_read.status_code == 200
     assert mark_read.data["unread_count"] == 0
+    assert mark_read.data["notifications"] == []
+    assert api_client.get("/api/notifications/").data["notifications"] == []
+
+
+def test_notifications_endpoint_never_returns_another_users_rows(api_client, django_user_model):
+    other = django_user_model.objects.create_user(username="notification-other")
+    Notification.objects.create(
+        user=api_client.user, notification_key="mine", kind="overdue_deadline",
+        title="My deadline", body="Owned by the signed-in user.",
+    )
+    Notification.objects.create(
+        user=other, notification_key="theirs", kind="overdue_deadline",
+        title="Private other deadline", body="Must not cross the user boundary.",
+    )
+
+    response = api_client.get("/api/notifications/")
+
+    assert response.status_code == 200
+    assert [item["title"] for item in response.data["notifications"]] == ["My deadline"]
+    assert response.data["unread_count"] == 1
 
 
 def test_create_course_draft_returns_201(isolated_courses_dir, api_client):
@@ -489,10 +986,76 @@ def test_rename_nonexistent_course_404s(isolated_courses_dir, api_client):
     assert response.status_code == 404
 
 
+def test_courses_overview_returns_saved_metadata_without_placeholder_facts(isolated_courses_dir, api_client):
+    response = api_client.post("/api/courses/cmpsc221/", {
+        "course_name": "Data Structures", "course_code": "CMPSC 221",
+        "instructor": "Dr. Linda Park", "semester": "fall-2026", "color": "#527d47",
+    }, format="json")
+    assert response.status_code == 201
+
+    overview = api_client.get("/api/courses/overview/?semester=fall-2026")
+
+    assert overview.status_code == 200
+    assert overview.data["courses"][0]["name"] == "Data Structures"
+    assert overview.data["courses"][0]["code"] == "CMPSC 221"
+    assert overview.data["courses"][0]["next_deadline"] is None
+    assert overview.data["courses"][0]["mastery"]["label"] == "Not enough data"
+
+
+def test_course_semester_move_requires_explicit_confirmation(isolated_courses_dir, api_client):
+    api_client.post("/api/courses/cmpsc221/", {
+        "course_name": "Data Structures", "semester": "fall-2026",
+    }, format="json")
+
+    denied = api_client.patch("/api/courses/cmpsc221/", {"semester": "spring-2027"}, format="json")
+    allowed = api_client.patch("/api/courses/cmpsc221/", {
+        "semester": "spring-2027", "confirm_semester_move": True,
+    }, format="json")
+
+    assert denied.status_code == 409
+    assert denied.data["code"] == "semester_move_confirmation_required"
+    assert allowed.status_code == 200
+    assert storage.read_course_metadata("cmpsc221", api_client.user)["semester"] == "spring-2027"
+
+
+def test_archive_restore_is_owner_scoped_and_preserves_foreign_course(isolated_courses_dir, api_client, django_user_model):
+    other = django_user_model.objects.create_user(username="archive-other")
+    storage.write_course_draft("shared", "Other private course", other, semester="fall-2026", archived=False)
+
+    denied = api_client.patch("/api/courses/shared/archive/", {"archived": True}, format="json")
+
+    assert denied.status_code == 404
+    assert storage.read_course_metadata("shared", other)["archived"] is False
+
+    storage.write_course_draft("mine", "My course", api_client.user, semester="fall-2026", archived=False)
+    archived = api_client.patch("/api/courses/mine/archive/", {"archived": True}, format="json")
+    restored = api_client.patch("/api/courses/mine/archive/", {"archived": False}, format="json")
+
+    assert archived.status_code == restored.status_code == 200
+    assert storage.read_course_metadata("mine", api_client.user)["archived"] is False
+
+
+def test_courses_overview_never_lists_another_users_same_slug(isolated_courses_dir, api_client, django_user_model):
+    other = django_user_model.objects.create_user(username="overview-other")
+    storage.write_course_draft("shared", "Other private course", other, semester="fall-2026", archived=False)
+
+    response = api_client.get("/api/courses/overview/?semester=fall-2026")
+
+    assert response.status_code == 200
+    assert response.data["courses"] == []
+    assert response.data["summary"]["active_courses"] == 0
+
+
+def test_courses_overview_rejects_invalid_semester(isolated_courses_dir, api_client):
+    response = api_client.get("/api/courses/overview/?semester=../../../private")
+
+    assert response.status_code == 400
+
+
 def test_delete_draft_course(isolated_courses_dir, api_client):
     api_client.post("/api/courses/newclass/", {"course_name": "New Class"}, format="json")
 
-    response = api_client.delete("/api/courses/newclass/")
+    response = api_client.delete("/api/courses/newclass/", {"confirmation": "newclass"}, format="json")
 
     assert response.status_code == 204
     assert not (isolated_courses_dir / str(api_client.user.pk) / "newclass").exists()
@@ -501,14 +1064,14 @@ def test_delete_draft_course(isolated_courses_dir, api_client):
 def test_delete_real_course(isolated_courses_dir, api_client):
     _seed_syllabus("cs101", api_client.user)
 
-    response = api_client.delete("/api/courses/cs101/")
+    response = api_client.delete("/api/courses/cs101/", {"confirmation": "cs101"}, format="json")
 
     assert response.status_code == 204
     assert not (isolated_courses_dir / str(api_client.user.pk) / "cs101").exists()
 
 
 def test_delete_nonexistent_course_404s(isolated_courses_dir, api_client):
-    response = api_client.delete("/api/courses/nocourse/")
+    response = api_client.delete("/api/courses/nocourse/", {"confirmation": "nocourse"}, format="json")
 
     assert response.status_code == 404
 
@@ -523,7 +1086,7 @@ def test_delete_course_also_removes_its_custom_events(isolated_courses_dir, api_
     custom_events.create_event("cs102", "2026-09-01", None, "Keep me (other course)", "other", user=user)
     custom_events.create_event(None, "2026-09-01", None, "Keep me (general)", "other", user=user)
 
-    response = api_client.delete("/api/courses/cs101/")
+    response = api_client.delete("/api/courses/cs101/", {"confirmation": "cs101"}, format="json")
 
     assert response.status_code == 204
     remaining_titles = {e["title"] for e in custom_events.list_events(user=user)}
@@ -541,7 +1104,7 @@ def test_delete_course_only_removes_the_owning_users_custom_events(isolated_cour
     custom_events.create_event("cs101", "2026-09-01", None, "Owner's deadline", "other", user=owner)
     custom_events.create_event("cs101", "2026-09-01", None, "Other user's deadline", "other", user=other)
 
-    response = api_client.delete("/api/courses/cs101/")
+    response = api_client.delete("/api/courses/cs101/", {"confirmation": "cs101"}, format="json")
 
     assert response.status_code == 204
     assert {e["title"] for e in custom_events.list_events(user=owner)} == set()
@@ -580,7 +1143,7 @@ def test_delete_course_removes_db_backed_course_state(isolated_courses_dir, api_
         title="Keep", score=10, max_points=10,
     )
 
-    response = api_client.delete("/api/courses/cs101/")
+    response = api_client.delete("/api/courses/cs101/", {"confirmation": "cs101"}, format="json")
 
     assert response.status_code == 204
     # Scoped by user, not just course_id: course_id="cs101" is reused as a
@@ -695,7 +1258,7 @@ def test_grading_config_put_warns_about_orphaned_grades(isolated_courses_dir, ap
     }, api_client.user)
     storage.write_grades("cs101", {"course_id": "cs101", "items": [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 90, "max_points": 100},
-    ]})
+        ]}, user=api_client.user)
 
     response = api_client.put(
         "/api/courses/cs101/grading/",
@@ -730,7 +1293,7 @@ def test_grades_get_returns_items_and_breakdown(isolated_courses_dir, api_client
     }, api_client.user)
     storage.write_grades("cs101", {"course_id": "cs101", "items": [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 90, "max_points": 100},
-    ]})
+        ]}, user=api_client.user)
 
     response = api_client.get("/api/courses/cs101/grades/")
 
@@ -850,7 +1413,7 @@ def test_grades_summary_returns_rollup(isolated_courses_dir, api_client):
     }, api_client.user)
     storage.write_grades("cs101", {"course_id": "cs101", "items": [
         {"id": "1", "component": "Homework", "title": "HW1", "score": 88, "max_points": 100},
-    ]})
+        ]}, user=api_client.user)
 
     response = api_client.get("/api/grades/summary/")
 
@@ -887,11 +1450,29 @@ def test_basic_auth_with_valid_password_is_rejected(isolated_courses_dir, django
     assert response.status_code == 401
 
 
-def test_anonymous_request_to_ontrack_page_redirects_to_login(client):
+def test_anonymous_request_to_ontrack_page_renders_welcome(client):
     response = client.get("/")
 
-    assert response.status_code == 302
-    assert response.url.startswith("/accounts/login/")
+    assert response.status_code == 200
+    assert b"Stay organized." in response.content
+
+
+@pytest.mark.django_db
+def test_reminders_view_scopes_service_call_to_authenticated_user(api_client, monkeypatch):
+    from agent.services import reminders
+
+    calls = []
+
+    def fake_upcoming(user, within_days=None, course_ids=None):
+        calls.append((user, within_days, course_ids))
+        return []
+
+    monkeypatch.setattr(reminders, "upcoming_deadlines", fake_upcoming)
+
+    response = api_client.get("/api/reminders/?within_days=7&course_id=cs101")
+
+    assert response.status_code == 200
+    assert calls == [(api_client.handler._force_user, 7, ["cs101"])]
 
 
 @pytest.mark.django_db
@@ -903,11 +1484,11 @@ def test_calendar_sync_creates_event(isolated_courses_dir):
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="valid-token", refresh_token="refresh-token",
         token_expiry=timezone.now() + timedelta(hours=1),
     )
@@ -935,19 +1516,19 @@ def test_calendar_sync_rejects_duplicate(isolated_courses_dir):
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
     from agent.services import storage
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="valid-token", refresh_token="refresh-token",
         token_expiry=timezone.now() + timedelta(hours=1),
     )
     storage.append_calendar_sync_record("cs101", {
         "date": "2026-09-01", "title": "Midterm", "type": "exam",
         "google_event_id": "evt-1", "synced_at": "2026-08-20T00:00:00+00:00",
-    })
+    }, user=user)
     client = APIClient()
     client.force_authenticate(user=user)
 
@@ -969,11 +1550,11 @@ def test_calendar_sync_returns_502_when_google_auth_fails(isolated_courses_dir):
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="stale-token", refresh_token="revoked-refresh-token",
         token_expiry=timezone.now() - timedelta(hours=1),
     )
@@ -1002,11 +1583,11 @@ def test_calendar_sync_rejects_malformed_date(isolated_courses_dir):
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="valid-token", refresh_token="refresh-token",
         token_expiry=timezone.now() + timedelta(hours=1),
     )
@@ -1020,6 +1601,25 @@ def test_calendar_sync_rejects_malformed_date(isolated_courses_dir):
     )
 
     assert response.status_code == 400
+
+
+@pytest.mark.django_db
+def test_calendar_sync_requires_separate_calendar_connection(isolated_courses_dir):
+    from django.contrib.auth.models import User
+    from rest_framework.test import APIClient
+
+    user = User.objects.create_user(username="identity-only-user")
+    client = APIClient()
+    client.force_authenticate(user=user)
+
+    response = client.post(
+        "/api/courses/cs101/calendar-sync/",
+        {"date": "2026-09-01", "title": "Midterm", "type": "exam"},
+        format="json",
+    )
+
+    assert response.status_code == 409
+    assert response.data["code"] == "calendar_not_connected"
 
 
 @pytest.mark.django_db
@@ -1047,12 +1647,143 @@ def test_calendar_sync_returns_502_not_raw_500_on_unexpected_service_error(isola
 def test_deadlines_get_returns_merged_list(isolated_courses_dir, api_client):
     from agent.services import custom_events
 
-    custom_events.create_event("cs101", "2099-01-01", None, "Future thing", "other")
+    custom_events.create_event("cs101", "2099-01-01", None, "Future thing", "other", user=api_client.user)
 
     response = api_client.get("/api/deadlines/")
 
     assert response.status_code == 200
     assert any(d["title"] == "Future thing" for d in response.data)
+
+
+@pytest.mark.django_db
+def test_calendar_api_returns_complete_confirmed_snapshot(isolated_courses_dir, api_client):
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Computer Science",
+        "dates": [{"date": "2025-01-01", "title": "Past class", "type": "class"}],
+        "grading": [], "topics": [],
+    }, api_client.user)
+    response = api_client.get("/api/calendar/")
+    assert response.status_code == 200
+    assert response.data["events"][0]["title"] == "Past class"
+    assert response.data["events"][0]["confirmed"] is True
+    assert response.data["courses"][0]["name"] == "Computer Science"
+
+
+@pytest.mark.django_db
+def test_calendar_api_is_owner_scoped(isolated_courses_dir, api_client, django_user_model):
+    from rest_framework.test import APIClient
+    from agent.services import custom_events
+    other = django_user_model.objects.create_user(username="calendar-other")
+    custom_events.create_event(None, "2026-09-01", None, "Private event", "other", user=other)
+    assert api_client.get("/api/calendar/").data["events"] == []
+    other_client = APIClient()
+    other_client.force_authenticate(user=other)
+    event_id = other_client.get("/api/calendar/").data["events"][0]["id"]
+    assert api_client.delete(f"/api/deadlines/{event_id}/").status_code == 404
+
+
+@pytest.mark.django_db
+def test_deadline_crud_round_trips_location_and_notes(isolated_courses_dir, api_client):
+    created = api_client.post("/api/deadlines/", {
+        "date": "2026-09-01", "title": "Office hours", "type": "other",
+        "location": "Library 201", "notes": "Bring chapter notes.",
+    }, format="json")
+    assert created.status_code == 201
+    event_id = created.data["id"]
+    assert api_client.get("/api/calendar/").data["events"][0]["location"] == "Library 201"
+    updated = api_client.patch(f"/api/deadlines/{event_id}/", {"notes": "Bring questions."}, format="json")
+    assert updated.status_code == 200
+    assert updated.data["notes"] == "Bring questions."
+
+
+@pytest.mark.django_db
+def test_recurring_events_endpoint_creates_a_series(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+
+    response = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "cs101", "title": "CS101 Class", "type": "class",
+        "weekdays": ["tue", "thu"], "start_date": "2026-09-01", "end_date": "2026-09-14",
+        "time": "15:35", "end_time": "16:25",
+    }, format="json")
+
+    assert response.status_code == 201
+    assert response.data["series_id"]
+    assert len(response.data["events"]) == 4
+    assert {e["series_id"] for e in response.data["events"]} == {response.data["series_id"]}
+
+
+def test_recurring_events_endpoint_rejects_invalid_weekday(isolated_courses_dir, api_client):
+    response = api_client.post("/api/deadlines/recurring/", {
+        "title": "X", "type": "class", "weekdays": ["funday"],
+        "start_date": "2026-09-01", "end_date": "2026-09-14", "time": "15:35",
+    }, format="json")
+
+    assert response.status_code == 400
+
+
+def test_recurring_events_endpoint_rejects_nonexistent_course_id(isolated_courses_dir, api_client):
+    response = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "does-not-exist", "title": "X", "type": "class", "weekdays": ["tue"],
+        "start_date": "2026-09-01", "end_date": "2026-09-14", "time": "15:35",
+    }, format="json")
+
+    assert response.status_code == 422
+
+
+def test_deadline_patch_series_scope_all_propagates_to_series(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    created = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "cs101", "title": "CS101 Class", "type": "class", "weekdays": ["tue"],
+        "start_date": "2026-09-01", "end_date": "2026-09-15", "time": "15:35",
+    }, format="json").data
+    anchor_id = created["events"][0]["id"]
+
+    response = api_client.patch(f"/api/deadlines/{anchor_id}/", {
+        "location": "Room 204", "series_scope": "all",
+    }, format="json")
+
+    assert response.status_code == 200
+    events = api_client.get("/api/deadlines/?course_id=cs101").data
+    assert all(e["location"] == "Room 204" for e in events)
+
+
+def test_deadline_patch_series_scope_422s_for_a_non_series_event(isolated_courses_dir, api_client):
+    created = api_client.post("/api/deadlines/", {
+        "date": "2026-09-01", "title": "One-off", "type": "other",
+    }, format="json").data
+
+    response = api_client.patch(f"/api/deadlines/{created['id']}/", {
+        "title": "Renamed", "series_scope": "all",
+    }, format="json")
+
+    assert response.status_code == 422
+
+
+def test_deadline_delete_series_scope_all_removes_whole_series(isolated_courses_dir, api_client):
+    _seed_syllabus("cs101", api_client.user)
+    created = api_client.post("/api/deadlines/recurring/", {
+        "course_id": "cs101", "title": "CS101 Class", "type": "class", "weekdays": ["tue"],
+        "start_date": "2026-09-01", "end_date": "2026-09-15", "time": "15:35",
+    }, format="json").data
+    anchor_id = created["events"][0]["id"]
+
+    response = api_client.delete(f"/api/deadlines/{anchor_id}/", {"series_scope": "all"}, format="json")
+
+    assert response.status_code == 204
+    assert api_client.get("/api/deadlines/?course_id=cs101").data == []
+
+
+def test_deadline_delete_with_no_body_still_defaults_to_this_scope(isolated_courses_dir, api_client):
+    # Regression: a plain DELETE with no body at all (today's existing
+    # frontend behavior for a one-off event) must keep working exactly as
+    # before now that the view also accepts an optional series_scope body.
+    created = api_client.post("/api/deadlines/", {
+        "date": "2026-09-01", "title": "One-off", "type": "other",
+    }, format="json").data
+
+    response = api_client.delete(f"/api/deadlines/{created['id']}/")
+
+    assert response.status_code == 204
 
 
 @pytest.mark.django_db
@@ -1106,7 +1837,7 @@ def test_deadlines_post_replacement_hides_syllabus_deadline(isolated_courses_dir
     assert response.status_code == 201
     deadlines = api_client.get("/api/deadlines/?course_id=cs101").data
     assert [d["title"] for d in deadlines] == ["Project draft due"]
-    assert deadlines[0]["source"] == "custom"
+    assert deadlines[0]["source"] == "manual"
 
 
 @pytest.mark.django_db
@@ -1228,9 +1959,10 @@ def test_custom_event_detail_patch_null_course_id_becomes_general(isolated_cours
 
 @pytest.mark.django_db
 def test_custom_event_detail_patch_rejects_nonexistent_course_id(isolated_courses_dir, api_client):
+    future_date = (date.today() + timedelta(days=7)).isoformat()
     create_response = api_client.post(
         "/api/deadlines/",
-        {"date": "2026-09-01", "title": "Study group", "type": "other"},
+        {"date": future_date, "title": "Study group", "type": "other"},
         format="json",
     )
     event_id = create_response.data["id"]
@@ -1279,11 +2011,11 @@ def test_custom_event_calendar_sync_creates_event(isolated_courses_dir):
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="valid-token", refresh_token="refresh-token",
         token_expiry=timezone.now() + timedelta(hours=1),
     )
@@ -1315,12 +2047,12 @@ def test_custom_event_calendar_sync_409_when_already_synced(isolated_courses_dir
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
     from agent.services import calendar_sync
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="valid-token", refresh_token="refresh-token",
         token_expiry=timezone.now() + timedelta(hours=1),
     )
@@ -1362,11 +2094,11 @@ def test_custom_event_calendar_sync_returns_502_when_google_auth_fails(isolated_
     from django.utils import timezone
     from rest_framework.test import APIClient
 
-    from agent.models import GoogleAccount
+    from agent.models import GoogleCalendarConnection
 
     user = User.objects.create_user(username="sub-123")
-    GoogleAccount.objects.create(
-        user=user, google_sub="sub-123", email="jordan@example.com",
+    GoogleCalendarConnection.objects.create(
+        user=user,
         access_token="stale-token", refresh_token="revoked-refresh-token",
         token_expiry=timezone.now() - timedelta(hours=1),
     )
@@ -1426,3 +2158,33 @@ def test_deadlines_post_ignores_legacy_corrupt_custom_events_json(isolated_cours
 
     assert response.status_code == 201
     assert response.data["title"] == "X"
+
+
+def test_grade_projection_rejects_zero_max_points(isolated_courses_dir, api_client):
+    # max_points=0 must be rejected here the same way the real grades-write
+    # path already rejects it (serializers.py's min_value=0.01) — otherwise
+    # it reaches grades._category_pcts's score / max_points unguarded and
+    # raises ZeroDivisionError as a raw 500.
+    storage.write_syllabus("cs101", {
+        "course_id": "cs101", "course_name": "Test", "dates": [],
+        "grading": [{"component": "Homework", "weight_pct": 100}], "topics": [],
+    }, api_client.user)
+
+    response = api_client.get("/api/courses/cs101/grades/project/?component=Homework&score=90&max_points=0")
+
+    assert response.status_code == 400
+
+
+def test_course_header_isolates_corrupt_syllabus_as_controlled_error(isolated_courses_dir, api_client):
+    # A corrupt syllabus.json must not 500 the course workspace header with
+    # an unhandled exception/raw traceback — same isolation intent as
+    # build_courses_page's per-course warning, translated to a single-course
+    # endpoint as a controlled error response instead of an uncaught crash.
+    course_dir = isolated_courses_dir / str(api_client.user.pk) / "cs101"
+    course_dir.mkdir(parents=True)
+    (course_dir / "syllabus.json").write_text("{bad json", encoding="utf-8")
+
+    response = api_client.get("/api/courses/cs101/header/")
+
+    assert response.status_code == 500
+    assert "detail" in response.data

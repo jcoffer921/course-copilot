@@ -1,0 +1,5 @@
+<div class="shared-state shared-state-error" role="alert">
+  <h2>{{ error_title|default:"Something went wrong" }}</h2>
+  <p>{{ error_message }}</p>
+  {% if retry_url %}<a class="btn btn-secondary" href="{{ retry_url }}">Try again</a>{% endif %}
+</div>
