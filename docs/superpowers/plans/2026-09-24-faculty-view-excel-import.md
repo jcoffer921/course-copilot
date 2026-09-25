@@ -1,9 +1,9 @@
 # Faculty View — Excel Import + AI Academic Planning
 
 **Status doc**, not a pre-work plan — this records what was actually built
-(Tasks 1-4 of the original 6-task plan) against the plan as given, including
-deviations and what's still outstanding (Tasks 5-6, UI). See git log on
-`feature/ontrack-mvp-expansion` for the four commits this describes.
+against the original 6-task plan, including deviations. All six tasks are
+now complete. See git log on `feature/ontrack-mvp-expansion` for the commits
+this describes.
 
 **Goal (unchanged from the original plan):** faculty upload a program-
 requirements Excel file, review/confirm the extracted structure, then use
@@ -38,12 +38,29 @@ student during planning lives only in the faculty member's session.
 ### One assumption worth flagging
 The original plan's framing said this feature applies "the same rule already applied to grades and chat transcripts elsewhere in OnTrack" (i.e. never persisted). That's not accurate for this repo as it stands: `GradeItem` and `SessionMessage` are both ordinary DB-persisted models today. This didn't change anything here — the session-only design for faculty planning stands on its own reasoning regardless — but it's worth knowing that assumption doesn't hold if it mattered for a decision elsewhere.
 
-## Test coverage added
-`test_faculty_role.py`, `test_requirements_extraction.py`, `test_faculty_requirements_endpoints.py`, `test_academic_planner.py`, `test_faculty_plan_endpoints.py` — 33 new tests, all passing. Full suite: 976 passed, 2 pre-existing failures unrelated to this work (`test_course_overview.py::test_overview_endpoint_returns_full_payload_for_owned_course`, `test_materials.py::test_retry_reprocesses_failed_syllabus_material_in_place` — both fail identically on the commit before this work started).
+### Task 5 — Templates
+- `faculty_planner_page` (`/faculty/cora/`, URL name `faculty-planner`) — the working planner UI: reuses `materials-upload-card-unified` for the Excel import, `materials-library`-style rows for a faculty member's own confirmed `ProgramRequirement`s (loaded server-side via `_render_page`'s `program_requirements` context, scoped to `request.user`), `syllabus-review`/`review-row` styling for the editable extraction review (add/remove category and course rows, all client-side state collected back into the schema shape before POSTing to confirm), a 409-collision "Overwrite confirmed version" flow, and a two-pane chat + live draft-plan preview wired to the Task 4 endpoints. New CSS lives in `app.css` under a "Faculty planner" section (reuses existing tokens/classes rather than a parallel design system).
+- `faculty_dashboard_page` (`/faculty/`, name `faculty-dashboard`) and `faculty_import_page` (`/faculty/import/`, name `faculty-import`) — an entry-point dashboard and a second "Import Data" page. Faculty accounts are redirected from `dashboard-page` to `faculty-dashboard` instead of seeing the student dashboard, and the sidebar swaps to a faculty-only nav (Dashboard/Import Data/Cora/Templates/Settings) that hides every student nav item, consistent with role being a hard either/or rather than a toggle.
+- Page gating replicates `analytics_page`'s exact pattern as anticipated in Task 1: `if not is_faculty(request.user): raise Http404()`.
+- Added `POST-review` note: `_render_page` now fetches `UserSettings` once per request and passes it to both `_enabled_features` and `is_faculty(user, settings_row=...)`, rather than each doing its own `get_or_create` — see "Review findings" below.
 
-## Not done yet
+### Task 6 — Export
+- `agent/services/plan_export.py`: `render_plan_docx(draft_plan)` renders the session-only draft plan (major, semester tables, total credits, notes) as a DOCX via `python-docx`; `plan_filename()` slugifies the major for the download name.
+- `POST /api/faculty/plan/export/`, `FacultyPermission`-gated, reads `draft_plan` from `request.session["faculty_plan_session"]` only (never a stored record — there isn't one) and streams the file with `Cache-Control: private, no-store`. 400s with a clear message if no draft exists yet.
+- Verified by test that the exported DOCX contains the draft plan's real content but never the session's `student_details`/`conversation` fields — the export surface can't leak what the session already isn't supposed to persist.
 
-- **Task 5 — Templates.** `faculty_planner.html`, CSS reuse (`materials-upload-card-unified`, `materials-library`, `syllabus-review`/`review-row`, chat UI patterns), the `faculty_planner_page` view + `faculty-planner` URL name, and the sidebar nav entry. Also needs a small addition the original plan didn't spell out: a GET endpoint listing a faculty member's existing `ProgramRequirement` rows, for the "materials-library" selector — none of Tasks 1-4 added one since it wasn't in their explicit scope.
-- **Task 6 — Export.** PDF/DOCX download of the session-only draft plan. Only relevant if Task 5 ships a planning UI to hang the download button off of.
+## Review findings
 
-Both are UI-heavy and lower-confidence to self-verify in this environment (no browser tool available in-session) — code-complete wouldn't mean visually-verified. Pick these up as a separate pass.
+Ran `/code-review` (medium effort) against the full Task 5-6 diff before writing this update. Findings:
+
+1. **Fixed** — `agent/page_views.py`'s `_render_page` was doing two separate `UserSettings.objects.get_or_create()` queries per page load (`_enabled_features(request.user)` and `is_faculty(request.user)`, called one line apart), on every page render for every signed-in user, not just faculty. Fixed by fetching the row once (`_user_settings_row`) and threading it into both `_enabled_features(settings_row)` and `authentication.is_faculty(user, settings_row=...)` (the new `settings_row` param is optional, so `FacultyPermission` and every other existing caller of `is_faculty` are unaffected). Caught a real bug while fixing this: the first attempt put `from .models import UserSettings` inside `is_faculty`'s `if settings_row is None:` branch, which makes `UserSettings` a function-local name in Python regardless of which branch actually runs — `UnboundLocalError` on the branch where `settings_row` was already provided. Moved the import unconditionally to the top of the function. Full suite went 913 passed → 985 passed after the fix (74 tests had been failing on `page_views.py` calls generally, all from this one bug).
+2. **Not fixed, flagging for a decision** — `faculty_import.html`/`faculty.js` (the "Import Data" page, linked prominently from the sidebar and the dashboard's quick-actions) is a non-functional mockup: the dropzone validates the file extension/size client-side and shows a filename, but never uploads anywhere — no `fetch`/`apiRequest` call exists in `faculty.js`. Its "Download sample file" button has no click handler at all. Meanwhile the *actual* working Excel import already lives one click away, inside `faculty_planner.html`'s Step 1 ("Import program requirements"), which really does call `/api/faculty/requirements/import/`. As shipped, a faculty member who clicks the prominent "Import Data" nav item lands on a page that looks functional and does nothing, while the real import is under a different label ("Cora") elsewhere. Worth deciding before this goes live: either wire `faculty_import.html` to the same import/confirm endpoints (duplicating Step 1's logic) and reroute it into the planner's review step, or drop the page and point "Import Data" straight at the planner.
+3. **Minor, cosmetic** — `faculty_dashboard.html`'s "Try a prompt" links pass a `?q=...` query param to `faculty-planner`, but `faculty_planner.js` never reads `location.search` — clicking a suggested prompt opens the planner with an empty chat input, not the prompt pre-filled. The notification bell's "3" badge is also hardcoded, not backed by real data. Neither breaks anything; both read as unfinished polish on an otherwise-working page.
+
+## Test coverage
+`test_faculty_role.py`, `test_requirements_extraction.py`, `test_faculty_requirements_endpoints.py`, `test_academic_planner.py`, `test_faculty_plan_endpoints.py`, `test_faculty_planner_ui_export.py` — 42 new tests, all passing. Full suite: 985 passed, 8 skipped, 2 pre-existing failures unrelated to this work (`test_course_overview.py::test_overview_endpoint_returns_full_payload_for_owned_course`, `test_materials.py::test_retry_reprocesses_failed_syllabus_material_in_place` — both fail identically on the commit before this work started).
+
+## Remaining before shipping
+- Decide what to do about finding #2 above (the non-functional Import Data page) before faculty accounts are provisioned for real use.
+- Extraction quality (Task 2) has still only been verified against synthetic fixtures, not a real departmental requirements spreadsheet — see Task 2's note above.
+- No browser-visual verification was done in this environment (no browser tool available in-session); all verification here is via Django's test client (HTTP status, rendered HTML content, DOCX bytes) plus a manual code read-through, not an actual rendered page in a browser.
