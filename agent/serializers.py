@@ -182,6 +182,22 @@ class ExtractSyllabusRequestSerializer(serializers.Serializer):
     overwrite = serializers.BooleanField(required=False, default=False)
 
 
+class ImportRequirementsRequestSerializer(serializers.Serializer):
+    file = serializers.FileField()
+
+
+class ConfirmRequirementsRequestSerializer(serializers.Serializer):
+    confirm = serializers.BooleanField()
+    requirements = serializers.JSONField()
+    overwrite = serializers.BooleanField(required=False, default=False)
+    source_filename = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate_confirm(self, value):
+        if value is not True:
+            raise serializers.ValidationError("Explicit confirmation is required.")
+        return value
+
+
 class AskRequestSerializer(serializers.Serializer):
     question = serializers.CharField(allow_blank=False, max_length=4000)
     session_id = serializers.CharField(required=False, allow_blank=False, default=None)

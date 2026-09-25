@@ -651,3 +651,32 @@ class ExamPlan(models.Model):
         indexes = [
             models.Index(fields=["user", "course_id"], name="agent_examplan_user_course_idx"),
         ]
+
+
+class ProgramRequirement(models.Model):
+    """A faculty member's confirmed program-requirements structure (see
+    agent/services/requirements_extraction.py for how it's extracted from
+    an uploaded spreadsheet). `requirements` holds the full schema —
+    categories/courses/credits/prerequisites — as the single source of
+    truth the academic planner chat is grounded against; nothing
+    student-specific is ever stored here."""
+
+    requirement_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="program_requirements",
+    )
+    program_name = models.CharField(max_length=200, blank=True, default="")
+    catalog_year = models.CharField(max_length=20, blank=True, default="")
+    requirements = models.JSONField()
+    source_filename = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "program_name", "catalog_year"], name="unique_program_requirement"
+            )
+        ]

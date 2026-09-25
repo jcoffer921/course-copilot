@@ -10,7 +10,7 @@ from django.utils.http import content_disposition_header
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from .authentication import ActiveAccessPermission, PilotOwnerPermission
+from .authentication import ActiveAccessPermission, FacultyPermission, PilotOwnerPermission
 from .throttles import AIUserBurstThrottle, AIUserDailyThrottle
 
 from .serializers import (
@@ -22,6 +22,7 @@ from .serializers import (
     CitationPreviewSerializer,
     ChunkNotesRequestSerializer,
     ConfirmDeadlineActionsRequestSerializer,
+    ConfirmRequirementsRequestSerializer,
     CourseDeleteSerializer,
     CourseArchiveSerializer,
     CreateCourseDraftRequestSerializer,
@@ -29,6 +30,7 @@ from .serializers import (
     CreateRecurringEventsRequestSerializer,
     DeleteCustomEventRequestSerializer,
     DismissRecommendationRequestSerializer,
+    ImportRequirementsRequestSerializer,
     MasteryInsightRequestSerializer,
     ExtractSyllabusRequestSerializer,
     FlashcardProgressResetSerializer,
@@ -59,7 +61,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, quiz, recommendations, reminders, sessions, storage, study_planner, study_sessions
+from .services import accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -232,6 +234,69 @@ class ExtractSyllabusView(AIAPIView):
         return Response(
             {"material": materials.serialize_material(material, include_candidate=True)},
             status=status.HTTP_201_CREATED,
+        )
+
+
+class FacultyRequirementsImportView(AIAPIView):
+    """
+    POST /api/faculty/requirements/import/
+    Extracts a program-requirements spreadsheet for faculty review. Never
+    writes to the database — the separate confirm endpoint performs the write.
+    """
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def post(self, request):
+        serializer = ImportRequirementsRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        upload = serializer.validated_data["file"]
+        try:
+            data = await requirements_extraction.extract_requirements_async(
+                upload.read(), upload.name, request.user
+            )
+        except requirements_extraction.MalformedRequirementsSourceError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except ValueError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(
+            {"requirements": data, "source_filename": upload.name},
+            status=status.HTTP_200_OK,
+        )
+
+
+class FacultyRequirementsConfirmView(APIView):
+    """POST /api/faculty/requirements/confirm/ — create or, with
+    overwrite=true, update the faculty member's confirmed ProgramRequirement
+    for (program_name, catalog_year)."""
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def post(self, request):
+        serializer = ConfirmRequirementsRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            row, created = await sync_to_async(program_requirements.confirm_requirements)(
+                request.user,
+                serializer.validated_data["requirements"],
+                serializer.validated_data["overwrite"],
+                serializer.validated_data["source_filename"],
+            )
+        except program_requirements.ProgramRequirementConflictError as e:
+            return Response(
+                {"detail": str(e), "existing": program_requirements.serialize_summary(e.existing)},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except requirements_extraction.MalformedRequirementsSourceError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        return Response(
+            {"program_requirement": program_requirements.serialize(row)},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
 
