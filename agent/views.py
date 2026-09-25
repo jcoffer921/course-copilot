@@ -5,7 +5,7 @@ from adrf.views import APIView
 from asgiref.sync import sync_to_async
 from django.contrib.auth.models import User
 from django.db.utils import DatabaseError
-from django.http import HttpResponse
+from django.http import FileResponse, HttpResponse
 from django.utils.http import content_disposition_header
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -63,7 +63,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
+from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, plan_export, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -384,6 +384,31 @@ class FacultyPlanResetView(APIView):
     async def post(self, request):
         await sync_to_async(_clear_faculty_plan_session)(request)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class FacultyPlanExportView(APIView):
+    """Stream only the draft plan from the current session as a DOCX."""
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def post(self, request):
+        state = await sync_to_async(_read_faculty_plan_session)(request)
+        draft_plan = state.get("draft_plan") if isinstance(state, dict) else None
+        if not draft_plan:
+            return Response(
+                {"detail": "Create a draft plan before downloading it."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        output = await sync_to_async(plan_export.render_plan_docx)(draft_plan)
+        response = FileResponse(
+            output,
+            content_type=plan_export.DOCX_CONTENT_TYPE,
+            as_attachment=True,
+            filename=plan_export.plan_filename(draft_plan),
+        )
+        response["Cache-Control"] = "private, no-store"
+        return response
 
 
 class CourseView(APIView):

@@ -1,0 +1,100 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div class="faculty-page faculty-dashboard-page">
+  <header class="faculty-page-header">
+    <div class="faculty-heading-mark faculty-heading-sun" aria-hidden="true">☀</div>
+    <div class="faculty-page-title">
+      <h1>{{ faculty_greeting }}, Professor</h1>
+      <p>Here’s what you need for advising today.</p>
+    </div>
+    <div class="faculty-header-actions">
+      <button class="faculty-notification" type="button" aria-label="Notifications"><svg class="ot-icon"><use href="#ot-icon-bell"/></svg><span>3</span></button>
+      <span class="faculty-avatar">{{ user_initials }}</span>
+    </div>
+  </header>
+
+  <section class="faculty-quick-grid" aria-label="Quick actions">
+    <a class="faculty-quick-card" href="{% url 'faculty-import' %}">
+      <span class="faculty-icon faculty-icon-neutral"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span>
+      <span><strong>No active file loaded</strong><small>Import a file to get started.</small></span><b aria-hidden="true">›</b>
+    </a>
+    <a class="faculty-quick-card" href="{% url 'faculty-import' %}">
+      <span class="faculty-icon faculty-icon-green"><svg class="ot-icon"><use href="#ot-icon-upload"/></svg></span>
+      <span><strong>Import data</strong><small>Upload Excel or CSV</small></span><b aria-hidden="true">›</b>
+    </a>
+    <a class="faculty-quick-card" href="{% url 'faculty-planner' %}">
+      <span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span>
+      <span><strong>Generate plans</strong><small>Create and export academic plans</small></span><b aria-hidden="true">›</b>
+    </a>
+    <div class="faculty-quick-card">
+      <span class="faculty-icon faculty-icon-green"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg></span>
+      <span><strong>Privacy mode</strong><small class="faculty-privacy-strong">No student data stored</small><small>Processed temporarily only</small></span><b aria-hidden="true">›</b>
+    </div>
+  </section>
+
+  <div class="faculty-dashboard-main">
+    <section class="faculty-card faculty-start-card">
+      <div class="faculty-section-heading">
+        <span class="faculty-icon faculty-icon-green"><svg class="ot-icon"><use href="#ot-icon-book"/></svg></span>
+        <div><h2>Start here</h2><p>Follow these steps to create academic plans for your students.</p></div>
+      </div>
+      <div class="faculty-start-content">
+        <ol class="faculty-step-list">
+          <li><span>1</span><div><strong>Upload Excel or CSV</strong><p>Import a roster with student majors and any relevant course information.</p></div></li>
+          <li><span>2</span><div><strong>Ask Cora to analyze</strong><p>Use Cora to analyze degree requirements, explore options, and get recommendations.</p></div></li>
+          <li><span>3</span><div><strong>Generate and export plans</strong><p>Create academic plans and export results for advising sessions.</p></div></li>
+        </ol>
+        <div class="faculty-flow-art" aria-label="Excel or CSV data becomes academic plans with Cora">
+          <div class="faculty-art-file"><strong>X</strong><small>CSV</small></div>
+          <span class="faculty-art-arrow">→</span>
+          <div class="faculty-art-plan"><i></i><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg><b></b><b></b></div>
+          <p>From your data<br>to academic plans<br>in minutes.</p>
+        </div>
+      </div>
+      <div class="faculty-cta-row">
+        <a class="faculty-button faculty-button-primary" href="{% url 'faculty-import' %}"><svg class="ot-icon"><use href="#ot-icon-upload"/></svg>Import data <span>→</span></a>
+        <a class="faculty-button faculty-button-cora" href="{% url 'faculty-planner' %}"><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg>Open Cora <span>→</span></a>
+      </div>
+    </section>
+
+    <section class="faculty-card faculty-cora-card">
+      <div class="faculty-section-heading">
+        <span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg></span>
+        <div><h2>Cora Advising Assistant</h2><p>Analyze your data, explore degree requirements, and generate academic plans with AI.</p></div>
+      </div>
+      <div class="faculty-chat-preview"><span class="faculty-avatar faculty-avatar-small">{{ user_initials }}</span><p>Hi! I’m Cora, your academic planning assistant.<br>Upload a file to get started, or try one of the example questions below.</p></div>
+      <div class="faculty-prompt-title"><strong>Try a prompt</strong><a href="{% url 'faculty-planner' %}">View more prompts →</a></div>
+      <div class="faculty-prompt-list">
+        <a href="{% url 'faculty-planner' %}?q=Create%20a%204-year%20plan%20for%20Computer%20Science"><svg class="ot-icon"><use href="#ot-icon-chat"/></svg>Create a 4-year plan for Computer Science <span>›</span></a>
+        <a href="{% url 'faculty-planner' %}?q=What%20courses%20are%20required%20for%20Software%20Engineering"><svg class="ot-icon"><use href="#ot-icon-chat"/></svg>What courses are required for Software Engineering? <span>›</span></a>
+        <a href="{% url 'faculty-planner' %}?q=Compare%20Computer%20Science%20vs%20Cybersecurity"><svg class="ot-icon"><use href="#ot-icon-chat"/></svg>Compare Computer Science vs Cybersecurity <span>›</span></a>
+        <a href="{% url 'faculty-planner' %}?q=Explain%20prerequisite%20sequencing"><svg class="ot-icon"><use href="#ot-icon-chat"/></svg>Explain prerequisite sequencing <span>›</span></a>
+      </div>
+    </section>
+  </div>
+
+  <section class="faculty-support-grid">
+    <article class="faculty-card faculty-mini-card">
+      <div class="faculty-mini-heading"><span class="faculty-icon faculty-icon-green"><svg class="ot-icon"><use href="#ot-icon-settings"/></svg></span><div><h3>How it works</h3><p>A simple, privacy-first workflow.</p></div></div>
+      <div class="faculty-process"><span><b>1</b>Import<br>data</span><i>→</i><span><b>2</b>Analyze<br>with Cora</span><i>→</i><span><b>3</b>Generate<br>plans</span><i>→</i><span><b>4</b>Export<br>results</span></div>
+    </article>
+    <article class="faculty-card faculty-mini-card">
+      <div class="faculty-mini-heading"><span class="faculty-icon faculty-icon-blue"><svg class="ot-icon"><use href="#ot-icon-users"/></svg></span><div><h3>What faculty can do</h3><p>Powerful tools for academic advising.</p></div></div>
+      <ul class="faculty-check-list"><li>Upload roster or major data temporarily</li><li>Analyze degree requirements with Cora</li><li>Generate personalized academic plans</li><li>Export and share results with students</li><li>Use templates for common plan types</li></ul>
+    </article>
+    <article id="templates" class="faculty-card faculty-mini-card faculty-template-card">
+      <div class="faculty-mini-heading"><span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span><div><h3>Plan templates</h3><p>Start with a template or create your own.</p></div></div>
+      <a href="{% url 'faculty-planner' %}"><svg class="ot-icon"><use href="#ot-icon-material"/></svg><span><strong>4-Year Plan Template</strong><small>Traditional degree path</small></span>›</a>
+      <a href="{% url 'faculty-planner' %}"><svg class="ot-icon"><use href="#ot-icon-material"/></svg><span><strong>Transfer Student Template</strong><small>For incoming transfer students</small></span>›</a>
+      <a href="{% url 'faculty-planner' %}"><svg class="ot-icon"><use href="#ot-icon-material"/></svg><span><strong>Major Exploration Template</strong><small>Compare multiple majors</small></span>›</a>
+    </article>
+    <article class="faculty-card faculty-mini-card faculty-privacy-card">
+      <div class="faculty-mini-heading"><span class="faculty-icon faculty-icon-green"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg></span><div><h3>Privacy First</h3><p>Your data stays in your control.</p></div></div>
+      <div><svg class="ot-icon"><use href="#ot-icon-shield"/></svg><p><strong>No student data stored permanently</strong><br>Uploaded files are processed temporarily in a secure session and automatically cleared after your work is complete.</p></div>
+      <a href="{% url 'privacy-page' %}">Learn more about our privacy practices →</a>
+    </article>
+  </section>
+
+  <aside class="faculty-ferpa-banner"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg><strong>FERPA-conscious workflow:</strong><span>uploaded files are processed temporarily and are not permanently stored by OnTrack.</span><a href="{% url 'privacy-page' %}">Learn more ↗</a></aside>
+</div>
+{% endblock %}

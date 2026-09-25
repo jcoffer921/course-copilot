@@ -1,0 +1,56 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div class="faculty-page faculty-import-page">
+  <header class="faculty-page-header faculty-import-header">
+    <div class="faculty-heading-mark"><svg class="ot-icon"><use href="#ot-icon-upload"/></svg></div>
+    <div class="faculty-page-title"><h1>Import Data</h1><p>Upload an Excel or CSV file to analyze advising data for this session.</p></div>
+    <div class="faculty-session-badge"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg><span><strong>No student data is stored</strong><small>Files are processed temporarily and cleared after this session.</small></span></div>
+    <div class="faculty-header-actions"><button class="faculty-notification" type="button" aria-label="Notifications"><svg class="ot-icon"><use href="#ot-icon-bell"/></svg><span>3</span></button><span class="faculty-avatar">{{ user_initials }}</span></div>
+  </header>
+
+  <div class="faculty-import-top">
+    <section class="faculty-card faculty-upload-card">
+      <div class="faculty-section-heading"><span class="faculty-icon faculty-icon-green"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span><div><h2>1. Upload your file</h2><p>Upload an Excel or CSV file containing student data<br>(e.g., major, completed credits, GPA) for academic planning.</p></div></div>
+      <div class="faculty-dropzone" data-faculty-dropzone>
+        <svg class="ot-icon faculty-dropzone-icon"><use href="#ot-icon-material"/></svg>
+        <strong>Drag and drop your file here</strong><span>or</span>
+        <label class="faculty-button faculty-button-primary">Upload Excel / CSV<input type="file" accept=".xlsx,.csv" data-faculty-file></label>
+        <small data-faculty-filename>Supported files: .xlsx, .csv &nbsp;•&nbsp; Maximum file size: 10 MB</small>
+      </div>
+      <p class="faculty-session-note"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg>Student data is processed only for this session and will be cleared afterward.</p>
+    </section>
+
+    <section class="faculty-card faculty-mapping-card">
+      <div class="faculty-section-heading"><span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg></span><div><h2>Column mapping &amp; validation</h2><p>We’ll automatically detect and map key columns from your file after upload. You’ll be able to review and make any adjustments before processing.</p></div></div>
+      <div class="faculty-table-skeleton" aria-hidden="true"><div><i></i><i></i><i></i><i></i></div><div><i></i><i></i><i></i><i></i></div><div><i></i><i></i><i></i><i></i></div><div><i></i><i></i><i></i><i></i></div></div>
+      <p class="faculty-empty-copy">Column mapping will appear here<br>after you upload a file.</p>
+    </section>
+  </div>
+
+  <section class="faculty-card faculty-preview-card">
+    <div class="faculty-section-heading"><span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-search"/></svg></span><div><h2>Preview your data</h2><p>Review a preview of your data, including detected columns and a few rows, before sending it to Cora.</p></div></div>
+    <div class="faculty-preview-empty"><svg class="ot-icon"><use href="#ot-icon-material"/></svg><strong>Preview will appear here after upload.</strong><span>This helps you confirm your data and column mapping<br>before analysis.</span></div>
+  </section>
+
+  <div class="faculty-import-bottom">
+    <section class="faculty-card faculty-import-how">
+      <div class="faculty-mini-heading"><span class="faculty-icon faculty-icon-blue"><svg class="ot-icon"><use href="#ot-icon-settings"/></svg></span><div><h3>How it works</h3></div></div>
+      <div class="faculty-process faculty-process-detailed">
+        <span><b>1</b><strong>Upload</strong><small>Upload your Excel<br>or CSV file.</small></span><i>→</i>
+        <span><b>2</b><strong>Preview</strong><small>Review and confirm<br>column mapping.</small></span><i>→</i>
+        <span><b>3</b><strong>Analyze</strong><small>Send data to Cora<br>for academic planning.</small></span><i>→</i>
+        <span><b>4</b><strong>Generate</strong><small>Get personalized<br>advising insights.</small></span>
+      </div>
+    </section>
+    <section class="faculty-card faculty-import-privacy">
+      <div class="faculty-mini-heading"><span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg></span><div><h3>Privacy First</h3></div></div>
+      <p>No student data is stored. Files are processed temporarily for this session and automatically cleared afterward. This helps protect student privacy and reduce FERPA risk.</p>
+      <a href="{% url 'privacy-page' %}">Learn more about our privacy practices →</a>
+    </section>
+    <aside class="faculty-import-help">
+      <section class="faculty-card"><span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span><div><h3>Need help?</h3><p>Check out our sample file format or see guidance on preparing your data.</p><button type="button" class="faculty-sample-button"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Download sample file</button></div></section>
+      <section class="faculty-card"><span class="faculty-icon faculty-icon-purple"><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg></span><div><h3>Cora becomes available after upload</h3><p>Once you’ve uploaded and previewed your data, you’ll be able to send it to Cora for analysis and generate academic plans.</p></div></section>
+    </aside>
+  </div>
+</div>
+{% endblock %}

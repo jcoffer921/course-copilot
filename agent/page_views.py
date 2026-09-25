@@ -18,7 +18,7 @@ from .services import support
 from .services.study_sessions import StudySessionNotFoundError
 from .services.storage import COURSE_ID_RE
 from .forms import ContactRequestForm
-from .authentication import is_pilot_owner
+from .authentication import is_faculty, is_pilot_owner
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,9 @@ PAGE_SCRIPTS = {
     "practice-attempt": "agent/js/practice_attempt.js",
     "interactive-flashcards": "agent/js/interactive_flashcards.js",
     "analytics": "agent/js/analytics.js",
+    "faculty-dashboard": "agent/js/faculty.js",
+    "faculty-import": "agent/js/faculty.js",
+    "faculty-planner": "agent/js/faculty_planner.js",
 }
 
 
@@ -72,16 +75,21 @@ def _identity_context(user):
     return {"display_name": display_name, "first_name": first_name, "user_initials": initials}
 
 
-def _enabled_features(user):
+def _user_settings_row(user):
+    from .models import UserSettings
+
+    settings_row, _ = UserSettings.objects.get_or_create(user=user)
+    return settings_row
+
+
+def _enabled_features(settings_row):
     """The signed-in user's tier-resolved feature set — lets nav templates
     hide a tab the backend would reject instead of hardcoding one. The API
     (UserProfileView's `_profile_payload`) exposes the same set from the
     same entitlements.features_for_tier() call; only what a tab links to
     changes here, not the gate itself."""
-    from .models import UserSettings
     from .services import entitlements
 
-    settings_row, _ = UserSettings.objects.get_or_create(user=user)
     return entitlements.features_for_tier(settings_row.tier)
 
 
@@ -90,8 +98,10 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
         "course-mastery", "course-grades", "study-dashboard", "exam", "settings", "profile",
         "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback", "analytics",
+        "faculty-dashboard", "faculty-import", "faculty-planner",
     }
     modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
+    settings_row = _user_settings_row(request.user)
     return render(
         request,
         template_name,
@@ -113,8 +123,9 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
                 else ""
             ),
             "course_id": course_id,
-            "enabled_features": _enabled_features(request.user),
+            "enabled_features": _enabled_features(settings_row),
             "can_view_pilot_analytics": is_pilot_owner(request.user),
+            "can_view_faculty_planner": is_faculty(request.user, settings_row=settings_row),
             **_identity_context(request.user),
             **context,
         },
@@ -189,6 +200,8 @@ def profile_page(request):
 
 @login_required
 def dashboard_page(request):
+    if is_faculty(request.user):
+        return redirect("faculty-dashboard")
     hour = timezone.localtime().hour
     greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
     return _render_page(
@@ -204,6 +217,54 @@ def analytics_page(request):
     return _render_page(
         request, "agent/analytics.html", page_name="analytics", page_title="Analytics",
         initial_tab="analytics",
+    )
+
+
+@login_required
+def faculty_planner_page(request):
+    if not is_faculty(request.user):
+        raise Http404()
+
+    from .models import ProgramRequirement
+    from .services.program_requirements import serialize
+
+    rows = ProgramRequirement.objects.filter(user=request.user).order_by("program_name", "catalog_year")
+    return _render_page(
+        request,
+        "agent/faculty_planner.html",
+        page_name="faculty-planner",
+        page_title="Faculty planner",
+        initial_tab="faculty-planner",
+        program_requirements=[serialize(row) for row in rows],
+    )
+
+
+@login_required
+def faculty_dashboard_page(request):
+    if not is_faculty(request.user):
+        raise Http404()
+    hour = timezone.localtime().hour
+    greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
+    return _render_page(
+        request,
+        "agent/faculty_dashboard.html",
+        page_name="faculty-dashboard",
+        page_title="Faculty dashboard",
+        initial_tab="faculty-dashboard",
+        faculty_greeting=greeting,
+    )
+
+
+@login_required
+def faculty_import_page(request):
+    if not is_faculty(request.user):
+        raise Http404()
+    return _render_page(
+        request,
+        "agent/faculty_import.html",
+        page_name="faculty-import",
+        page_title="Import Data",
+        initial_tab="faculty-import",
     )
 
 

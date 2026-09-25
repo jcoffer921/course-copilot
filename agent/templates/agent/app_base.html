@@ -11,6 +11,7 @@
   {% if modern_shell %}
   <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
   <link rel="stylesheet" href="{% static 'agent/css/app.css' %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}">
+  {% if page_name == "faculty-dashboard" or page_name == "faculty-import" %}<link rel="stylesheet" href="{% static 'agent/css/faculty.css' %}?v=20260924-1">{% endif %}
   {% if page_name == "analytics" %}<link rel="stylesheet" href="{% static 'agent/css/analytics.css' %}?v=20260902-1">{% endif %}
   {% if page_name == "practice-quiz-setup" or page_name == "practice-attempt" or page_name == "interactive-flashcards" %}<link rel="stylesheet" href="{% static 'agent/css/interactive_study.css' %}?v={{ page_asset_version }}">{% endif %}
   {% if page_name == "study" and initial_tab == "session" %}<link rel="stylesheet" href="{% static 'agent/css/guided_study.css' %}">{% endif %}

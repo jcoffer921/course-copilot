@@ -68,12 +68,16 @@ class PilotOwnerPermission(BasePermission):
         return True
 
 
-def is_faculty(user) -> bool:
+def is_faculty(user, settings_row=None) -> bool:
+    """`settings_row` lets a caller that already fetched the user's
+    UserSettings (e.g. _render_page's _enabled_features call) pass it in
+    and skip a second identical get_or_create query."""
     if not getattr(user, "is_authenticated", False):
         return False
     from .models import UserSettings
 
-    settings_row, _ = UserSettings.objects.get_or_create(user=user)
+    if settings_row is None:
+        settings_row, _ = UserSettings.objects.get_or_create(user=user)
     return settings_row.role == UserSettings.ROLE_FACULTY
 
 

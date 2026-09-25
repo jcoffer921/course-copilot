@@ -1,0 +1,112 @@
+{% extends "agent/app_base.html" %}
+{% block page_content %}
+<div class="faculty-planner-page materials-page"
+     data-import-url="/api/faculty/requirements/import/"
+     data-confirm-url="/api/faculty/requirements/confirm/"
+     data-chat-url="/api/faculty/plan/chat/"
+     data-reset-url="/api/faculty/plan/reset/"
+     data-export-url="/api/faculty/plan/export/">
+  <header class="faculty-planner-header">
+    <div>
+      <p class="faculty-planner-kicker">Faculty workspace</p>
+      <h1>Academic plan builder</h1>
+      <p>Import curriculum requirements, verify every course, then work with Cora on a grounded student plan.</p>
+    </div>
+  </header>
+
+  <div id="faculty-planner-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
+
+  <div class="materials-body-split faculty-planner-layout">
+    <div class="materials-body-main">
+      <section class="card elev-sm materials-upload-card-unified" aria-labelledby="requirements-upload-title">
+        <div class="materials-section-heading">
+          <div>
+            <p class="faculty-step-label">Step 1</p>
+            <h2 id="requirements-upload-title">Import program requirements</h2>
+          </div>
+        </div>
+        <p class="faculty-section-copy">Upload an Excel workbook. Nothing is saved until you review and confirm the extracted curriculum.</p>
+        <form id="requirements-upload-form">
+          <div class="materials-dropzone" data-dropzone-for="requirements-upload-form">
+            <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-upload"/></svg>
+            <p>Drag and drop a workbook here, or</p>
+            <label class="btn btn-secondary">Choose Excel file<input class="sr-only" name="file" type="file" accept=".xlsx" required></label>
+            <span class="materials-dropzone-filename" aria-live="polite"></span>
+          </div>
+          <p class="materials-formats">Supported: XLSX</p>
+          <button class="btn btn-primary" type="submit">Extract for review</button>
+        </form>
+      </section>
+
+      <section class="materials-library faculty-program-library" aria-labelledby="program-library-title">
+        <div class="materials-section-heading">
+          <div>
+            <p class="faculty-step-label">Or continue</p>
+            <h2 id="program-library-title">Program library</h2>
+          </div>
+        </div>
+        <div id="program-library-empty" class="shared-state shared-state-empty" hidden>
+          <h2>No confirmed programs yet</h2>
+          <p>Import and confirm a workbook to begin planning.</p>
+        </div>
+        <div id="program-library-list" class="faculty-program-list"></div>
+      </section>
+    </div>
+
+    <div class="materials-body-side faculty-planner-side">
+      <section id="requirements-review" class="card elev-sm syllabus-review" aria-labelledby="requirements-review-title" hidden>
+        <div class="materials-section-heading">
+          <div class="review-title-row">
+            <span class="course-card-icon green"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg></span>
+            <div><p class="faculty-step-label">Step 2</p><h2 id="requirements-review-title">Review extraction</h2></div>
+          </div>
+          <span id="requirements-source-name" class="review-source-badge"></span>
+        </div>
+        <p>Correct any extraction errors before confirming. These requirements become Cora's only curriculum source.</p>
+        <form id="requirements-review-form">
+          <div class="faculty-review-basics">
+            <label class="materials-field">Program name<input id="review-program-name" class="input" type="text" maxlength="200" required></label>
+            <label class="materials-field">Catalog year<input id="review-catalog-year" class="input" type="text" maxlength="20" required></label>
+            <label class="materials-field">Total credits<input id="review-total-credits" class="input" type="number" min="0" step="0.5" required></label>
+          </div>
+          <div id="requirements-categories" class="faculty-review-categories"></div>
+          <button id="add-requirement-category" class="review-add-item" type="button">＋ Add category</button>
+          <div id="overwrite-warning" class="faculty-overwrite-warning" role="alert" hidden>
+            <strong>A confirmed version already exists.</strong>
+            <p id="overwrite-summary"></p>
+            <button id="overwrite-requirements" class="btn btn-secondary" type="button">Overwrite confirmed version</button>
+          </div>
+          <div class="page-actions">
+            <button class="btn btn-primary btn-cora" type="submit">Confirm requirements</button>
+            <button id="cancel-requirements-review" class="btn btn-secondary" type="button">Cancel review</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="faculty-planning-state" class="faculty-planning-state" aria-labelledby="faculty-planning-title" hidden>
+        <header class="faculty-planning-header">
+          <div><p class="faculty-step-label">Step 3</p><h2 id="faculty-planning-title">Plan with Cora</h2><p id="selected-program-label"></p></div>
+          <button id="new-student" class="btn btn-secondary" type="button">New student</button>
+        </header>
+        <div class="faculty-planning-grid">
+          <section class="card faculty-chat-panel" aria-label="Academic planning conversation">
+            <div id="faculty-chat-messages" class="faculty-chat-messages" aria-live="polite"></div>
+            <form id="faculty-chat-form" class="faculty-chat-form">
+              <label class="sr-only" for="faculty-chat-input">Message Cora</label>
+              <textarea id="faculty-chat-input" class="input" rows="3" maxlength="4000" placeholder="Share the student's intended major and completed coursework…" required></textarea>
+              <button class="btn btn-primary btn-cora" type="submit"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-send"/></svg>Send</button>
+            </form>
+            <p class="faculty-privacy-note">Student details and this conversation remain in this browser session and are not added to program records.</p>
+          </section>
+          <section class="card faculty-draft-panel" aria-labelledby="draft-plan-title">
+            <div class="materials-section-heading"><div><h2 id="draft-plan-title">Draft plan</h2></div><button id="download-plan" class="btn btn-secondary" type="button" disabled>Download plan</button></div>
+            <div id="draft-plan-empty" class="shared-state shared-state-empty"><h2>No draft yet</h2><p>Cora will ask for the details needed before proposing a plan.</p></div>
+            <div id="draft-plan-preview" hidden></div>
+          </section>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+{{ program_requirements|json_script:"faculty-program-requirements" }}
+{% endblock %}
