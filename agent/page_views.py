@@ -241,12 +241,32 @@ def analytics_page(request):
 def faculty_workspace_page(request):
     if not acts_as_faculty(request):
         raise Http404()
+
+    import uuid
+
+    from .models import ProgramRequirement
+    from .services import program_requirements
+
+    rows = list(ProgramRequirement.objects.filter(user=request.user).order_by("program_name", "catalog_year"))
+    active_program = None
+    try:
+        requested = uuid.UUID(request.GET.get("program", ""))
+    except ValueError:
+        requested = None
+    if requested is not None:
+        # Only the signed-in faculty member's own rows are candidates, so a foreign id
+        # is indistinguishable from a missing one.
+        match = next((row for row in rows if row.requirement_id == requested), None)
+        if match is not None:
+            active_program = program_requirements.serialize(match)
     return _render_page(
         request,
         "agent/faculty_workspace.html",
         page_name="faculty-workspace",
         page_title="Workspace",
         initial_tab="faculty-workspace",
+        programs=[program_requirements.serialize_summary(row) for row in rows],
+        active_program=active_program,
     )
 
 

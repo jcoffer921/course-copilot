@@ -97,3 +97,108 @@ def test_no_emoji_in_faculty_pages(client, faculty_user, route_name):
     html = client.get(reverse(route_name)).content.decode()
 
     assert not [c for c in html if ord(c) >= 0x1F000]
+
+
+# ---- Task 3: Workspace page ----
+
+from agent.models import ProgramRequirement
+
+
+def make_program(user, name="B.S. Computer Science", year="2026-2027"):
+    return ProgramRequirement.objects.create(
+        user=user,
+        program_name=name,
+        catalog_year=year,
+        requirements={
+            "program_name": name,
+            "catalog_year": year,
+            "total_credits_required": 120,
+            "categories": [
+                {"name": "Core", "credits_required": 7, "courses": [
+                    {"code": "CS 101", "title": "Intro", "credits": 3, "prerequisites": [], "notes": ""},
+                    {"code": "CS 201", "title": "Data Structures", "credits": 4, "prerequisites": ["CS 101"], "notes": ""},
+                ]},
+            ],
+        },
+    )
+
+
+@pytest.fixture
+def other_faculty(django_user_model):
+    user = django_user_model.objects.create_user(username="other-faculty-studio")
+    activate(user, UserSettings.ROLE_FACULTY)
+    return user
+
+
+@pytest.mark.django_db
+def test_workspace_context_lists_only_own_programs(client, faculty_user, other_faculty):
+    mine = make_program(faculty_user)
+    make_program(other_faculty, "B.S. Biology")
+    client.force_login(faculty_user)
+
+    response = client.get(reverse("faculty-workspace"))
+
+    ids = [p["requirement_id"] for p in response.context["programs"]]
+    assert ids == [str(mine.requirement_id)]
+    assert "B.S. Biology" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_active_program_resolves_when_owned(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    response = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)})
+
+    assert response.context["active_program"]["requirement_id"] == str(mine.requirement_id)
+    assert response.context["active_program"]["requirements"]["categories"][0]["name"] == "Core"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("bad_id", ["not-a-uuid", "11111111-1111-1111-1111-111111111111", ""])
+def test_active_program_ignores_foreign_and_malformed_ids(client, faculty_user, other_faculty, bad_id):
+    make_program(faculty_user)
+    foreign = make_program(other_faculty, "B.S. Biology")
+    client.force_login(faculty_user)
+
+    for value in (bad_id, str(foreign.requirement_id)):
+        response = client.get(reverse("faculty-workspace"), {"program": value})
+        assert response.status_code == 200
+        assert response.context["active_program"] is None
+        assert "B.S. Biology" not in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_workspace_home_state_when_no_program(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace")).content.decode()
+
+    assert 'data-fw="home"' in html
+    assert "Drop a requirements file" in html
+
+
+@pytest.mark.django_db
+def test_workspace_renders_three_panels_when_program_active(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)}).content.decode()
+
+    for region in ('data-fw="sources"', 'data-fw="plan"', 'data-fw="cora"'):
+        assert region in html
+    assert 'data-fw="home"' not in html
+    assert "B.S. Computer Science" in html
+    assert 'id="fw-active-program"' in html
+
+
+@pytest.mark.django_db
+def test_workspace_exposes_api_urls_and_privacy_note(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace")).content.decode()
+
+    for url in ("/api/faculty/plan/chat/", "/api/faculty/plan/reset/", "/api/faculty/plan/export/",
+                "/api/faculty/requirements/import/", "/api/faculty/requirements/confirm/"):
+        assert url in html
+    assert "Student details stay in this session only" in html

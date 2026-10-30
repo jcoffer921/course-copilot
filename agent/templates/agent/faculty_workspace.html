@@ -1,4 +1,78 @@
 {% extends "agent/faculty_base.html" %}
+{% block faculty_context %}{% if active_program %}<small>{{ active_program.program_name }}{% if active_program.catalog_year %} · Catalog {{ active_program.catalog_year }}{% endif %}</small>{% endif %}{% endblock %}
+
+{% block faculty_actions %}
+{% if active_program %}
+<button type="button" class="fs-btn" data-fw-reset>New session</button>
+<button type="button" class="fs-btn is-primary" data-fw-export>Export DOCX</button>
+{% endif %}
+{% endblock %}
+
 {% block faculty_content %}
-<section class="fs-panel"><div class="fs-empty"><h2>Workspace</h2></div></section>
+<div id="fw-root" class="fw-root"
+     data-chat-url="/api/faculty/plan/chat/"
+     data-reset-url="/api/faculty/plan/reset/"
+     data-export-url="/api/faculty/plan/export/"
+     data-import-url="/api/faculty/requirements/import/"
+     data-confirm-url="/api/faculty/requirements/confirm/">
+  {% if active_program %}
+  <div class="fw-studio">
+    <section class="fs-panel fw-sources" data-fw="sources" aria-label="Sources">
+      <header class="fs-panel-head"><h2>Sources</h2></header>
+      <div class="fs-panel-body">
+        <div class="fs-label">Program</div>
+        <div class="fw-program-card">
+          <strong>{{ active_program.program_name }}</strong>
+          <small>{% if active_program.catalog_year %}Catalog {{ active_program.catalog_year }} · {% endif %}{{ active_program.requirements.total_credits_required }} credits</small>
+        </div>
+        {% if programs|length > 1 %}
+        <label class="fw-picker-label" for="fw-program-picker">Switch program</label>
+        <select id="fw-program-picker" class="fw-picker" data-fw-program-picker>
+          {% for program in programs %}
+          <option value="{{ program.requirement_id }}"{% if program.requirement_id == active_program.requirement_id %} selected{% endif %}>{{ program.program_name }}{% if program.catalog_year %} ({{ program.catalog_year }}){% endif %}</option>
+          {% endfor %}
+        </select>
+        {% endif %}
+        <button type="button" class="fw-drop" data-fw-import-trigger>Import another requirements file<small>.xlsx or .csv</small></button>
+
+        <div class="fs-label fw-coverage-label">Requirement coverage</div>
+        <div data-fw-coverage class="fw-coverage"></div>
+      </div>
+      <p class="fw-privacy">Student details stay in this session only.</p>
+    </section>
+
+    <section class="fs-panel fw-plan" data-fw="plan" aria-label="Draft plan">
+      <header class="fs-panel-head"><h2>Draft plan</h2><span class="fs-chip is-ai">AI-assisted draft</span></header>
+      <div class="fw-plan-scroll">
+        <div class="fw-doc" data-fw-plan-doc>
+          <div class="fs-empty" data-fw-plan-empty>No draft plan yet. Describe the student to Cora and a draft will appear here.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="fs-panel fw-cora" data-fw="cora" aria-label="Cora planning assistant">
+      <header class="fs-panel-head"><span class="fw-cora-dot" aria-hidden="true">C</span><h2>Cora · Planning assistant</h2></header>
+      <div class="fw-chat" data-fw-chat aria-live="polite"></div>
+    </section>
+  </div>
+  {% else %}
+  <div class="fw-home" data-fw="home">
+    <div class="fw-home-inner">
+      <h2>What are we planning today?</h2>
+      <p>Import a requirements file for a program, then describe a student and Cora drafts a plan.</p>
+      <button type="button" class="fw-drop fw-drop-lg" data-fw-import-trigger>Drop a requirements file<small>.xlsx or .csv, or choose a file</small></button>
+      {% if programs %}
+      <div class="fs-label fw-recent-label">Your programs</div>
+      <ul class="fw-recent">
+        {% for program in programs|slice:":5" %}
+        <li><a class="fw-recent-link" href="{% url 'faculty-workspace' %}?program={{ program.requirement_id }}"><strong>{{ program.program_name }}</strong><small>{% if program.catalog_year %}{{ program.catalog_year }} · {% endif %}{{ program.course_count }} courses</small></a></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      <p class="fw-privacy">Student details stay in this session only.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{{ active_program|json_script:"fw-active-program" }}
 {% endblock %}
