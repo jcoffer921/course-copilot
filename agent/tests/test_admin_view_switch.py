@@ -16,15 +16,15 @@ def make(django_user_model, name, role=UserSettings.ROLE_STUDENT, **kw):
 def test_admin_can_switch_between_views(client, django_user_model):
     admin = make(django_user_model, "adm", email="me@example.com")
     client.force_login(admin)
-    assert client.get(reverse("faculty-dashboard")).status_code == 404
+    assert client.get(reverse("faculty-workspace")).status_code == 404
 
     response = client.post(reverse("switch-view"), {"view": "faculty"})
     assert response.status_code == 302
-    assert client.get(reverse("faculty-dashboard")).status_code == 200
+    assert client.get(reverse("faculty-workspace")).status_code == 200
     assert client.get(reverse("dashboard-page")).status_code == 302
 
     client.post(reverse("switch-view"), {"view": "student"})
-    assert client.get(reverse("faculty-dashboard")).status_code == 404
+    assert client.get(reverse("faculty-workspace")).status_code == 404
     assert client.get(reverse("dashboard-page")).status_code == 200
 
 
@@ -42,7 +42,7 @@ def test_non_admin_cannot_switch(client, django_user_model):
     user = make(django_user_model, "stu")
     client.force_login(user)
     assert client.post(reverse("switch-view"), {"view": "faculty"}).status_code == 404
-    assert client.get(reverse("faculty-dashboard")).status_code == 404
+    assert client.get(reverse("faculty-workspace")).status_code == 404
 
 
 @override_settings(ONTRACK_PILOT_OWNER_EMAIL="me@example.com")

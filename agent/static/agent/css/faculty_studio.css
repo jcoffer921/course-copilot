@@ -1,0 +1,81 @@
+/* Faculty studio: tokens, shell, and shared components.
+   Palette follows Penn State's official colors (colors only; no marks):
+   Nittany Navy #001E44, Beaver Blue #1E407C, Pugh Blue #96BEE6. */
+body[data-area="faculty"]{
+  --rail:#001E44;
+  --accent:#1E407C;
+  --accent-ink:#001E44;
+  --accent-line:#96BEE6;
+  --accent-soft:#EAF2FB;
+  --ink:#10192b;
+  --muted:#5a6578;
+  --line:#d9e0ea;
+  --bg:#f3f6fa;
+  --panel:#ffffff;
+  --ok:#1d7a46;--ok-soft:#e6f4ec;
+  --warn:#9a4a07;--warn-soft:#fdf0e3;
+  --bad:#b3372b;--bad-soft:#fbeae7;
+  --cora:#5b3fc4;--cora-soft:#f0ecfc;
+  --radius:12px;
+  margin:0;background:var(--bg);color:var(--ink);font-size:13px;line-height:1.4;
+}
+body[data-area="faculty"] *{box-sizing:border-box}
+body[data-area="faculty"] a:focus-visible,
+body[data-area="faculty"] button:focus-visible,
+body[data-area="faculty"] summary:focus-visible,
+body[data-area="faculty"] input:focus-visible,
+body[data-area="faculty"] select:focus-visible,
+body[data-area="faculty"] textarea:focus-visible{outline:3px solid var(--accent-line);outline-offset:2px}
+
+.fs-app{display:grid;grid-template-columns:72px minmax(0,1fr);min-height:100vh}
+.fs-rail{background:var(--rail);display:flex;flex-direction:column;align-items:center;gap:6px;padding:14px 0}
+.fs-logo{width:38px;height:38px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-weight:800;text-decoration:none;margin-bottom:14px}
+.fs-rail-link{width:60px;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 0;border-radius:10px;color:#b9cde6;text-decoration:none;font-size:10px;font-weight:600}
+.fs-rail-link .ot-icon{width:22px;height:22px}
+.fs-rail-link:hover{background:#0b2d5c;color:#fff}
+.fs-rail-link.is-active{background:var(--accent);color:#fff}
+
+.fs-main{display:grid;grid-template-rows:56px minmax(0,1fr);min-width:0}
+.fs-top{display:flex;align-items:center;gap:14px;padding:0 20px;background:var(--panel);border-bottom:1px solid var(--line);position:relative}
+.fs-badge{background:var(--accent-soft);color:var(--accent-ink);font-weight:700;font-size:11px;padding:4px 10px;border-radius:999px;letter-spacing:.05em}
+.fs-crumb{margin:0;font:700 15px/1.2 var(--font-heading,inherit)}
+.fs-crumb small{color:var(--muted);font-weight:500;margin-left:8px;font-size:12px}
+.fs-top-actions{margin-left:auto;display:flex;gap:8px;align-items:center}
+.fs-content{min-width:0;min-height:0;overflow:auto;padding:14px 16px}
+.fs-content:focus{outline:none}
+
+.fs-account{position:relative}
+.fs-account>summary{list-style:none;cursor:pointer}
+.fs-account>summary::-webkit-details-marker{display:none}
+.fs-avatar{width:34px;height:34px;border-radius:50%;background:var(--rail);color:#fff;display:grid;place-items:center;font-weight:700;font-size:12px}
+.fs-menu{position:absolute;right:0;top:42px;z-index:20;min-width:230px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,30,68,.16);padding:6px;display:grid}
+.fs-menu a,.fs-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:7px;color:var(--ink);font:inherit;text-decoration:none;cursor:pointer}
+.fs-menu a:hover,.fs-menu button:hover{background:var(--accent-soft)}
+.fs-menu-id{padding:8px 10px;border-bottom:1px solid var(--line);margin-bottom:4px;display:grid}
+.fs-menu-id small{color:var(--muted)}
+
+/* shared components */
+.fs-btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 13px;font:600 12px/1.2 inherit;color:var(--ink);cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
+.fs-btn:hover{border-color:var(--accent-line)}
+.fs-btn.is-primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.fs-btn.is-primary:hover{background:#17336a}
+.fs-btn.is-danger{color:var(--bad);border-color:#e7b9b3}
+.fs-btn[disabled]{opacity:.55;cursor:not-allowed}
+.fs-panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.fs-panel-head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.fs-panel-head h2{margin:0;font-size:13px}
+.fs-panel-body{padding:12px 14px;overflow:auto;min-height:0}
+.fs-label{font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase;margin:4px 0 8px}
+.fs-chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:700;background:var(--accent-soft);color:var(--accent-ink)}
+.fs-chip.is-ok{background:var(--ok-soft);color:var(--ok)}
+.fs-chip.is-warn{background:var(--warn-soft);color:var(--warn)}
+.fs-chip.is-ai{background:var(--cora-soft);color:var(--cora)}
+.fs-note{display:flex;gap:10px;align-items:center;background:var(--accent-soft);color:var(--accent-ink);border-radius:10px;padding:9px 13px;font-size:12px}
+.fs-empty{padding:28px;text-align:center;color:var(--muted)}
+
+@media (max-width:760px){
+  .fs-app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .fs-rail{flex-direction:row;justify-content:flex-start;padding:8px 12px}
+  .fs-logo{margin:0 10px 0 0}
+  .fs-top{flex-wrap:wrap;height:auto;padding:8px 14px}
+}

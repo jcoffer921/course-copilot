@@ -7,10 +7,7 @@
 
   <nav class="app-nav">
     {% if can_view_faculty_planner %}
-    <a href="{% url 'faculty-dashboard' %}" class="app-nav-link{% if page_name == 'faculty-dashboard' %} active{% endif %}"{% if page_name == 'faculty-dashboard' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-home"/></svg>Dashboard</a>
-    <a href="{% url 'faculty-import' %}" class="app-nav-link{% if page_name == 'faculty-import' %} active{% endif %}"{% if page_name == 'faculty-import' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-upload"/></svg>Import Data</a>
-    <a href="{% url 'faculty-planner' %}" class="app-nav-link{% if page_name == 'faculty-planner' %} active{% endif %}"{% if page_name == 'faculty-planner' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-sparkle"/></svg>Cora</a>
-    <a href="{% url 'faculty-templates' %}" class="app-nav-link{% if page_name == 'faculty-templates' %} active{% endif %}"{% if page_name == 'faculty-templates' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg>Templates</a>
+    <a href="{% url 'faculty-workspace' %}" class="app-nav-link"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-sparkle"/></svg>Faculty workspace</a>
     <a href="{% url 'settings-page' %}" class="app-nav-link{% if page_name == 'settings' %} active{% endif %}"{% if page_name == 'settings' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-settings"/></svg>Settings</a>
     {% else %}
     <a href="{% url 'dashboard-page' %}" class="app-nav-link{% if page_name == 'dashboard' %} active{% endif %}"{% if page_name == 'dashboard' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-home"/></svg>Dashboard</a>

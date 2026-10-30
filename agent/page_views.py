@@ -43,9 +43,8 @@ PAGE_SCRIPTS = {
     "practice-attempt": "agent/js/practice_attempt.js",
     "interactive-flashcards": "agent/js/interactive_flashcards.js",
     "analytics": "agent/js/analytics.js",
-    "faculty-dashboard": "agent/js/faculty.js",
-    "faculty-import": "agent/js/faculty.js",
-    "faculty-planner": "agent/js/faculty_planner.js",
+    "faculty-workspace": "agent/js/faculty_workspace.js",
+    "faculty-programs": "agent/js/faculty_programs.js",
     "faculty-templates": "agent/js/faculty_templates.js",
 }
 
@@ -99,7 +98,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
         "course-mastery", "course-grades", "study-dashboard", "exam", "settings", "profile",
         "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback", "analytics",
-        "faculty-dashboard", "faculty-import", "faculty-planner", "faculty-templates",
+        "faculty-workspace", "faculty-programs", "faculty-templates",
     }
     modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
     settings_row = _user_settings_row(request.user)
@@ -121,7 +120,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
                 else "interactive-20260831-4" if page_name in ("practice-attempt", "interactive-flashcards")
                 else "settings-20260901-1" if page_name == "settings"
                 else "profile-20260902-1" if page_name == "profile"
-                else "faculty-cora-20260924-1" if page_name == "faculty-planner"
+                else "faculty-studio-20261030-1" if page_name in ("faculty-workspace", "faculty-programs")
                 else "faculty-templates-20260924-1" if page_name == "faculty-templates"
                 else ""
             ),
@@ -205,7 +204,7 @@ def profile_page(request):
 @login_required
 def dashboard_page(request):
     if acts_as_faculty(request):
-        return redirect("faculty-dashboard")
+        return redirect("faculty-workspace")
     hour = timezone.localtime().hour
     greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
     return _render_page(
@@ -225,7 +224,7 @@ def switch_view_page(request):
     if target not in ADMIN_VIEW_CHOICES:
         return HttpResponseBadRequest("Unknown view.")
     request.session[ADMIN_VIEW_SESSION_KEY] = target
-    return redirect("faculty-dashboard" if target == "faculty" else "dashboard-page")
+    return redirect("faculty-workspace" if target == "faculty" else "dashboard-page")
 
 
 @login_required
@@ -239,51 +238,45 @@ def analytics_page(request):
 
 
 @login_required
-def faculty_planner_page(request):
+def faculty_workspace_page(request):
     if not acts_as_faculty(request):
         raise Http404()
-
-    from .models import ProgramRequirement
-    from .services.program_requirements import serialize
-
-    rows = ProgramRequirement.objects.filter(user=request.user).order_by("program_name", "catalog_year")
     return _render_page(
         request,
-        "agent/faculty_planner.html",
-        page_name="faculty-planner",
-        page_title="Faculty planner",
-        initial_tab="faculty-planner",
-        program_requirements=[serialize(row) for row in rows],
+        "agent/faculty_workspace.html",
+        page_name="faculty-workspace",
+        page_title="Workspace",
+        initial_tab="faculty-workspace",
     )
 
 
 @login_required
-def faculty_dashboard_page(request):
+def faculty_programs_page(request):
     if not acts_as_faculty(request):
         raise Http404()
-    hour = timezone.localtime().hour
-    greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
     return _render_page(
         request,
-        "agent/faculty_dashboard.html",
-        page_name="faculty-dashboard",
-        page_title="Faculty dashboard",
-        initial_tab="faculty-dashboard",
-        faculty_greeting=greeting,
+        "agent/faculty_programs.html",
+        page_name="faculty-programs",
+        page_title="Programs",
+        initial_tab="faculty-programs",
     )
 
 
 @login_required
 def faculty_import_page(request):
+    """Legacy route kept so bookmarks to the old Import page still land somewhere useful."""
     if not acts_as_faculty(request):
         raise Http404()
-    return _render_page(
-        request,
-        "agent/faculty_import.html",
-        page_name="faculty-import",
-        page_title="Import Data",
-        initial_tab="faculty-import",
-    )
+    return redirect("faculty-programs")
+
+
+@login_required
+def faculty_planner_page(request):
+    """Legacy route: the Cora planner is now the Workspace."""
+    if not acts_as_faculty(request):
+        raise Http404()
+    return redirect("faculty-workspace")
 
 
 @login_required

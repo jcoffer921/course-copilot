@@ -138,10 +138,10 @@ def faculty_access_page(request):
                 settings_row.access_status = UserSettings.ACCESS_ACTIVE
                 settings_row.role = UserSettings.ROLE_FACULTY
                 settings_row.save(update_fields=["access_status", "role", "updated_at"])
-                return redirect("faculty-dashboard")
+                return redirect("faculty-workspace")
         else:
             request.session["faculty_access_granted_at"] = timezone.now().timestamp()
-            destination = urlencode({"next": reverse("faculty-dashboard")})
+            destination = urlencode({"next": reverse("faculty-workspace")})
             return redirect(f"{reverse('google-login-start')}?{destination}")
 
     response = render(request, "agent/faculty_access.html", {
@@ -264,7 +264,7 @@ def google_callback(request):
     login(request, user)
     destination = request.session.pop("google_oauth_next", None)
     if faculty_access_granted and not destination:
-        destination = "faculty-dashboard"
+        destination = "faculty-workspace"
     return redirect(destination or "dashboard-page")
 
 

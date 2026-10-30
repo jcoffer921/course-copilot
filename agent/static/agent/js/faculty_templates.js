@@ -198,7 +198,7 @@ function useTemplate(id) {
     id: template.id, name: template.name, category: template.category, tags: template.tags,
     terms: template.terms, creditMin: template.creditMin ?? 12, creditMax: template.creditMax ?? 16,
   }));
-  window.location.assign(`/faculty/cora/?template=${encodeURIComponent(template.id)}`);
+  window.location.assign("/faculty/");
 }
 
 function previewTemplate(id) {

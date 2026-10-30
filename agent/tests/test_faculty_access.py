@@ -68,7 +68,7 @@ def test_valid_faculty_code_promotes_authenticated_non_suspended_user(client, dj
 
     settings_row.refresh_from_db()
     assert response.status_code == 302
-    assert response.url == reverse("faculty-dashboard")
+    assert response.url == reverse("faculty-workspace")
     assert settings_row.access_status == UserSettings.ACCESS_ACTIVE
     assert settings_row.role == UserSettings.ROLE_FACULTY
 
@@ -111,7 +111,7 @@ def test_google_callback_applies_recent_faculty_grant_to_new_account(client):
     account = GoogleAccount.objects.get(google_sub="faculty-code-sub")
     settings_row = UserSettings.objects.get(user=account.user)
     assert response.status_code == 302
-    assert response.url == reverse("faculty-dashboard")
+    assert response.url == reverse("faculty-workspace")
     assert settings_row.access_status == UserSettings.ACCESS_ACTIVE
     assert settings_row.role == UserSettings.ROLE_FACULTY
     assert "faculty_access_granted_at" not in client.session

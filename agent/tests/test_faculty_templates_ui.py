@@ -81,24 +81,20 @@ def test_faculty_templates_page_renders_library_detail_and_builder(client, facul
     assert 'placeholder="Search templates by name, description, or tag..."' in html
     assert 'src="/static/agent/js/faculty_templates.js?v=faculty-templates-20260924-1"' in html
     assert 'role="dialog" aria-modal="true"' in html
-    assert 'id="site-notification-toggle"' in html
     assert 'class="faculty-notification"' not in html
 
 
 @pytest.mark.django_db
-def test_faculty_templates_uses_exact_faculty_navigation(client, faculty_user):
+def test_faculty_templates_uses_faculty_rail_navigation(client, faculty_user):
     client.force_login(faculty_user)
 
     html = client.get(reverse("faculty-templates")).content.decode()
 
-    for label in ("Dashboard", "Import Data", "Cora", "Templates", "Settings"):
-        assert f">{label}</a>" in html
-    assert f'href="{reverse("faculty-templates")}" class="app-nav-link active" aria-current="page">' in html
+    for label in ("Workspace", "Programs", "Templates"):
+        assert f">{label}<" in html
+    assert f'href="{reverse("faculty-templates")}" class="fs-rail-link is-active" aria-current="page">' in html
     for student_label in ("Calendar", "Courses", "Study", "Analytics"):
         assert f">{student_label}</a>" not in html
-    assert "Help &amp; support" in html
-    assert "Send feedback" in html
-    assert "Contact us" in html
     assert "PW" in html
     assert "pwilliamson@university.edu" in html
 
@@ -119,16 +115,3 @@ def test_faculty_templates_runtime_supports_search_filters_selection_and_safe_bu
         "studentGPA",
     ):
         assert contract in controller
-
-
-@pytest.mark.django_db
-def test_faculty_cora_exposes_selected_template_handoff(client, faculty_user):
-    client.force_login(faculty_user)
-
-    html = client.get(reverse("faculty-planner")).content.decode()
-    planner = (Path(__file__).resolve().parents[2] / "agent/static/agent/js/faculty_planner.js").read_text(encoding="utf-8")
-
-    assert 'id="faculty-template-selection"' in html
-    assert reverse("faculty-templates") in html
-    assert "ontrack.selectedFacultyTemplate" in planner
-    assert "renderSelectedTemplate" in planner

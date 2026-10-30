@@ -1,0 +1,65 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }} · OnTrack Faculty</title>
+  <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'agent/css/app.css' %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}">
+  {% if page_name == "faculty-templates" %}<link rel="stylesheet" href="{% static 'agent/css/faculty.css' %}?v=20260924-3">{% endif %}
+  <link rel="stylesheet" href="{% static 'agent/css/faculty_studio.css' %}?v=20261030-1">
+  <script>
+    window.CURRENT_USERNAME = "{{ user.username|escapejs }}";
+    window.ONTRACK_PAGE_NAME = "{{ page_name|escapejs }}";
+  </script>
+  <script type="module" src="{% static page_script %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}"></script>
+</head>
+<body data-page="{{ page_name }}" data-area="faculty">
+  {% csrf_token %}
+  {% include "agent/partials/icon_symbols.html" %}
+  <a class="app-skip-link" href="#main-content">Skip to content</a>
+  <div class="fs-app">
+    <nav class="fs-rail" aria-label="Faculty navigation">
+      <a class="fs-logo" href="{% url 'faculty-workspace' %}" aria-label="OnTrack Faculty home">O</a>
+      <a href="{% url 'faculty-workspace' %}" class="fs-rail-link{% if page_name == 'faculty-workspace' %} is-active{% endif %}"{% if page_name == 'faculty-workspace' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-sparkle"/></svg><span>Workspace</span></a>
+      <a href="{% url 'faculty-programs' %}" class="fs-rail-link{% if page_name == 'faculty-programs' %} is-active{% endif %}"{% if page_name == 'faculty-programs' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-book"/></svg><span>Programs</span></a>
+      <a href="{% url 'faculty-templates' %}" class="fs-rail-link{% if page_name == 'faculty-templates' %} is-active{% endif %}"{% if page_name == 'faculty-templates' %} aria-current="page"{% endif %}><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg><span>Templates</span></a>
+    </nav>
+
+    <div class="fs-main">
+      <header class="fs-top">
+        <span class="fs-badge">FACULTY</span>
+        <h1 class="fs-crumb">{{ page_title }}{% block faculty_context %}{% endblock %}</h1>
+        <div class="fs-top-actions">{% block faculty_actions %}{% endblock %}</div>
+        <details class="fs-account">
+          <summary class="fs-avatar" aria-label="Open account menu">{{ user_initials }}</summary>
+          <div class="fs-menu">
+            <div class="fs-menu-id"><strong>{{ display_name }}</strong><small>{{ user.email }}</small></div>
+            <a href="{% url 'privacy-page' %}">Privacy and FERPA note</a>
+            <a href="{% url 'contact-page' %}">Help and contact</a>
+            <a href="{% url 'feedback-page' %}">Send feedback</a>
+            {% if can_switch_view %}
+            <form action="{% url 'switch-view' %}" method="post">
+              {% csrf_token %}
+              <input type="hidden" name="view" value="student">
+              <button type="submit">Switch to student view</button>
+            </form>
+            {% endif %}
+            <form action="{% url 'google-logout' %}" method="post">
+              {% csrf_token %}
+              <button type="submit">Sign out</button>
+            </form>
+          </div>
+        </details>
+      </header>
+      <main id="main-content" class="fs-content" tabindex="-1">
+        {% block faculty_content %}{% endblock %}
+      </main>
+    </div>
+    {% include "agent/partials/toast_region.html" %}
+  </div>
+  {% include "agent/partials/action_dialog.html" %}
+  <script type="module" src="{% static 'agent/js/core/dialogs.js' %}?v=20260901-1"></script>
+</body>
+</html>
