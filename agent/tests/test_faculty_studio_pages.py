@@ -408,3 +408,23 @@ def test_new_session_purges_student_state_from_the_session_store(faculty_user, m
     assert client.post("/api/faculty/plan/reset/").status_code == 204
 
     assert secret not in json.dumps([s.get_decoded() for s in Session.objects.all()])
+
+
+# ---- Final review fixes ----
+
+
+@pytest.mark.django_db
+def test_avatar_menu_links_to_settings(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace")).content.decode()
+
+    assert f'href="{reverse("settings-page")}"' in html
+
+
+def test_workspace_resets_stale_server_state_and_sends_program_id_on_export():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    assert "resetStaleServerSession" in source
+    assert "program_requirement_id: program.requirement_id" in source
+    assert "response.status === 409" in source

@@ -91,10 +91,25 @@ const sessionStore = {
   clear() {
     try { sessionStorage.removeItem(SESSION_KEY); } catch { /* storage unavailable */ }
   },
+  hasState() {
+    try {
+      const value = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+      return Boolean(value) && value.programId === program?.requirement_id;
+    } catch { return false; }
+  },
 };
 
 if (root && program) {
   let state = sessionStore.read();
+
+  // The server keeps planning state until it is reset; this tab only keeps its own copy. If this tab has
+  // no state for this program (new tab, other program), purge whatever the server still holds so the next
+  // student never inherits the previous student's context.
+  async function resetStaleServerSession() {
+    try { await apiRequest(root.dataset.resetUrl, { method: "POST" }); }
+    catch { /* best effort: New session resets again */ }
+  }
+  if (!sessionStore.hasState()) resetStaleServerSession();
   const creditsByCode = {};
   const titlesByCode = {};
   for (const category of requirements.categories || []) {
@@ -307,10 +322,18 @@ if (root && program) {
       const response = await fetch(root.dataset.exportUrl, {
         method: "POST",
         headers: { "X-CSRFToken": getCsrfToken(), "Content-Type": "application/json" },
-        body: JSON.stringify({ format: preferredExportFormat() }),
+        body: JSON.stringify({ format: preferredExportFormat(), program_requirement_id: program.requirement_id }),
         credentials: "same-origin",
       });
-      if (!response.ok) throw new Error("Create a draft plan before exporting it.");
+      if (!response.ok) {
+        let detail = "Export failed.";
+        try { detail = (await response.json()).detail || detail; } catch { /* non-JSON error body */ }
+        if (response.status === 409) {
+          showToast(`${detail}`, "error");
+          return;
+        }
+        throw new Error(detail);
+      }
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");

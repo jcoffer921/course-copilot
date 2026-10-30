@@ -86,6 +86,30 @@ def _add_followups(document, draft_plan):
         document.add_paragraph("", style="List Bullet")
 
 
+def ground_to_program(draft_plan: dict, requirements: dict) -> dict:
+    """Overwrite each course's title and credits (and the total) with the program's own values.
+
+    The model is only trusted for which courses go in which term; the document must agree with
+    the grounded requirements the faculty member reviewed on screen."""
+    known = {
+        course["code"]: course
+        for category in (requirements or {}).get("categories") or []
+        for course in category.get("courses") or []
+        if course.get("code")
+    }
+    semesters = []
+    total = 0
+    for semester in draft_plan.get("semesters") or []:
+        courses = []
+        for course in semester.get("courses") or []:
+            match = known.get(course.get("code"))
+            merged = {**course, "title": match.get("title") or course.get("title"), "credits": match.get("credits")} if match else dict(course)
+            total += int(merged.get("credits") or 0)
+            courses.append(merged)
+        semesters.append({**semester, "courses": courses})
+    return {**draft_plan, "semesters": semesters, "total_credits": total}
+
+
 def render_plan_docx(draft_plan: dict, layout: str = DEFAULT_LAYOUT) -> BytesIO:
     if layout not in EXPORT_LAYOUTS:
         layout = DEFAULT_LAYOUT

@@ -35,6 +35,7 @@
           <summary class="fs-avatar" aria-label="Open account menu">{{ user_initials }}</summary>
           <div class="fs-menu">
             <div class="fs-menu-id"><strong>{{ display_name }}</strong><small>{{ user.email }}</small></div>
+            <a href="{% url 'settings-page' %}">Settings</a>
             <a href="{% url 'privacy-page' %}">Privacy and FERPA note</a>
             <a href="{% url 'contact-page' %}">Help and contact</a>
             <a href="{% url 'feedback-page' %}">Send feedback</a>

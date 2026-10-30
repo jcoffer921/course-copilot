@@ -445,6 +445,23 @@ class FacultyPlanExportView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        session_program = state.get("program_requirement_id")
+        requested_program = request.data.get("program_requirement_id") if hasattr(request.data, "get") else None
+        if requested_program and str(requested_program) != str(session_program):
+            return Response(
+                {"detail": "The plan on this page is from a different session. Reload the page and generate the plan again."},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        def ground():
+            try:
+                row = ProgramRequirement.objects.filter(user=request.user, requirement_id=session_program).first()
+            except (ValueError, TypeError):
+                return draft_plan
+            return plan_export.ground_to_program(draft_plan, row.requirements) if row else draft_plan
+
+        draft_plan = await sync_to_async(ground)()
+
         # The layout is an allow-listed choice; anything else (absent, blank, wrong type,
         # unknown name) falls back to the default layout inside render_plan_docx.
         requested = request.data.get("format") if hasattr(request.data, "get") else None

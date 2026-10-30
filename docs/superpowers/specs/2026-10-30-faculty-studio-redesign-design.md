@@ -19,7 +19,7 @@ The redesign gives faculty their own workspace with a distinct feel:
 1. A faculty member can go from a requirements file to an exportable draft plan without leaving one screen (Workspace).
 2. Faculty pages no longer look like the student app: own shell, own accent, no student dashboard cards.
 3. Every control shown on a faculty page does something real. No mockup-only pages or hardcoded values (the "3" notification badge, the non-functional Import page).
-4. Nothing student-specific is ever persisted. Existing privacy guarantees hold (see section 6).
+4. No student-specific state is written to any application table. It lives in the signed-in session (sessionStorage plus the server-side Django session, which is database-backed until reset or expiry), and is purged by New session and whenever a tab without matching state loads the Workspace (see section 6).
 5. No emoji anywhere. Icons are inline SVG (reusing the existing `ot-icon` sprite where an icon exists) or plain words.
 
 ### What the user said vs. what I am assuming
@@ -109,7 +109,7 @@ Export formats require a change to `agent/services/plan_export.py` and `FacultyP
 ## 6. Data and privacy
 
 - No new tables are required. `ProgramRequirement` is unchanged.
-- Student-specific state (details, conversation, draft plan) remains session-only. Nothing in this redesign writes it to the database, a file, or `localStorage`.
+- Student-specific state (details, conversation, draft plan) remains session-only and is never written to an application table, a file, or `localStorage`. The server half of that session is Django's session store, which is database-backed (`django_session`) until `plan/reset/`, logout, or expiry. To stop one student's context reaching the next, the Workspace purges stale server state when a tab loads without its own matching state, and the export endpoint refuses (409) a plan whose program does not match the server session. Moving this state to a short-lived cache or cookie store is a possible follow-up and is not done here.
 - `ProductMetric` events, if any are added for the new screens, use only the existing allow-listed metadata fields.
 - Delete removes only the signed-in user's own `ProgramRequirement` row.
 
@@ -157,3 +157,14 @@ All four were resolved in review on 2026-10-30:
 2. **Uncommitted work:** commit the existing faculty work first so the redesign diff is clean. Done as a separate commit before milestone 1.
 3. **Export formats:** stay as milestone 3, after Programs.
 4. **Template storage:** browser-only (`localStorage`) is acceptable for user-created skeletons for now.
+
+## 11. As built: deviations from this spec
+
+Recorded after the whole-branch review so the spec matches the product.
+
+- Not built: "Regenerate term" and "Accept draft" actions; one-click fixes on issue cards (issues have Dismiss only, in a box above the composer rather than attached to each assistant message); the plan header's student label, credits completed, and target graduation (the header is the title only); the Sources panel's "applied template" line (the template banner is in the Cora panel); and an Escape/outside-click close on the avatar menu.
+- The Workspace home lists the first five programs alphabetically, not the most recently updated.
+- Narrow screens stack the three panels instead of switching to tabs.
+- The exported DOCX takes titles, credits, and the total from the program's own requirements, never from the model's draft.
+- Export formats apply to the DOCX only; the default is a per-browser preference (`localStorage`).
+

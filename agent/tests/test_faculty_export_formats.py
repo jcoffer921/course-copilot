@@ -165,3 +165,73 @@ def test_export_contains_no_session_metadata(django_user_model, layout):
     )
     assert "private conversation text" not in everything
     assert "Hidden Student" not in everything
+
+
+# ---- Final review fixes: grounded export values and session-mismatch guard ----
+
+import uuid
+
+from agent.models import ProgramRequirement
+
+
+def _client_with_program_session(django_user_model, username="export-grounding-faculty"):
+    user = django_user_model.objects.create_user(username=username)
+    UserSettings.objects.create(user=user, access_status=UserSettings.ACCESS_ACTIVE, role=UserSettings.ROLE_FACULTY)
+    program = ProgramRequirement.objects.create(
+        user=user, program_name="B.S. Test", catalog_year="2026",
+        requirements={"program_name": "B.S. Test", "catalog_year": "2026", "total_credits_required": 120, "categories": [
+            {"name": "Core", "credits_required": 7, "courses": [
+                {"code": "CS 201", "title": "Data Structures", "credits": 3, "prerequisites": [], "notes": ""},
+            ]},
+        ]},
+    )
+    client = APIClient()
+    client.force_authenticate(user=user)
+    session = client.session
+    session["faculty_plan_session"] = {
+        "program_requirement_id": str(program.requirement_id),
+        "student_details": {}, "conversation": [],
+        "draft_plan": {
+            "student_major": "Computer Science",
+            "semesters": [{"label": "Fall", "courses": [{"code": "CS 201", "title": "Wrong Model Title", "credits": 4}]}],
+            "total_credits": 99, "notes": "",
+        },
+    }
+    session.save()
+    return client, program
+
+
+def _doc_text(response):
+    document = _exported_document(response)
+    return "\n".join(p.text for p in document.paragraphs) + "\n" + "\n".join(
+        cell.text for table in document.tables for row in table.rows for cell in row.cells
+    )
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_export_uses_program_credits_titles_and_total(django_user_model, layout):
+    client, _ = _client_with_program_session(django_user_model)
+
+    response = client.post(EXPORT_URL, {"format": layout}, format="json")
+
+    text = _doc_text(response)
+    assert response.status_code == 200
+    assert "Data Structures" in text
+    assert "Wrong Model Title" not in text
+    assert "Total planned credits: 3" in text
+    assert "99" not in text
+
+
+@pytest.mark.django_db
+def test_export_rejects_a_plan_from_a_different_program(django_user_model):
+    client, program = _client_with_program_session(django_user_model, "export-mismatch-faculty")
+
+    mismatch = client.post(EXPORT_URL, {"program_requirement_id": str(uuid.uuid4())}, format="json")
+    match = client.post(EXPORT_URL, {"program_requirement_id": str(program.requirement_id)}, format="json")
+    absent = client.post(EXPORT_URL)
+
+    assert mismatch.status_code == 409
+    assert "different" in mismatch.data["detail"]
+    assert match.status_code == 200
+    assert absent.status_code == 200

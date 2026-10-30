@@ -121,7 +121,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
                 else "settings-20260901-1" if page_name == "settings"
                 else "profile-20260902-1" if page_name == "profile"
                 else "faculty-studio-20261030-1" if page_name in ("faculty-workspace", "faculty-programs")
-                else "faculty-templates-20260924-1" if page_name == "faculty-templates"
+                else "faculty-templates-20261030-1" if page_name == "faculty-templates"
                 else ""
             ),
             "course_id": course_id,

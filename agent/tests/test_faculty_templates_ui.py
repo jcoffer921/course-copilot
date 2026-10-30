@@ -79,7 +79,7 @@ def test_faculty_templates_page_renders_library_detail_and_builder(client, facul
     ):
         assert hook in html
     assert 'placeholder="Search templates by name, description, or tag..."' in html
-    assert 'src="/static/agent/js/faculty_templates.js?v=faculty-templates-20260924-1"' in html
+    assert 'src="/static/agent/js/faculty_templates.js?v=faculty-templates-20261030-1"' in html
     assert 'role="dialog" aria-modal="true"' in html
     assert 'class="faculty-notification"' not in html
 
