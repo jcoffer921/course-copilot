@@ -202,3 +202,30 @@ def test_workspace_exposes_api_urls_and_privacy_note(client, faculty_user):
                 "/api/faculty/requirements/import/", "/api/faculty/requirements/confirm/"):
         assert url in html
     assert "Student details stay in this session only" in html
+
+
+# ---- Task 4: draft plan view, Cora panel, reset and export ----
+
+from pathlib import Path
+
+STATIC_JS = Path(__file__).resolve().parents[1] / "static/agent/js"
+
+
+@pytest.mark.django_db
+def test_workspace_exposes_plan_and_cora_hooks(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)}).content.decode()
+
+    for hook in ("data-fw-summary", "data-fw-term-list", "data-fw-issues", "data-fw-chat-form",
+                 "data-fw-export", "data-fw-reset", "data-fw-template-banner", "ontrack.facultySession"):
+        assert hook in html
+
+
+def test_workspace_script_uses_module_exports():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    assert "./faculty_plan_model.js" in source
+    assert "localStorage" not in source
+    assert "innerHTML" not in source

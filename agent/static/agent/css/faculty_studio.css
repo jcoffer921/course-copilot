@@ -106,3 +106,44 @@ body[data-area="faculty"] textarea:focus-visible{outline:3px solid var(--accent-
 .fw-recent-link small{color:var(--muted)}
 .fw-recent-label{text-align:left;margin-top:22px}
 @media (max-width:1100px){.fw-studio{grid-template-columns:1fr;height:auto}.fw-plan{min-height:480px}.fw-cora{min-height:420px}}
+
+/* Workspace: plan document, coverage, Cora panel */
+.fw-bar{flex:1;height:6px;background:#e1e8f1;border-radius:4px;overflow:hidden}
+.fw-bar span{display:block;height:100%;background:var(--accent)}
+.fw-cov-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #edf1f6;font-size:12px}
+.fw-cov-row:last-child{border-bottom:0}
+.fw-cov-name{flex:0 0 92px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fw-cov-row em{font-style:normal;color:var(--muted);font-size:11px;min-width:44px;text-align:right}
+.fw-cov-row.is-full .fw-bar span{background:var(--ok)}
+.fw-muted{color:var(--muted);margin:0}
+.fw-doc-title{margin:0 0 12px;font-size:20px}
+.fw-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
+.fw-stat{border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:#fbfdff}
+.fw-stat b{display:block;font-size:18px}
+.fw-stat small{color:var(--muted);font-size:11px}
+.fw-stat.is-warn{border-color:#e9c9a3;background:var(--warn-soft)}
+.fw-stat.is-warn b{color:var(--warn)}
+.fw-term{margin-bottom:16px}
+.fw-term h4{margin:0 0 6px;font-size:13px}
+.fw-term h4 span{color:var(--muted);font-weight:500;font-size:12px}
+.fw-term table{width:100%;border-collapse:collapse;font-size:12px}
+.fw-term th{text-align:left;color:var(--muted);font-weight:650;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:6px 8px;border-bottom:1px solid var(--line)}
+.fw-term td{padding:8px;border-bottom:1px solid #edf1f6}
+.fw-term tr.is-flagged td{background:#fffaf3}
+.fw-code{font-weight:700;white-space:nowrap}
+.fw-num{text-align:right}
+.fw-notes{color:var(--muted);margin:8px 0 0}
+.fw-template-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 14px;background:var(--accent-soft);border-bottom:1px solid var(--line);font-size:12px}
+.fw-msg{max-width:92%;padding:9px 11px;border-radius:12px;font-size:12.5px;white-space:pre-wrap}
+.fw-msg.is-user{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:3px}
+.fw-msg.is-assistant{background:var(--cora-soft);border-bottom-left-radius:3px}
+.fw-msg.is-error{background:var(--bad-soft);color:var(--bad)}
+.fw-issues{padding:0 14px 8px;display:grid;gap:8px}
+.fw-issue{border:1px solid #e9c9a3;background:var(--warn-soft);border-radius:10px;padding:9px 10px;font-size:12px}
+.fw-issue b{color:var(--warn)}
+.fw-issue p{margin:4px 0 6px}
+.fw-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 14px 8px}
+.fw-chips button{border:1px solid #d9cff6;color:var(--cora);background:#faf8ff;border-radius:999px;padding:4px 10px;font:600 11px/1.2 inherit;cursor:pointer}
+.fw-composer{display:flex;gap:8px;padding:10px 14px;border-top:1px solid var(--line)}
+.fw-composer textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit}
+@media (max-width:760px){.fw-summary{grid-template-columns:repeat(2,1fr)}}

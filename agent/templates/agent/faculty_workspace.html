@@ -14,7 +14,9 @@
      data-reset-url="/api/faculty/plan/reset/"
      data-export-url="/api/faculty/plan/export/"
      data-import-url="/api/faculty/requirements/import/"
-     data-confirm-url="/api/faculty/requirements/confirm/">
+     data-confirm-url="/api/faculty/requirements/confirm/"
+     data-session-key="ontrack.facultySession"
+     data-template-key="ontrack.selectedFacultyTemplate">
   {% if active_program %}
   <div class="fw-studio">
     <section class="fs-panel fw-sources" data-fw="sources" aria-label="Sources">
@@ -46,13 +48,34 @@
       <div class="fw-plan-scroll">
         <div class="fw-doc" data-fw-plan-doc>
           <div class="fs-empty" data-fw-plan-empty>No draft plan yet. Describe the student to Cora and a draft will appear here.</div>
+          <div data-fw-plan-body hidden>
+            <h3 class="fw-doc-title" data-fw-plan-title></h3>
+            <div class="fw-summary" data-fw-summary></div>
+            <div data-fw-term-list></div>
+            <p class="fw-notes" data-fw-plan-notes></p>
+          </div>
         </div>
       </div>
     </section>
 
     <section class="fs-panel fw-cora" data-fw="cora" aria-label="Cora planning assistant">
       <header class="fs-panel-head"><span class="fw-cora-dot" aria-hidden="true">C</span><h2>Cora · Planning assistant</h2></header>
+      <div class="fw-template-banner" data-fw-template-banner hidden>
+        <span>Template: <strong data-fw-template-name></strong></span>
+        <button type="button" class="fs-btn" data-fw-template-clear>Clear</button>
+      </div>
       <div class="fw-chat" data-fw-chat aria-live="polite"></div>
+      <div class="fw-issues" data-fw-issues hidden></div>
+      <div class="fw-chips" aria-label="Suggested prompts">
+        <button type="button" data-fw-prompt="Create a 4-year plan for a first-year student">4-year plan</button>
+        <button type="button" data-fw-prompt="Which courses are still required after the courses already completed?">What is still required</button>
+        <button type="button" data-fw-prompt="Explain the prerequisite sequencing in this plan">Explain prerequisites</button>
+      </div>
+      <form class="fw-composer" data-fw-chat-form>
+        <label class="sr-only" for="fw-chat-input">Ask Cora about this plan</label>
+        <textarea id="fw-chat-input" rows="2" maxlength="4000" placeholder="Ask Cora about this plan..." required></textarea>
+        <button type="submit" class="fs-btn is-primary">Send</button>
+      </form>
     </section>
   </div>
   {% else %}
