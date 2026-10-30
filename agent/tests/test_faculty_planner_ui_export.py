@@ -6,6 +6,7 @@ from django.urls import reverse
 from rest_framework.test import APIClient
 
 from agent.models import ProgramRequirement, UserSettings
+from agent.services import plan_state
 
 
 def activate(user, role=UserSettings.ROLE_STUDENT):
@@ -86,14 +87,12 @@ def test_export_requires_a_session_draft(faculty_user):
 @pytest.mark.django_db
 def test_export_streams_current_session_draft_as_docx(faculty_user):
     client = _authenticated_api_client(faculty_user)
-    session = client.session
-    session["faculty_plan_session"] = {
+    plan_state.write(faculty_user, {
         "program_requirement_id": "00000000-0000-0000-0000-000000000000",
         "student_details": {"name": "Not exported"},
         "conversation": [{"role": "user", "content": "private conversation"}],
         "draft_plan": _draft_plan(),
-    }
-    session.save()
+    })
 
     response = client.post("/api/faculty/plan/export/")
 
@@ -112,8 +111,6 @@ def test_export_streams_current_session_draft_as_docx(faculty_user):
 @pytest.mark.django_db
 def test_student_gets_404_on_export(student_user):
     client = _authenticated_api_client(student_user)
-    session = client.session
-    session["faculty_plan_session"] = {"draft_plan": _draft_plan()}
-    session.save()
+    plan_state.write(student_user, {"draft_plan": _draft_plan()})
 
     assert client.post("/api/faculty/plan/export/").status_code == 404

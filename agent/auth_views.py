@@ -24,6 +24,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from .services import google_oauth
 from .services import google_calendar_oauth
+from .services import plan_state
 
 logger = logging.getLogger(__name__)
 FACULTY_ACCESS_GRANT_SECONDS = 600
@@ -336,5 +337,7 @@ def google_logout(request):
     """POST /accounts/logout/ — standard Django session logout.
     POST-only (with CSRF protection from CsrfViewMiddleware) so a
     third-party page can't force a logout via e.g. an <img> tag."""
+    if request.user.is_authenticated:
+        plan_state.clear(request.user)
     logout(request)
     return redirect("ontrack")

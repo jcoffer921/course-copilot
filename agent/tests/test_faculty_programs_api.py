@@ -4,6 +4,7 @@ import pytest
 from rest_framework.test import APIClient
 
 from agent.models import ProgramRequirement, UserSettings
+from agent.services import plan_state
 
 LIST_URL = "/api/faculty/requirements/"
 
@@ -141,22 +142,20 @@ def test_delete_clears_matching_plan_session_only(faculty_client):
     keep = make_program(faculty_client.user, "B.S. Keep")
 
     def seed(program):
-        session = faculty_client.session
-        session["faculty_plan_session"] = {
+        plan_state.write(faculty_client.user, {
             "program_requirement_id": str(program.requirement_id),
             "student_details": {}, "conversation": [], "draft_plan": None,
-        }
-        session.save()
+        })
 
     seed(keep)
     faculty_client.delete(detail_url(gone.requirement_id), {"confirm": True}, format="json")
-    assert faculty_client.session.get("faculty_plan_session") is not None
+    assert plan_state.read(faculty_client.user) is not None
 
     seed(gone)
     gone_again = make_program(faculty_client.user, "B.S. Gone Two")
     seed(gone_again)
     faculty_client.delete(detail_url(gone_again.requirement_id), {"confirm": True}, format="json")
-    assert faculty_client.session.get("faculty_plan_session") is None
+    assert plan_state.read(faculty_client.user) is None
 
 
 @pytest.mark.django_db

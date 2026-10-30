@@ -19,7 +19,7 @@ The redesign gives faculty their own workspace with a distinct feel:
 1. A faculty member can go from a requirements file to an exportable draft plan without leaving one screen (Workspace).
 2. Faculty pages no longer look like the student app: own shell, own accent, no student dashboard cards.
 3. Every control shown on a faculty page does something real. No mockup-only pages or hardcoded values (the "3" notification badge, the non-functional Import page).
-4. No student-specific state is written to any application table. It lives in the signed-in session (sessionStorage plus the server-side Django session, which is database-backed until reset or expiry), and is purged by New session and whenever a tab without matching state loads the Workspace (see section 6).
+4. Student-specific state is never written to the database. It lives in a short-lived server cache entry (30-minute sliding idle expiry) and in the tab's `sessionStorage`, and is purged by New session, logout, deleting its program, expiry, and whenever a tab without matching state loads the Workspace (see section 6).
 5. No emoji anywhere. Icons are inline SVG (reusing the existing `ot-icon` sprite where an icon exists) or plain words.
 
 ### What the user said vs. what I am assuming
@@ -109,7 +109,7 @@ Export formats require a change to `agent/services/plan_export.py` and `FacultyP
 ## 6. Data and privacy
 
 - No new tables are required. `ProgramRequirement` is unchanged.
-- Student-specific state (details, conversation, draft plan) remains session-only and is never written to an application table, a file, or `localStorage`. The server half of that session is Django's session store, which is database-backed (`django_session`) until `plan/reset/`, logout, or expiry. To stop one student's context reaching the next, the Workspace purges stale server state when a tab loads without its own matching state, and the export endpoint refuses (409) a plan whose program does not match the server session. Moving this state to a short-lived cache or cookie store is a possible follow-up and is not done here.
+- Student-specific state (details, conversation, draft plan) is never written to the database, a file, or `localStorage`. The server half lives in the cache (`agent/services/plan_state.py`), keyed per faculty member, with a sliding idle expiry of 30 minutes (`FACULTY_PLAN_STATE_TTL_SECONDS`). The browser half is `sessionStorage` with a saved-at stamp that expires on the same window. Both are cleared by New session, logout, and deleting the program they point at. To stop one student's context reaching the next, the Workspace purges stale server state when a tab loads without its own matching state, and the export endpoint refuses (409) a plan whose program does not match the server's. The default cache is per process; running more than one worker needs a shared cache backend.
 - `ProductMetric` events, if any are added for the new screens, use only the existing allow-listed metadata fields.
 - Delete removes only the signed-in user's own `ProgramRequirement` row.
 

@@ -245,7 +245,7 @@ def faculty_workspace_page(request):
     import uuid
 
     from .models import ProgramRequirement
-    from .services import program_requirements
+    from .services import plan_state, program_requirements
 
     rows = list(ProgramRequirement.objects.filter(user=request.user).order_by("program_name", "catalog_year"))
     active_program = None
@@ -267,6 +267,8 @@ def faculty_workspace_page(request):
         initial_tab="faculty-workspace",
         programs=[program_requirements.serialize_summary(row) for row in rows],
         active_program=active_program,
+        state_ttl_seconds=plan_state.ttl_seconds(),
+        state_ttl_minutes=max(1, plan_state.ttl_seconds() // 60),
     )
 
 

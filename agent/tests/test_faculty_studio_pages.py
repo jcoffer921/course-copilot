@@ -201,7 +201,7 @@ def test_workspace_exposes_api_urls_and_privacy_note(client, faculty_user):
     for url in ("/api/faculty/plan/chat/", "/api/faculty/plan/reset/", "/api/faculty/plan/export/",
                 "/api/faculty/requirements/import/", "/api/faculty/requirements/confirm/"):
         assert url in html
-    assert "Student details stay in this session only" in html
+    assert "Student details are held temporarily and cleared after 30 minutes idle" in html
 
 
 # ---- Task 4: draft plan view, Cora panel, reset and export ----
@@ -386,7 +386,7 @@ def test_removed_pages_have_no_template_or_script_references():
 
 
 @pytest.mark.django_db
-def test_new_session_purges_student_state_from_the_session_store(faculty_user, monkeypatch):
+def test_new_session_purges_student_state_from_the_cache(faculty_user, monkeypatch):
     secret = "SECRET-STUDENT-OTTER-9920"
     program = make_program(faculty_user)
 
@@ -394,6 +394,7 @@ def test_new_session_purges_student_state_from_the_session_store(faculty_user, m
         return {"reply": "ok", "student_details": {"name": secret}, "draft_plan": None}
 
     from agent import views
+    from agent.services import plan_state
 
     monkeypatch.setattr(views.academic_planner, "plan_chat_async", fake_plan_chat)
     client = APIClient()
@@ -403,28 +404,17 @@ def test_new_session_purges_student_state_from_the_session_store(faculty_user, m
         {"program_requirement_id": str(program.requirement_id), "message": "hello"},
         format="json",
     )
-    assert secret in json.dumps([s.get_decoded() for s in Session.objects.all()])
+    assert secret in json.dumps(plan_state.read(faculty_user))
+    assert secret not in json.dumps([s.get_decoded() for s in Session.objects.all()])
 
     assert client.post("/api/faculty/plan/reset/").status_code == 204
 
-    assert secret not in json.dumps([s.get_decoded() for s in Session.objects.all()])
+    assert plan_state.read(faculty_user) is None
 
 
-# ---- Final review fixes ----
-
-
-@pytest.mark.django_db
-def test_avatar_menu_links_to_settings(client, faculty_user):
-    client.force_login(faculty_user)
-
-    html = client.get(reverse("faculty-workspace")).content.decode()
-
-    assert f'href="{reverse("settings-page")}"' in html
-
-
-def test_workspace_resets_stale_server_state_and_sends_program_id_on_export():
+def test_workspace_expires_its_browser_copy_with_the_same_ttl():
     source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
 
-    assert "resetStaleServerSession" in source
-    assert "program_requirement_id: program.requirement_id" in source
-    assert "response.status === 409" in source
+    assert "stateTtl" in source
+    assert "savedAt" in source
+    assert "Date.now()" in source

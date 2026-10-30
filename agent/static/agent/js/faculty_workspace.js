@@ -72,30 +72,37 @@ root?.querySelectorAll("[data-fw-import-trigger]").forEach(trigger => {
   });
 });
 
-// ---- session store: student-specific state lives in sessionStorage only ----
+// ---- session store: this tab's copy of the student state (sessionStorage), expiring like the server's ----
 const SESSION_KEY = root?.dataset.sessionKey || "ontrack.facultySession";
 const TEMPLATE_KEY = root?.dataset.templateKey || "ontrack.selectedFacultyTemplate";
+// Same idle window as the server-side cache (data-state-ttl, in seconds); 30 minutes if the page omits it.
+const stateTtl = (Number(root?.dataset.stateTtl) || 1800) * 1000;
 const emptyState = () => ({ programId: program?.requirement_id || null, chatMessages: [], generatedPlan: null, dismissed: [] });
+
+function readStored() {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+    const fresh = value && value.programId === program?.requirement_id
+      && typeof value.savedAt === "number" && Date.now() - value.savedAt <= stateTtl;
+    if (fresh) return value;
+    if (value) sessionStorage.removeItem(SESSION_KEY); // expired or for another program: discard the student text now
+  } catch { /* unreadable storage falls through to a fresh session */ }
+  return null;
+}
 
 const sessionStore = {
   read() {
-    try {
-      const value = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
-      if (value && value.programId === program?.requirement_id) return { ...emptyState(), ...value };
-    } catch { /* unreadable storage falls through to a fresh session */ }
-    return emptyState();
+    const value = readStored();
+    return value ? { ...emptyState(), ...value } : emptyState();
   },
   write(state) {
-    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(state)); } catch { /* storage unavailable */ }
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...state, savedAt: Date.now() })); } catch { /* storage unavailable */ }
   },
   clear() {
     try { sessionStorage.removeItem(SESSION_KEY); } catch { /* storage unavailable */ }
   },
   hasState() {
-    try {
-      const value = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
-      return Boolean(value) && value.programId === program?.requirement_id;
-    } catch { return false; }
+    return readStored() !== null;
   },
 };
 

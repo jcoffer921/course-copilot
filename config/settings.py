@@ -12,6 +12,9 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-key-change-me-before-any-real-deploy")
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+
+# Idle lifetime of a faculty planning session's student state (see agent/services/plan_state.py).
+FACULTY_PLAN_STATE_TTL_SECONDS = int(os.environ.get("FACULTY_PLAN_STATE_TTL_SECONDS", "1800"))
 FACULTY_ACCESS_CODE_HASH = os.environ.get("FACULTY_ACCESS_CODE_HASH", "").strip().lower()
 FACULTY_DEMO_ACCESS_CODE = ""
 if DEBUG and not FACULTY_ACCESS_CODE_HASH:

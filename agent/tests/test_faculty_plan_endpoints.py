@@ -1,3 +1,4 @@
+from agent.services import plan_state
 import json
 
 import pytest
@@ -75,8 +76,7 @@ def test_chat_returns_reply_and_updates_session(faculty_client, program_requirem
     assert response.data["reply"] == "What's the student's major?"
     assert response.data["draft_plan"] is None
 
-    session = faculty_client.session
-    state = session["faculty_plan_session"]
+    state = plan_state.read(faculty_client.user)
     assert state["program_requirement_id"] == str(program_requirement.requirement_id)
     assert state["conversation"] == [
         {"role": "user", "content": "New student"},
@@ -123,12 +123,12 @@ def test_reset_clears_session_state(faculty_client, program_requirement, monkeyp
         {"program_requirement_id": str(program_requirement.requirement_id), "message": "New student"},
         format="json",
     )
-    assert "faculty_plan_session" in faculty_client.session
+    assert plan_state.read(faculty_client.user) is not None
 
     response = faculty_client.post("/api/faculty/plan/reset/")
 
     assert response.status_code == 204
-    assert "faculty_plan_session" not in faculty_client.session
+    assert plan_state.read(faculty_client.user) is None
 
 
 @pytest.mark.django_db

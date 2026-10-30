@@ -15,6 +15,7 @@
      data-export-url="/api/faculty/plan/export/"
      data-import-url="/api/faculty/requirements/import/"
      data-confirm-url="/api/faculty/requirements/confirm/"
+     data-state-ttl="{{ state_ttl_seconds }}"
      data-session-key="ontrack.facultySession"
      data-template-key="ontrack.selectedFacultyTemplate">
   <input type="file" accept=".xlsx,.xlsm" data-fw-import-input hidden aria-label="Choose a requirements file">
@@ -41,7 +42,7 @@
         <div class="fs-label fw-coverage-label">Requirement coverage</div>
         <div data-fw-coverage class="fw-coverage"></div>
       </div>
-      <p class="fw-privacy">Student details stay in this session only.</p>
+      <p class="fw-privacy">Student details are held temporarily and cleared after {{ state_ttl_minutes }} minutes idle. They are never saved to the database.</p>
     </section>
 
     <section class="fs-panel fw-plan" data-fw="plan" aria-label="Draft plan">
@@ -93,7 +94,7 @@
         {% endfor %}
       </ul>
       {% endif %}
-      <p class="fw-privacy">Student details stay in this session only.</p>
+      <p class="fw-privacy">Student details are held temporarily and cleared after {{ state_ttl_minutes }} minutes idle. They are never saved to the database.</p>
     </div>
   </div>
   {% endif %}

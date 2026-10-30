@@ -3,7 +3,7 @@ from io import BytesIO
 import pytest
 from docx import Document
 
-from agent.services import plan_export
+from agent.services import plan_export, plan_state
 
 LAYOUTS = ("term_table", "year_grid", "plan_notes")
 
@@ -106,14 +106,12 @@ def _faculty_client(django_user_model, with_draft=True):
     client = APIClient()
     client.force_authenticate(user=user)
     if with_draft:
-        session = client.session
-        session["faculty_plan_session"] = {
+        plan_state.write(user, {
             "program_requirement_id": "00000000-0000-0000-0000-000000000000",
             "student_details": {"name": "Hidden Student"},
             "conversation": [{"role": "user", "content": "private conversation text"}],
             "draft_plan": _draft(),
-        }
-        session.save()
+        })
     return client
 
 
@@ -187,8 +185,7 @@ def _client_with_program_session(django_user_model, username="export-grounding-f
     )
     client = APIClient()
     client.force_authenticate(user=user)
-    session = client.session
-    session["faculty_plan_session"] = {
+    plan_state.write(user, {
         "program_requirement_id": str(program.requirement_id),
         "student_details": {}, "conversation": [],
         "draft_plan": {
@@ -196,8 +193,7 @@ def _client_with_program_session(django_user_model, username="export-grounding-f
             "semesters": [{"label": "Fall", "courses": [{"code": "CS 201", "title": "Wrong Model Title", "credits": 4}]}],
             "total_credits": 99, "notes": "",
         },
-    }
-    session.save()
+    })
     return client, program
 
 

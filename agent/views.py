@@ -64,7 +64,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, plan_export, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
+from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, plan_export, plan_state, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -339,15 +339,12 @@ class FacultyRequirementDetailView(APIView):
             return Response({"detail": "Program requirement not found."}, status=status.HTTP_404_NOT_FOUND)
 
         def clear_matching_session():
-            state = _read_faculty_plan_session(request)
+            state = _read_faculty_plan_session(request.user)
             if isinstance(state, dict) and state.get("program_requirement_id") == str(requirement_id):
-                _clear_faculty_plan_session(request)
+                _clear_faculty_plan_session(request.user)
 
         await sync_to_async(clear_matching_session)()
         return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-FACULTY_PLAN_SESSION_KEY = "faculty_plan_session"
 
 
 def _default_faculty_plan_session(program_requirement_id) -> dict:
@@ -359,16 +356,16 @@ def _default_faculty_plan_session(program_requirement_id) -> dict:
     }
 
 
-def _read_faculty_plan_session(request):
-    return request.session.get(FACULTY_PLAN_SESSION_KEY)
+def _read_faculty_plan_session(user):
+    return plan_state.read(user)
 
 
-def _write_faculty_plan_session(request, state: dict):
-    request.session[FACULTY_PLAN_SESSION_KEY] = state
+def _write_faculty_plan_session(user, state: dict):
+    plan_state.write(user, state)
 
 
-def _clear_faculty_plan_session(request):
-    request.session.pop(FACULTY_PLAN_SESSION_KEY, None)
+def _clear_faculty_plan_session(user):
+    plan_state.clear(user)
 
 
 class FacultyPlanChatView(AIAPIView):
@@ -396,7 +393,7 @@ class FacultyPlanChatView(AIAPIView):
         except ProgramRequirement.DoesNotExist:
             return Response({"detail": "Program requirement not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        state = await sync_to_async(_read_faculty_plan_session)(request)
+        state = await sync_to_async(_read_faculty_plan_session)(request.user)
         if not state or state.get("program_requirement_id") != str(requirement_id):
             state = _default_faculty_plan_session(requirement_id)
 
@@ -413,7 +410,7 @@ class FacultyPlanChatView(AIAPIView):
         ]
         state["student_details"] = result["student_details"]
         state["draft_plan"] = result["draft_plan"]
-        await sync_to_async(_write_faculty_plan_session)(request, state)
+        await sync_to_async(_write_faculty_plan_session)(request.user, state)
 
         return Response(
             {"reply": result["reply"], "draft_plan": result["draft_plan"]}, status=status.HTTP_200_OK,
@@ -427,7 +424,7 @@ class FacultyPlanResetView(APIView):
     permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
 
     async def post(self, request):
-        await sync_to_async(_clear_faculty_plan_session)(request)
+        await sync_to_async(_clear_faculty_plan_session)(request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -437,7 +434,7 @@ class FacultyPlanExportView(APIView):
     permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
 
     async def post(self, request):
-        state = await sync_to_async(_read_faculty_plan_session)(request)
+        state = await sync_to_async(_read_faculty_plan_session)(request.user)
         draft_plan = state.get("draft_plan") if isinstance(state, dict) else None
         if not draft_plan:
             return Response(
