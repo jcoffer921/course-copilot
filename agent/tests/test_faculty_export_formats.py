@@ -89,3 +89,79 @@ def test_empty_semesters_still_produces_valid_docx(layout):
 def test_layout_constants():
     assert plan_export.EXPORT_LAYOUTS == LAYOUTS
     assert plan_export.DEFAULT_LAYOUT == "term_table"
+
+
+# ---- Task 10: export endpoint `format` option ----
+
+from rest_framework.test import APIClient
+
+from agent.models import UserSettings
+
+EXPORT_URL = "/api/faculty/plan/export/"
+
+
+def _faculty_client(django_user_model, with_draft=True):
+    user = django_user_model.objects.create_user(username="export-format-faculty")
+    UserSettings.objects.create(user=user, access_status=UserSettings.ACCESS_ACTIVE, role=UserSettings.ROLE_FACULTY)
+    client = APIClient()
+    client.force_authenticate(user=user)
+    if with_draft:
+        session = client.session
+        session["faculty_plan_session"] = {
+            "program_requirement_id": "00000000-0000-0000-0000-000000000000",
+            "student_details": {"name": "Hidden Student"},
+            "conversation": [{"role": "user", "content": "private conversation text"}],
+            "draft_plan": _draft(),
+        }
+        session.save()
+    return client
+
+
+def _exported_document(response):
+    return Document(BytesIO(b"".join(response.streaming_content)))
+
+
+@pytest.mark.django_db
+def test_export_defaults_to_term_table_without_body(django_user_model):
+    response = _faculty_client(django_user_model).post(EXPORT_URL)
+
+    assert response.status_code == 200
+    assert len(_exported_document(response).tables) == 2
+
+
+@pytest.mark.django_db
+def test_export_honors_year_grid(django_user_model):
+    response = _faculty_client(django_user_model).post(EXPORT_URL, {"format": "year_grid"}, format="json")
+
+    assert response.status_code == 200
+    assert len(_exported_document(response).tables) == 1
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("value", ["bogus", "", None, 7])
+def test_export_unknown_format_falls_back_and_returns_200(django_user_model, value):
+    response = _faculty_client(django_user_model).post(EXPORT_URL, {"format": value}, format="json")
+
+    assert response.status_code == 200
+    assert len(_exported_document(response).tables) == 2
+
+
+@pytest.mark.django_db
+def test_export_without_draft_still_400(django_user_model):
+    response = _faculty_client(django_user_model, with_draft=False).post(EXPORT_URL, {"format": "year_grid"}, format="json")
+
+    assert response.status_code == 400
+    assert response.data["detail"] == "Create a draft plan before downloading it."
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("layout", LAYOUTS)
+def test_export_contains_no_session_metadata(django_user_model, layout):
+    response = _faculty_client(django_user_model).post(EXPORT_URL, {"format": layout}, format="json")
+
+    document = _exported_document(response)
+    everything = "\n".join(p.text for p in document.paragraphs) + "\n".join(
+        cell.text for table in document.tables for row in table.rows for cell in row.cells
+    )
+    assert "private conversation text" not in everything
+    assert "Hidden Student" not in everything

@@ -445,7 +445,12 @@ class FacultyPlanExportView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        output = await sync_to_async(plan_export.render_plan_docx)(draft_plan)
+        # The layout is an allow-listed choice; anything else (absent, blank, wrong type,
+        # unknown name) falls back to the default layout inside render_plan_docx.
+        requested = request.data.get("format") if hasattr(request.data, "get") else None
+        layout = requested if isinstance(requested, str) else plan_export.DEFAULT_LAYOUT
+
+        output = await sync_to_async(plan_export.render_plan_docx)(draft_plan, layout)
         response = FileResponse(
             output,
             content_type=plan_export.DOCX_CONTENT_TYPE,
