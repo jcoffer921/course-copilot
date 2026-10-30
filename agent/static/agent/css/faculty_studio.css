@@ -159,3 +159,24 @@ body[data-area="faculty"] textarea:focus-visible{outline:3px solid var(--accent-
 .fs-dialog-list{margin:0 0 6px;padding-left:18px;max-height:220px;overflow:auto}
 .fs-dialog-list li{margin-bottom:4px}
 .fs-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+
+/* Programs */
+.fp-intro{margin:0 0 12px;color:var(--muted)}
+.fp-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:14px;align-items:start}
+.fp-table{width:100%;border-collapse:collapse;font-size:12.5px}
+.fp-table th{text-align:left;color:var(--muted);font-weight:650;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;padding:10px 14px;border-bottom:1px solid var(--line)}
+.fp-table td{padding:12px 14px;border-bottom:1px solid #edf1f6;vertical-align:middle}
+.fp-table td strong{display:block}
+.fp-table td small{color:var(--muted)}
+.fp-table tr:last-child td{border-bottom:0}
+.fp-table tbody tr{cursor:pointer}
+.fp-table tbody tr:hover td,.fp-table tbody tr.is-selected td{background:var(--accent-soft)}
+.fp-detail{padding:16px}
+.fp-detail h2{margin:0 0 2px;font-size:16px}
+.fp-detail small{color:var(--muted)}
+.fp-cats{list-style:none;margin:0;padding:0}
+.fp-cats li{padding:8px 0;border-bottom:1px solid #edf1f6}
+.fp-cats li:last-child{border-bottom:0}
+.fp-cats span{color:var(--muted)}
+.fp-detail-actions{display:flex;gap:8px;margin-top:14px}
+@media (max-width:1000px){.fp-grid{grid-template-columns:1fr}}

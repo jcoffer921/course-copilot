@@ -258,3 +258,57 @@ def test_import_flow_module_contract():
     assert "showModal" in source
     assert "overwrite: true" in source
     assert "innerHTML" not in source
+
+
+# ---- Task 7: Programs page ----
+
+
+@pytest.mark.django_db
+def test_programs_page_lists_only_own_programs(client, faculty_user, other_faculty):
+    mine = make_program(faculty_user)
+    make_program(other_faculty, "B.S. Biology")
+    client.force_login(faculty_user)
+
+    response = client.get(reverse("faculty-programs"))
+
+    assert [p["requirement_id"] for p in response.context["programs"]] == [str(mine.requirement_id)]
+    html = response.content.decode()
+    assert "B.S. Computer Science" in html
+    assert "B.S. Biology" not in html
+
+
+@pytest.mark.django_db
+def test_programs_page_empty_state(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-programs")).content.decode()
+
+    assert "No programs yet" in html
+    assert "data-fp-import" in html
+    assert "data-fp-row" not in html
+
+
+@pytest.mark.django_db
+def test_programs_plan_link_targets_workspace(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-programs")).content.decode()
+
+    assert f'href="{reverse("faculty-workspace")}?program={mine.requirement_id}"' in html
+
+
+@pytest.mark.django_db
+def test_programs_page_exposes_hooks(client, faculty_user):
+    make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-programs")).content.decode()
+
+    for hook in ("data-fp-row", "data-fp-detail", "data-fp-import", "data-fp-delete", "data-fp-reimport",
+                 "data-fp-plan", "data-fp-import-input"):
+        assert hook in html
+    assert 'accept=".xlsx,.xlsm"' in html
+    source = (STATIC_JS / "faculty_programs.js").read_text(encoding="utf-8")
+    assert "./faculty_import_flow.js" in source
+    assert "innerHTML" not in source

@@ -1,4 +1,59 @@
 {% extends "agent/faculty_base.html" %}
+
+{% block faculty_actions %}
+<button type="button" class="fs-btn is-primary" data-fp-import>Import requirements</button>
+{% endblock %}
+
 {% block faculty_content %}
-<section class="fs-panel"><div class="fs-empty"><h2>Programs</h2></div></section>
+<div id="fp-root" class="fp-root"
+     data-api-base="/api/faculty/requirements/"
+     data-import-url="/api/faculty/requirements/import/"
+     data-confirm-url="/api/faculty/requirements/confirm/">
+  <input type="file" accept=".xlsx,.xlsm" data-fp-import-input hidden aria-label="Choose a requirements file">
+  <p class="fp-intro">Requirement sets you have imported and confirmed. Choose Plan to draft against one in the Workspace.</p>
+
+  <div class="fp-grid">
+    <section class="fs-panel" aria-label="Programs">
+      {% if programs %}
+      <table class="fp-table">
+        <thead><tr><th>Program</th><th>Catalog</th><th>Credits</th><th>Groups</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          {% for program in programs %}
+          <tr data-fp-row data-requirement-id="{{ program.requirement_id }}" data-program-name="{{ program.program_name }}" tabindex="0">
+            <td><strong>{{ program.program_name|default:"Unnamed program" }}</strong><small>Updated {{ program.updated_at|slice:":10" }}</small></td>
+            <td>{{ program.catalog_year|default:"-" }}</td>
+            <td>{{ program.total_credits_required }}</td>
+            <td>{{ program.category_count }}</td>
+            <td><span class="fs-chip is-ok">Confirmed</span></td>
+            <td><a class="fs-btn is-primary" data-fp-plan href="{% url 'faculty-workspace' %}?program={{ program.requirement_id }}">Plan</a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="fs-empty">
+        <h2>No programs yet</h2>
+        <p>Import a requirements spreadsheet to create your first program.</p>
+        <button type="button" class="fs-btn is-primary" data-fp-import>Import requirements</button>
+      </div>
+      {% endif %}
+    </section>
+
+    <aside class="fs-panel fp-detail" data-fp-detail aria-label="Program details" aria-live="polite">
+      <div class="fs-empty" data-fp-detail-empty>Select a program to see its structure.</div>
+      <div class="fp-detail-body" data-fp-detail-body hidden>
+        <h2 data-fp-name></h2>
+        <small data-fp-meta></small>
+        <div class="fs-label">Requirement groups</div>
+        <ul class="fp-cats" data-fp-categories></ul>
+        <div class="fs-label">Checks</div>
+        <p data-fp-checks></p>
+        <div class="fp-detail-actions">
+          <button type="button" class="fs-btn" data-fp-reimport>Re-import (overwrite)</button>
+          <button type="button" class="fs-btn is-danger" data-fp-delete>Delete</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
 {% endblock %}

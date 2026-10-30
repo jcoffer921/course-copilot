@@ -274,12 +274,15 @@ def faculty_workspace_page(request):
 def faculty_programs_page(request):
     if not acts_as_faculty(request):
         raise Http404()
+    from .services import program_requirements
+
     return _render_page(
         request,
         "agent/faculty_programs.html",
         page_name="faculty-programs",
         page_title="Programs",
         initial_tab="faculty-programs",
+        programs=program_requirements.list_for_user(request.user),
     )
 
 
