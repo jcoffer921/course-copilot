@@ -43,7 +43,7 @@ Three tabs in a slim left rail, replacing four pages:
 
 The top bar carries the FACULTY badge, current program context, actions, and the avatar menu (help, privacy/FERPA note, sign out, and the existing admin student/faculty view switch).
 
-Old routes: `/faculty/import/` and `/faculty/cora/` redirect to `/faculty/programs/` and `/faculty/` respectively so bookmarks keep working. URL names `faculty-import` and `faculty-planner` are kept as redirect routes until their tests and templates are updated, then removed.
+Route names: `/faculty/` is renamed from `faculty-dashboard` to `faculty-workspace`, with every reference updated (including the faculty access and Google callback redirects); `/faculty/programs/` is `faculty-programs`. `/faculty/import/` and `/faculty/cora/` keep their route names `faculty-import` and `faculty-planner` permanently as redirects to `/faculty/programs/` and `/faculty/`, so bookmarks keep working.
 
 Removed: the dashboard's quick-action grid, the hardcoded notification badge, and the scattered privacy cards (consolidated into one privacy note in the avatar menu and the Sources panel footer).
 
@@ -54,18 +54,20 @@ Removed: the dashboard's quick-action grid, the hardcoded notification badge, an
 Three panels in a grid (`270px | 1fr | 340px`; collapses to stacked tabs below ~1100px):
 
 - **Sources (left):** the loaded program and any applied template; a drop zone to import a new requirements `.xlsx`; per-group requirement coverage bars computed from the current draft plan. Footer note: student details stay in this session only.
-- **Draft plan (center):** the plan rendered as a document: header (student label, credits completed, target graduation), a summary strip (credits this term, credits remaining, terms to finish, items needing attention), then one table per term (course, title, type chip, credits). Rows with unmet prerequisites are highlighted. Actions: Regenerate term, Accept draft.
+- **Draft plan (center):** the plan rendered as a document: header (student label, credits completed, target graduation), a summary strip (planned credits, number of terms, program credits required, items needing attention), then one table per term. "Credits remaining" from the mockup is dropped: a student's completed credits are free text in the session, not a structured field, so any remaining-credits figure would be a guess (course, title, type chip, credits). Rows with unmet prerequisites are highlighted. Actions: Regenerate term, Accept draft.
 - **Cora (right):** the existing grounded planning chat. Each assistant message may carry an "issue" card with one-click fixes. Quick-prompt chips and an input.
 
 Empty state (no program loaded): the center panel becomes the home screen, with a large drop zone and a list of the faculty member's recent programs. This replaces the old dashboard.
 
 Header actions: New session (existing reset), Export DOCX (existing export), Save as template (writes structure only, see 3.3).
 
-Behavior is unchanged from today's planner: `POST /api/faculty/plan/chat/`, `.../plan/reset/`, `.../plan/export/`, with all student-specific state in `request.session["faculty_plan_session"]` and the browser's `sessionStorage`. The redesign changes layout and presentation, and adds a structured render of the draft plan (summary strip, prerequisite flags). Prerequisite flags are derived from the grounded `ProgramRequirement` data already available to the planner, not from model output.
+Behavior is unchanged from today's planner: `POST /api/faculty/plan/chat/`, `.../plan/reset/`, `.../plan/export/`, with all student-specific state in `request.session["faculty_plan_session"]` and the browser's `sessionStorage`. The redesign changes layout and presentation, and adds a structured render of the draft plan (summary strip, prerequisite flags). Prerequisite flags are derived from the grounded `ProgramRequirement` data already available to the planner, not from model output. A course is flagged only when one of its listed prerequisites is itself in the draft plan in the same or a later term (a definite conflict). A prerequisite absent from the draft is never flagged, because the student may already have completed it.
+
+The extract → review → confirm import flow has no working UI today (the planner links to the mockup Import page). It is built as one shared module used by both the Workspace drop zone and the Programs page.
 
 ### 3.2 Programs (`/faculty/programs/`)
 
-A table of the faculty member's confirmed `ProgramRequirement` rows (program, catalog year, credits, status chip, updated date) with a detail panel: requirement groups with credit totals, and a prerequisite coverage check (for example "38 of 41 mapped").
+A table of the faculty member's confirmed `ProgramRequirement` rows (program, catalog year, credits, status chip, updated date) with a detail panel: requirement groups with credit totals, and a prerequisite check: "Prerequisites resolved: X of Y", where Y is the number of prerequisite references across all courses and X is how many of those match a course code in the same program.
 
 Actions: **Plan** (loads the program into Workspace), **Import requirements** (opens the existing extract → review → confirm flow, now with a proper home), **Re-import (overwrite)** (existing 409-then-overwrite collision flow), **Delete** (confirmation required; this is a destructive write, so it follows the project's plan-then-pause rule).
 
