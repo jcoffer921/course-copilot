@@ -2,6 +2,7 @@ import { apiRequest } from "./core/api.js";
 import { getCsrfToken } from "./core/csrf.js";
 import { confirmDialog } from "./core/dialogs.js";
 import { showToast } from "./core/toast.js";
+import { runImportFlow } from "./faculty_import_flow.js";
 import { categoryCoverage, courseCategoryMap, planSummary, prerequisiteConflicts } from "./faculty_plan_model.js";
 
 const root = document.getElementById("fw-root");
@@ -26,6 +27,40 @@ picker?.addEventListener("change", () => {
   if (picker.value) url.searchParams.set("program", picker.value);
   else url.searchParams.delete("program");
   window.location.assign(url);
+});
+
+// ---- requirements import (drop zone or file picker) ----
+const importInput = one("[data-fw-import-input]");
+
+async function startImport(file) {
+  if (!file) return;
+  if (!/\.(xlsx|xlsm)$/i.test(file.name)) {
+    showToast("Choose an Excel file (.xlsx or .xlsm).", "error");
+    return;
+  }
+  try {
+    const confirmed = await runImportFlow({ file, importUrl: root.dataset.importUrl, confirmUrl: root.dataset.confirmUrl });
+    if (confirmed) window.location.assign(`${window.location.pathname}?program=${encodeURIComponent(confirmed.requirement_id)}`);
+  } catch (error) {
+    showToast(error.message || "Import failed.", "error");
+  }
+}
+
+importInput?.addEventListener("change", () => {
+  const [file] = importInput.files;
+  importInput.value = "";
+  startImport(file);
+});
+
+root?.querySelectorAll("[data-fw-import-trigger]").forEach(trigger => {
+  trigger.addEventListener("click", () => importInput?.click());
+  trigger.addEventListener("dragover", event => { event.preventDefault(); trigger.classList.add("is-dragging"); });
+  trigger.addEventListener("dragleave", () => trigger.classList.remove("is-dragging"));
+  trigger.addEventListener("drop", event => {
+    event.preventDefault();
+    trigger.classList.remove("is-dragging");
+    startImport(event.dataTransfer?.files?.[0]);
+  });
 });
 
 // ---- session store: student-specific state lives in sessionStorage only ----

@@ -229,3 +229,32 @@ def test_workspace_script_uses_module_exports():
     assert "./faculty_plan_model.js" in source
     assert "localStorage" not in source
     assert "innerHTML" not in source
+
+
+# ---- Task 5: shared import flow ----
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("with_program", [False, True])
+def test_workspace_wires_import_flow(client, faculty_user, with_program):
+    params = {}
+    if with_program:
+        params["program"] = str(make_program(faculty_user).requirement_id)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), params).content.decode()
+
+    assert "data-fw-import-input" in html
+    assert 'accept=".xlsx,.xlsm"' in html
+    assert ".csv" not in html
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+    assert "./faculty_import_flow.js" in source
+
+
+def test_import_flow_module_contract():
+    source = (STATIC_JS / "faculty_import_flow.js").read_text(encoding="utf-8")
+
+    assert "export async function runImportFlow" in source
+    assert "showModal" in source
+    assert "overwrite: true" in source
+    assert "innerHTML" not in source

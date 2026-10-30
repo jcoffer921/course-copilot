@@ -17,6 +17,7 @@
      data-confirm-url="/api/faculty/requirements/confirm/"
      data-session-key="ontrack.facultySession"
      data-template-key="ontrack.selectedFacultyTemplate">
+  <input type="file" accept=".xlsx,.xlsm" data-fw-import-input hidden aria-label="Choose a requirements file">
   {% if active_program %}
   <div class="fw-studio">
     <section class="fs-panel fw-sources" data-fw="sources" aria-label="Sources">
@@ -35,7 +36,7 @@
           {% endfor %}
         </select>
         {% endif %}
-        <button type="button" class="fw-drop" data-fw-import-trigger>Import another requirements file<small>.xlsx or .csv</small></button>
+        <button type="button" class="fw-drop" data-fw-import-trigger>Import another requirements file<small>.xlsx or .xlsm</small></button>
 
         <div class="fs-label fw-coverage-label">Requirement coverage</div>
         <div data-fw-coverage class="fw-coverage"></div>
@@ -83,7 +84,7 @@
     <div class="fw-home-inner">
       <h2>What are we planning today?</h2>
       <p>Import a requirements file for a program, then describe a student and Cora drafts a plan.</p>
-      <button type="button" class="fw-drop fw-drop-lg" data-fw-import-trigger>Drop a requirements file<small>.xlsx or .csv, or choose a file</small></button>
+      <button type="button" class="fw-drop fw-drop-lg" data-fw-import-trigger>Drop a requirements file<small>.xlsx or .xlsm, or choose a file</small></button>
       {% if programs %}
       <div class="fs-label fw-recent-label">Your programs</div>
       <ul class="fw-recent">
