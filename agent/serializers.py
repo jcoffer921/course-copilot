@@ -465,3 +465,12 @@ class UpdateGradeItemRequestSerializer(serializers.Serializer):
     score = serializers.FloatField(required=False, min_value=0, default=None)
     max_points = serializers.FloatField(required=False, min_value=0.01, default=None)
     date = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
+
+
+class DeleteRequirementRequestSerializer(serializers.Serializer):
+    confirm = serializers.BooleanField()
+
+    def validate_confirm(self, value):
+        if value is not True:
+            raise serializers.ValidationError("Explicit confirmation is required.")
+        return value

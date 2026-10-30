@@ -25,6 +25,7 @@ from .serializers import (
     ConfirmDeadlineActionsRequestSerializer,
     ConfirmRequirementsRequestSerializer,
     CourseDeleteSerializer,
+    DeleteRequirementRequestSerializer,
     CourseArchiveSerializer,
     CreateCourseDraftRequestSerializer,
     CreateCustomEventRequestSerializer,
@@ -300,6 +301,50 @@ class FacultyRequirementsConfirmView(APIView):
             {"program_requirement": program_requirements.serialize(row)},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
+
+
+class FacultyRequirementsListView(APIView):
+    """GET /api/faculty/requirements/ — the signed-in faculty member's confirmed programs."""
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def get(self, request):
+        programs = await sync_to_async(program_requirements.list_for_user)(request.user)
+        return Response({"programs": programs})
+
+
+class FacultyRequirementDetailView(APIView):
+    """
+    GET /api/faculty/requirements/<requirement_id>/ — one owned program with its structure.
+    DELETE the same path with body {"confirm": true} — removes it, and clears the
+    planning session if that session points at the deleted program.
+    Missing and foreign ids are indistinguishable (404).
+    """
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def get(self, request, requirement_id):
+        program = await sync_to_async(program_requirements.get_for_user)(request.user, requirement_id)
+        if program is None:
+            return Response({"detail": "Program requirement not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response({"program": program})
+
+    async def delete(self, request, requirement_id):
+        serializer = DeleteRequirementRequestSerializer(data=request.data or {})
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        deleted = await sync_to_async(program_requirements.delete_for_user)(request.user, requirement_id)
+        if not deleted:
+            return Response({"detail": "Program requirement not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        def clear_matching_session():
+            state = _read_faculty_plan_session(request)
+            if isinstance(state, dict) and state.get("program_requirement_id") == str(requirement_id):
+                _clear_faculty_plan_session(request)
+
+        await sync_to_async(clear_matching_session)()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 FACULTY_PLAN_SESSION_KEY = "faculty_plan_session"

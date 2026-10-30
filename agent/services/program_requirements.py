@@ -80,3 +80,50 @@ def confirm_requirements(user, data: dict, overwrite: bool, source_filename: str
             source_filename=source_filename,
         )
         return created, True
+
+
+def list_for_user(user) -> list[dict]:
+    """The signed-in faculty member's programs, newest catalog last within a name."""
+    rows = ProgramRequirement.objects.filter(user=user).order_by("program_name", "catalog_year")
+    return [
+        {**serialize_summary(row), "total_credits_required": int((row.requirements or {}).get("total_credits_required") or 0)}
+        for row in rows
+    ]
+
+
+def get_for_user(user, requirement_id) -> dict | None:
+    """Full program plus derived structure/checks, or None when the row is
+    missing or belongs to someone else (callers must not distinguish the two)."""
+    row = ProgramRequirement.objects.filter(user=user, requirement_id=requirement_id).first()
+    if row is None:
+        return None
+
+    categories = (row.requirements or {}).get("categories") or []
+    codes = {course.get("code") for category in categories for course in category.get("courses") or []}
+    references = [
+        prerequisite
+        for category in categories
+        for course in category.get("courses") or []
+        for prerequisite in course.get("prerequisites") or []
+    ]
+    return {
+        **serialize(row),
+        "categories": [
+            {
+                "name": category.get("name") or "",
+                "credits_required": int(category.get("credits_required") or 0),
+                "course_count": len(category.get("courses") or []),
+            }
+            for category in categories
+        ],
+        "checks": {
+            "prerequisites_total": len(references),
+            "prerequisites_resolved": sum(1 for prerequisite in references if prerequisite in codes),
+        },
+    }
+
+
+def delete_for_user(user, requirement_id) -> bool:
+    """Deletes one owned row. True if a row was removed, False if none matched."""
+    deleted, _ = ProgramRequirement.objects.filter(user=user, requirement_id=requirement_id).delete()
+    return deleted > 0
