@@ -1457,6 +1457,16 @@ def save_site(course_id: str, url: str, title: str = None, user=None) -> dict:
     return _saved_site_to_dict(site)
 
 
+def delete_saved_site(course_id: str, site_id: int, user=None) -> bool:
+    """Owner-scoped: returns False (never raises) for a missing or foreign row,
+    so the API answers 404 identically for both."""
+    _validate_course_id(course_id)
+    from agent.models import SavedSite
+
+    deleted, _ = _scope_user_queryset(SavedSite.objects.filter(course_id=course_id, pk=site_id), user).delete()
+    return bool(deleted)
+
+
 def _custom_event_to_dict(event) -> dict:
     return {
         "id": event.event_id,

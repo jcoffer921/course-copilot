@@ -81,10 +81,31 @@ def is_faculty(user, settings_row=None) -> bool:
     return settings_row.role == UserSettings.ROLE_FACULTY
 
 
+ADMIN_VIEW_SESSION_KEY = "admin_view_as"
+ADMIN_VIEW_CHOICES = ("student", "faculty")
+
+
+def is_admin(user) -> bool:
+    """Only the single pilot-owner account may preview either role. Django
+    staff/superuser flags deliberately do not qualify."""
+    return is_pilot_owner(user)
+
+
+def acts_as_faculty(request, settings_row=None) -> bool:
+    """Request-aware role check: an admin's session-scoped view-as choice
+    wins over their stored role; everyone else gets the stored role. The
+    override is never persisted and never grants anything to a non-admin."""
+    if is_admin(request.user):
+        choice = request.session.get(ADMIN_VIEW_SESSION_KEY)
+        if choice in ADMIN_VIEW_CHOICES:
+            return choice == "faculty"
+    return is_faculty(request.user, settings_row=settings_row)
+
+
 class FacultyPermission(BasePermission):
     """Conceal the faculty planning surface from every non-faculty account."""
 
     def has_permission(self, request, view):
-        if not is_faculty(request.user):
+        if not acts_as_faculty(request):
             raise NotFound()
         return True

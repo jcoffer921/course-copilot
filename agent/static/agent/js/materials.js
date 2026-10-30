@@ -205,6 +205,44 @@ async function loadMaterials({ quiet = false } = {}) {
   }
 }
 
+const savedSitesUrl = () => `/api/courses/${encodeURIComponent(courseId)}/saved-sites/`;
+
+async function loadSavedLinks() {
+  const list = byId("saved-links-list");
+  if (!list) return;
+  try {
+    const data = await apiRequest(savedSitesUrl());
+    const sites = data.sites || [];
+    list.replaceChildren(...sites.map(site => {
+      const item = document.createElement("li");
+      const link = text("a", site.title || site.url);
+      link.href = site.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+      const remove = text("button", "Remove", "btn btn-secondary");
+      remove.type = "button"; remove.dataset.removeLink = site.id;
+      remove.setAttribute("aria-label", `Remove link ${site.title || site.url}`);
+      item.append(link, remove);
+      return item;
+    }));
+    list.hidden = sites.length === 0;
+  } catch (error) { list.hidden = true; }
+}
+
+async function submitLink(form) {
+  clearAlert();
+  setFormBusy(form, true, "Adding…");
+  try {
+    const body = { url: form.elements.url.value.trim(), title: form.elements.title.value.trim() };
+    await apiRequest(savedSitesUrl(), { method: "POST", body: JSON.stringify(body) });
+    form.reset();
+    showAlert("Link added.");
+    await loadSavedLinks();
+  } catch (error) {
+    showAlert(error.data?.url?.[0] || errorMessage(error), true);
+  } finally {
+    setFormBusy(form, false, "Adding…");
+  }
+}
+
 function makeCheckboxRow(fields) {
   const row = document.createElement("label");
   row.className = "review-row";
@@ -398,6 +436,13 @@ function bindDelegatedEvents() {
       return;
     }
 
+    const removeLink = event.target.closest("[data-remove-link]");
+    if (removeLink) {
+      apiRequest(`${savedSitesUrl()}${removeLink.dataset.removeLink}/`, { method: "DELETE" })
+        .then(loadSavedLinks).catch(error => showAlert(errorMessage(error), true));
+      return;
+    }
+
     if (event.target.closest("#refresh-materials")) { loadMaterials(); return; }
     if (event.target.closest("#materials-error button")) { loadMaterials(); return; }
     if (event.target.closest("#cancel-syllabus-review")) { discardReview(); return; }
@@ -485,6 +530,7 @@ function bindDelegatedEvents() {
 
   document.addEventListener("submit", event => {
     const form = event.target;
+    if (form.id === "reference-link-form") { event.preventDefault(); submitLink(form); return; }
     const config = UPLOAD_ENDPOINTS[form.id];
     if (config) {
       event.preventDefault();
@@ -518,4 +564,5 @@ if (root && courseId) {
   bindDelegatedEvents();
   courseHeader = initCourseHeader(courseId);
   loadMaterials();
+  loadSavedLinks();
 }

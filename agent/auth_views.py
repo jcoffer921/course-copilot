@@ -6,6 +6,9 @@ JSON API, so it doesn't belong in agent/views.py alongside the APIViews.
 
 import logging
 import os
+import hashlib
+import secrets
+from urllib.parse import urlencode
 
 from django.conf import settings
 from django.contrib import messages
@@ -14,13 +17,16 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
 from django.http import HttpResponse, HttpResponseBadRequest
 from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods, require_POST
 
 from .services import google_oauth
 from .services import google_calendar_oauth
 
 logger = logging.getLogger(__name__)
+FACULTY_ACCESS_GRANT_SECONDS = 600
 
 
 def _login_rate_limited(request) -> bool:
@@ -39,6 +45,35 @@ def _login_rate_limited(request) -> bool:
     except ValueError:
         cache.set(key, 1, timeout=window)
         return False
+
+
+def _faculty_access_rate_limited(request) -> bool:
+    limit = int(os.environ.get("ONTRACK_FACULTY_CODE_RATE_LIMIT", "5"))
+    window = int(os.environ.get("ONTRACK_FACULTY_CODE_RATE_WINDOW_SECONDS", "600"))
+    key = f"ontrack:faculty-access:{request.META.get('REMOTE_ADDR', 'unknown')}"
+    if cache.add(key, 1, timeout=window):
+        return False
+    try:
+        return cache.incr(key) > limit
+    except ValueError:
+        cache.set(key, 1, timeout=window)
+        return False
+
+
+def _valid_faculty_access_code(candidate: str) -> bool:
+    configured_hash = settings.FACULTY_ACCESS_CODE_HASH
+    if not configured_hash or len(configured_hash) != 64:
+        return False
+    candidate_hash = hashlib.sha256(candidate.strip().encode()).hexdigest()
+    return secrets.compare_digest(candidate_hash, configured_hash)
+
+
+def _recent_faculty_access_grant(request) -> bool:
+    granted_at = request.session.pop("faculty_access_granted_at", None)
+    if not isinstance(granted_at, (int, float)):
+        return False
+    age = timezone.now().timestamp() - granted_at
+    return 0 <= age <= FACULTY_ACCESS_GRANT_SECONDS
 
 
 def _redirect_uri(request) -> str:
@@ -78,6 +113,43 @@ def google_login_page(request, mode="login"):
 
 def google_signup_page(request):
     return google_login_page(request, mode="signup")
+
+
+@require_http_methods(["GET", "POST"])
+def faculty_access_page(request):
+    error = ""
+    response_status = 200
+    if request.method == "POST":
+        request.session.pop("faculty_access_granted_at", None)
+        if _faculty_access_rate_limited(request):
+            error = "Too many attempts. Please wait before trying another code."
+            response_status = 429
+        elif not _valid_faculty_access_code(request.POST.get("access_code", "")):
+            error = "That faculty access code is not valid. Check the code and try again."
+            response_status = 400
+        elif request.user.is_authenticated:
+            from .models import UserSettings
+
+            settings_row, _ = UserSettings.objects.get_or_create(user=request.user)
+            if settings_row.access_status == UserSettings.ACCESS_SUSPENDED:
+                error = "This account is suspended. Contact OnTrack support for access."
+                response_status = 403
+            else:
+                settings_row.access_status = UserSettings.ACCESS_ACTIVE
+                settings_row.role = UserSettings.ROLE_FACULTY
+                settings_row.save(update_fields=["access_status", "role", "updated_at"])
+                return redirect("faculty-dashboard")
+        else:
+            request.session["faculty_access_granted_at"] = timezone.now().timestamp()
+            destination = urlencode({"next": reverse("faculty-dashboard")})
+            return redirect(f"{reverse('google-login-start')}?{destination}")
+
+    response = render(request, "agent/faculty_access.html", {
+        "error": error,
+        "faculty_demo_code": settings.FACULTY_DEMO_ACCESS_CODE,
+    })
+    response.status_code = response_status
+    return response
 
 
 @login_required
@@ -182,10 +254,18 @@ def google_callback(request):
     defaults = {"cohort": request.session.pop("signup_cohort", "")}
     if google_oauth.is_email_allowed(email):
         defaults["access_status"] = UserSettings.ACCESS_ACTIVE
-    UserSettings.objects.get_or_create(user=user, defaults=defaults)
+    settings_row, _ = UserSettings.objects.get_or_create(user=user, defaults=defaults)
+    faculty_access_granted = _recent_faculty_access_grant(request)
+    if faculty_access_granted and settings_row.access_status != UserSettings.ACCESS_SUSPENDED:
+        settings_row.access_status = UserSettings.ACCESS_ACTIVE
+        settings_row.role = UserSettings.ROLE_FACULTY
+        settings_row.save(update_fields=["access_status", "role", "updated_at"])
 
     login(request, user)
-    return redirect(request.session.pop("google_oauth_next", None) or "dashboard-page")
+    destination = request.session.pop("google_oauth_next", None)
+    if faculty_access_granted and not destination:
+        destination = "faculty-dashboard"
+    return redirect(destination or "dashboard-page")
 
 
 @login_required

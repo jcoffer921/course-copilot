@@ -15,6 +15,7 @@
         <svg class="ot-icon faculty-dropzone-icon"><use href="#ot-icon-material"/></svg>
         <strong>Drag and drop your file here</strong><span>or</span>
         <label class="faculty-button faculty-button-primary">Upload Excel / CSV<input type="file" accept=".xlsx,.csv" data-faculty-file></label>
+        <a class="faculty-button faculty-button-cora" href="{% url 'faculty-planner' %}" data-send-to-cora hidden>Send to Cora <span>→</span></a>
         <small data-faculty-filename>Supported files: .xlsx, .csv &nbsp;•&nbsp; Maximum file size: 10 MB</small>
       </div>
       <p class="faculty-session-note"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg>Student data is processed only for this session and will be cleared afterward.</p>

@@ -73,6 +73,19 @@
             <p class="materials-formats">Supported: PDF, PPTX, DOCX, TXT, MD</p>
             <button class="btn btn-primary" type="submit">Add reference</button>
           </form>
+
+          <h3 class="materials-links-title">Or add a link</h3>
+          <p class="materials-formats">Saved as a link only. Cora may cite it as a web source when your course material doesn&rsquo;t cover a question; its contents are not copied into the course.</p>
+          <form id="reference-link-form">
+            <label class="materials-field">URL
+              <input class="input" name="url" type="url" maxlength="2048" placeholder="https://" required>
+            </label>
+            <label class="materials-field">Title <span>(optional)</span>
+              <input class="input" name="title" type="text" maxlength="255">
+            </label>
+            <button class="btn btn-primary" type="submit">Add link</button>
+          </form>
+          <ul id="saved-links-list" class="materials-links-list" aria-label="Saved links" hidden></ul>
         </div>
       </section>
 

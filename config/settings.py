@@ -1,3 +1,4 @@
+import hashlib
 import os
 from pathlib import Path
 
@@ -11,6 +12,11 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-insecure-key-change-me-before-any-real-deploy")
 DEBUG = os.environ.get("DJANGO_DEBUG", "true").lower() == "true"
+FACULTY_ACCESS_CODE_HASH = os.environ.get("FACULTY_ACCESS_CODE_HASH", "").strip().lower()
+FACULTY_DEMO_ACCESS_CODE = ""
+if DEBUG and not FACULTY_ACCESS_CODE_HASH:
+    FACULTY_DEMO_ACCESS_CODE = "FACULTY-DEMO-2026"
+    FACULTY_ACCESS_CODE_HASH = hashlib.sha256(FACULTY_DEMO_ACCESS_CODE.encode()).hexdigest()
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()

@@ -934,6 +934,19 @@ class SavedSitesView(APIView):
         return Response({"course_id": course_id, "site": site}, status=status.HTTP_201_CREATED)
 
 
+class SavedSiteDetailView(APIView):
+    """DELETE /api/courses/<course_id>/saved-sites/<site_id>/ - 404 if not the caller's."""
+
+    async def delete(self, request, course_id, site_id):
+        try:
+            deleted = await sync_to_async(storage.delete_saved_site)(course_id, site_id, user=request.user)
+        except storage.InvalidCourseIdError as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        if not deleted:
+            return Response({"detail": "Saved link not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class GradingConfigView(APIView):
     """
     GET /api/courses/<course_id>/grading/ — the grading array plus the

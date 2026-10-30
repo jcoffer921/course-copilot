@@ -121,6 +121,26 @@ def test_faculty_dashboard_uses_faculty_navigation_and_privacy_language(client, 
 
 
 @pytest.mark.django_db
+def test_faculty_cora_renders_temporary_advising_workspace(client, faculty_user):
+    client.force_login(faculty_user)
+
+    content = client.get(reverse('faculty-planner')).content.decode()
+
+    assert 'Cora Advising Assistant' in content
+    assert 'No student data is stored' in content
+    assert 'Current session' in content
+    assert 'Try these workflows' in content
+    assert 'Ask Cora about academic planning' in content
+    assert 'Generated academic plan' in content
+    assert 'Session insights' in content
+    assert 'Clear Session' in content
+    assert 'data-session-storage-key="ontrack.facultySession"' in content
+    assert 'data-empty-state' in content
+    assert 'data-active-state' in content
+    assert reverse('faculty-import') in content
+
+
+@pytest.mark.django_db
 def test_faculty_import_is_an_empty_state(client, faculty_user):
     client.force_login(faculty_user)
 

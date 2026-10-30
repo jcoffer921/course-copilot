@@ -2,6 +2,7 @@ from django.contrib import admin
 from django.urls import include, path
 
 from agent.auth_views import (
+    faculty_access_page,
     google_calendar_callback,
     google_calendar_connect,
     google_calendar_disconnect,
@@ -19,6 +20,7 @@ urlpatterns = [
     path("accounts/login/", google_login_page, name="google-login"),
     path("login/", google_login_page, name="login-page"),
     path("signup/", google_signup_page, name="signup-page"),
+    path("accounts/faculty/", faculty_access_page, name="faculty-access"),
     path("accounts/login/start/", google_login_start, name="google-login-start"),
     path("accounts/callback/", google_callback, name="google-callback"),
     path("accounts/pending/", pending_access_page, name="pending-page"),

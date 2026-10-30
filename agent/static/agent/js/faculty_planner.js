@@ -4,393 +4,275 @@ import { initNavigation } from "./core/navigation.js";
 
 initNavigation();
 
-const root = document.querySelector(".faculty-planner-page");
+const root = document.querySelector(".faculty-cora-page");
 const byId = id => document.getElementById(id);
-const initialData = JSON.parse(byId("faculty-program-requirements")?.textContent || "[]");
-let programs = initialData;
-let reviewRequirements = null;
-let reviewSourceFilename = "";
-let selectedProgram = null;
-let currentDraft = null;
+const one = selector => root?.querySelector(selector);
+const all = selector => [...(root?.querySelectorAll(selector) || [])];
+const programs = JSON.parse(byId("faculty-program-requirements")?.textContent || "[]");
+const selectedProgram = programs[0] || null;
+const storageKey = root?.dataset.sessionStorageKey || "ontrack.facultySession";
+const selectedTemplateKey = "ontrack.selectedFacultyTemplate";
+const emptySession = () => ({ activeFile: null, detectedColumns: [], majors: [], rowCount: 0, chatMessages: [], generatedPlan: null });
 
-function errorMessage(error) {
-  if (typeof error?.data?.detail === "string") return error.data.detail;
-  if (error?.data && typeof error.data === "object") {
-    const message = Object.values(error.data).flat().find(value => typeof value === "string");
-    if (message) return message;
+function readSession() {
+  try { return { ...emptySession(), ...JSON.parse(sessionStorage.getItem(storageKey) || "{}") }; }
+  catch { return emptySession(); }
+}
+
+let facultySession = readSession();
+let activePlanTab = "plan";
+
+function readSelectedTemplate() {
+  try {
+    const template = JSON.parse(sessionStorage.getItem(selectedTemplateKey) || "null");
+    return template && typeof template.name === "string" && Array.isArray(template.terms) ? template : null;
+  } catch { return null; }
+}
+
+function renderSelectedTemplate() {
+  const template = readSelectedTemplate();
+  const banner = byId("faculty-template-selection");
+  banner.hidden = !template;
+  if (!template) return;
+  setText("[data-selected-template-name]", `${template.name} selected`);
+  const input = byId("faculty-chat-input");
+  if (!input.value) {
+    const creditRange = `${template.creditMin || 12}–${template.creditMax || 16} credits`;
+    input.value = `Use the ${template.name} as the planning scaffold (${template.terms.length} sections, ${creditRange}) and apply the active session context.`;
   }
-  return error?.message || "Something went wrong.";
+}
+
+function writeSession() {
+  sessionStorage.setItem(storageKey, JSON.stringify(facultySession));
+}
+
+function setText(selector, value) {
+  const node = one(selector);
+  if (node) node.textContent = value;
 }
 
 function showAlert(message, isError = false) {
-  const alert = byId("faculty-planner-alert");
+  const alert = byId("faculty-cora-alert");
   alert.textContent = message;
   alert.classList.toggle("error", isError);
   alert.hidden = false;
+  window.setTimeout(() => { alert.hidden = true; }, 5000);
 }
 
-function clearAlert() {
-  byId("faculty-planner-alert").hidden = true;
+function errorMessage(error) {
+  return error?.data?.detail || error?.message || "Cora could not complete that request.";
 }
 
-function setBusy(form, busy, label) {
-  const button = form.querySelector("button[type='submit']");
-  if (!button.dataset.defaultLabel) button.dataset.defaultLabel = button.textContent.trim();
-  button.disabled = busy;
-  button.textContent = busy ? label : button.dataset.defaultLabel;
+function icon(symbol) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "ot-icon");
+  svg.setAttribute("aria-hidden", "true");
+  const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+  use.setAttribute("href", `#${symbol}`);
+  svg.append(use);
+  return svg;
 }
 
-function textNode(tag, value, className) {
-  const node = document.createElement(tag);
-  node.textContent = value;
-  if (className) node.className = className;
-  return node;
+function renderSession() {
+  const hasFile = Boolean(facultySession.activeFile);
+  all("[data-empty-state]").forEach(node => { node.hidden = hasFile; });
+  all("[data-active-state]").forEach(node => { node.hidden = !hasFile; });
+  const badge = one("[data-file-badge]");
+  badge.textContent = hasFile ? "1 file active" : "No active file";
+  badge.classList.toggle("is-active", hasFile);
+  if (hasFile) {
+    const uploaded = facultySession.activeFile.uploadedAt ? new Date(facultySession.activeFile.uploadedAt) : null;
+    setText("[data-session-filename]", facultySession.activeFile.name || "Temporary advising file");
+    setText("[data-session-uploaded]", uploaded && !Number.isNaN(uploaded.valueOf()) ? `Uploaded ${uploaded.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Available for this session");
+  }
+  const columns = Array.isArray(facultySession.detectedColumns) ? facultySession.detectedColumns : [];
+  const majors = Array.isArray(facultySession.majors) ? facultySession.majors : [];
+  setText("[data-majors-copy]", hasFile ? (majors.join(", ") || "No major column detected") : "Will appear after upload");
+  setText("[data-students-copy]", hasFile ? `${facultySession.rowCount || 0} rows` : "Will appear after upload");
+  setText("[data-columns-copy]", hasFile ? (columns.slice(0, 4).join(", ") || "No columns detected") : "Will appear after upload");
+  setText("[data-majors-count]", hasFile ? majors.length : "—");
+  setText("[data-student-count]", hasFile ? facultySession.rowCount || 0 : "—");
+  setText("[data-column-count]", hasFile ? columns.length : "—");
+  setText("[data-insight-students]", hasFile ? facultySession.rowCount || 0 : 0);
+  setText("[data-insight-majors]", hasFile ? majors.length : 0);
+  setText("[data-insight-columns]", hasFile ? columns.length : 0);
 }
 
-function renderLibrary() {
-  const list = byId("program-library-list");
-  list.replaceChildren();
-  byId("program-library-empty").hidden = programs.length > 0;
-  programs.forEach(program => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "faculty-program-row";
-    button.dataset.requirementId = program.requirement_id;
-    const identity = document.createElement("span");
-    identity.append(textNode("strong", program.program_name), textNode("small", program.catalog_year));
-    const updated = program.updated_at ? new Date(program.updated_at).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" }) : "Confirmed";
-    button.append(identity, textNode("span", `Updated ${updated}`, "faculty-program-updated"), textNode("span", "Plan →", "faculty-program-action"));
-    button.addEventListener("click", () => selectProgram(program));
-    list.append(button);
-  });
-}
-
-function input(value, field, options = {}) {
-  const control = document.createElement(options.multiline ? "textarea" : "input");
-  control.className = "input";
-  control.dataset.field = field;
-  control.value = value ?? "";
-  if (options.type) control.type = options.type;
-  if (options.min !== undefined) control.min = options.min;
-  if (options.step) control.step = options.step;
-  if (options.placeholder) control.placeholder = options.placeholder;
-  return control;
-}
-
-function renderReview() {
-  byId("review-program-name").value = reviewRequirements.program_name || "";
-  byId("review-catalog-year").value = reviewRequirements.catalog_year || "";
-  byId("review-total-credits").value = reviewRequirements.total_credits_required ?? 0;
-  byId("requirements-source-name").textContent = reviewSourceFilename;
-  byId("overwrite-warning").hidden = true;
-
-  const categories = byId("requirements-categories");
-  categories.replaceChildren();
-  (reviewRequirements.categories || []).forEach((category, categoryIndex) => {
-    const fieldset = document.createElement("fieldset");
-    fieldset.className = "review-group review-dates-group faculty-category";
-    fieldset.dataset.categoryIndex = categoryIndex;
-
-    const header = document.createElement("div");
-    header.className = "faculty-category-header";
-    const nameControl = input(category.name, "category-name", { placeholder: "Category name" });
-    nameControl.setAttribute("aria-label", "Category name");
-    const creditsControl = input(category.credits_required, "category-credits", { type: "number", min: "0", step: "0.5" });
-    creditsControl.setAttribute("aria-label", "Category credits required");
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.className = "faculty-remove-button";
-    remove.textContent = "Remove category";
-    remove.addEventListener("click", () => {
-      reviewRequirements = collectReview();
-      reviewRequirements.categories.splice(categoryIndex, 1);
-      renderReview();
-    });
-    header.append(nameControl, creditsControl, remove);
-    fieldset.append(header);
-
-    const head = document.createElement("div");
-    head.className = "faculty-course-head";
-    ["Code", "Title", "Credits", "Prerequisites", "Notes", ""].forEach(label => head.append(textNode("span", label)));
-    fieldset.append(head);
-
-    const courseList = document.createElement("div");
-    courseList.className = "faculty-course-list";
-    (category.courses || []).forEach((course, courseIndex) => {
-      const row = document.createElement("div");
-      row.className = "review-row faculty-course-row";
-      row.append(
-        input(course.code, "code", { placeholder: "CS 101" }),
-        input(course.title, "title", { placeholder: "Course title" }),
-        input(course.credits, "credits", { type: "number", min: "0", step: "0.5" }),
-        input((course.prerequisites || []).join(", "), "prerequisites", { placeholder: "Comma separated" }),
-        input(course.notes, "notes", { placeholder: "Notes" })
-      );
-      const removeCourse = document.createElement("button");
-      removeCourse.type = "button";
-      removeCourse.className = "faculty-remove-button";
-      removeCourse.textContent = "Remove";
-      removeCourse.addEventListener("click", () => {
-        reviewRequirements = collectReview();
-        reviewRequirements.categories[categoryIndex].courses.splice(courseIndex, 1);
-        renderReview();
-      });
-      row.append(removeCourse);
-      courseList.append(row);
-    });
-    fieldset.append(courseList);
-
-    const addCourse = document.createElement("button");
-    addCourse.type = "button";
-    addCourse.className = "review-add-item";
-    addCourse.textContent = "＋ Add course";
-    addCourse.addEventListener("click", () => {
-      reviewRequirements = collectReview();
-      reviewRequirements.categories[categoryIndex].courses.push({ code: "", title: "", credits: 0, prerequisites: [], notes: "" });
-      renderReview();
-    });
-    fieldset.append(addCourse);
-    categories.append(fieldset);
-  });
-  byId("requirements-review").hidden = false;
-  byId("faculty-planning-state").hidden = true;
-}
-
-function collectReview() {
-  return {
-    program_name: byId("review-program-name").value.trim(),
-    catalog_year: byId("review-catalog-year").value.trim(),
-    total_credits_required: Number(byId("review-total-credits").value) || 0,
-    categories: [...document.querySelectorAll(".faculty-category")].map(category => ({
-      name: category.querySelector("[data-field='category-name']").value.trim(),
-      credits_required: Number(category.querySelector("[data-field='category-credits']").value) || 0,
-      courses: [...category.querySelectorAll(".faculty-course-row")].map(row => ({
-        code: row.querySelector("[data-field='code']").value.trim(),
-        title: row.querySelector("[data-field='title']").value.trim(),
-        credits: Number(row.querySelector("[data-field='credits']").value) || 0,
-        prerequisites: row.querySelector("[data-field='prerequisites']").value.split(",").map(value => value.trim()).filter(Boolean),
-        notes: row.querySelector("[data-field='notes']").value.trim(),
-      })),
-    })),
-  };
-}
-
-function upsertProgram(program) {
-  const index = programs.findIndex(item => item.requirement_id === program.requirement_id);
-  if (index >= 0) programs[index] = program;
-  else programs.push(program);
-  programs.sort((left, right) => `${left.program_name}${left.catalog_year}`.localeCompare(`${right.program_name}${right.catalog_year}`));
-  renderLibrary();
-}
-
-async function confirmRequirements(overwrite = false) {
-  reviewRequirements = collectReview();
-  const data = await apiRequest(root.dataset.confirmUrl, {
-    method: "POST",
-    body: JSON.stringify({ confirm: true, requirements: reviewRequirements, source_filename: reviewSourceFilename, overwrite }),
-  });
-  upsertProgram(data.program_requirement);
-  byId("requirements-review").hidden = true;
-  showAlert(overwrite ? "Confirmed requirements were updated." : "Program requirements confirmed.");
-  selectProgram(data.program_requirement);
-}
-
-function appendMessage(role, content) {
-  const message = document.createElement("div");
+function appendMessage(role, content, persist = true) {
+  const messages = byId("faculty-chat-messages");
+  byId("faculty-chat-empty").hidden = true;
+  messages.hidden = false;
+  const message = document.createElement("article");
   message.className = `faculty-chat-message faculty-chat-message-${role}`;
-  message.append(textNode("span", role === "assistant" ? "Cora" : "You"), textNode("p", content));
-  byId("faculty-chat-messages").append(message);
-  message.scrollIntoView({ block: "nearest" });
+  const avatar = document.createElement("span");
+  avatar.className = "faculty-chat-avatar";
+  if (role === "assistant") avatar.append(icon("ot-icon-sparkle"));
+  else avatar.textContent = (window.CURRENT_USER_NAME || "You").split(/\s+/).map(part => part[0]).join("").slice(0, 2).toUpperCase();
+  const copy = document.createElement("p");
+  copy.textContent = content;
+  message.append(avatar, copy);
+  messages.append(message);
+  messages.scrollTop = messages.scrollHeight;
+  if (persist) {
+    facultySession.chatMessages.push({ role, content });
+    writeSession();
+  }
 }
 
-function renderDraft(draft) {
-  currentDraft = draft;
-  byId("download-plan").disabled = !draft;
-  byId("draft-plan-empty").hidden = Boolean(draft);
-  const preview = byId("draft-plan-preview");
-  preview.hidden = !draft;
-  preview.replaceChildren();
-  if (!draft) return;
+function renderMessages() {
+  byId("faculty-chat-messages").replaceChildren();
+  if (!facultySession.chatMessages.length) {
+    byId("faculty-chat-empty").hidden = false;
+    byId("faculty-chat-messages").hidden = true;
+    return;
+  }
+  facultySession.chatMessages.forEach(message => appendMessage(message.role, message.content, false));
+}
 
-  preview.append(textNode("h3", draft.student_major || "Academic plan"));
-  (draft.semesters || []).forEach(semester => {
+function courseCategory(code) {
+  for (const category of selectedProgram?.requirements?.categories || []) {
+    if ((category.courses || []).some(course => course.code === code)) return category.name || "Major";
+  }
+  return "Elective";
+}
+
+function renderPlanView(container, draft) {
+  (draft.semesters || []).forEach((semester, index) => {
     const section = document.createElement("section");
-    section.className = "faculty-draft-semester";
-    section.append(textNode("h4", semester.label || "Semester"));
+    section.className = "faculty-plan-semester";
+    const header = document.createElement("header");
+    const number = document.createElement("b"); number.textContent = index + 1;
+    const label = document.createElement("strong"); label.textContent = semester.label || "Semester";
+    const total = document.createElement("span");
+    total.textContent = `${(semester.courses || []).reduce((sum, course) => sum + Number(course.credits || 0), 0)} credits`;
+    header.append(number, label, total);
     const list = document.createElement("ul");
     (semester.courses || []).forEach(course => {
       const item = document.createElement("li");
-      item.append(textNode("strong", course.code || ""), textNode("span", course.title || ""), textNode("small", `${course.credits ?? 0} credits`));
-      list.append(item);
+      const title = document.createElement("span"); title.textContent = [course.code, course.title].filter(Boolean).join(" — ");
+      const pill = document.createElement("span"); pill.className = "faculty-course-pill"; pill.textContent = course.category || courseCategory(course.code);
+      const credits = document.createElement("small"); credits.textContent = `${course.credits || 0} cr`;
+      item.append(title, pill, credits); list.append(item);
     });
-    section.append(list);
-    preview.append(section);
+    section.append(header, list); container.append(section);
   });
-  preview.append(textNode("p", `Total planned credits: ${draft.total_credits ?? 0}`, "faculty-draft-total"));
-  if (draft.notes) preview.append(textNode("p", draft.notes, "faculty-draft-notes"));
 }
 
-function selectProgram(program) {
-  const changedProgram = selectedProgram?.requirement_id !== program.requirement_id;
-  selectedProgram = program;
-  byId("selected-program-label").textContent = `${program.program_name} · ${program.catalog_year}`;
-  byId("requirements-review").hidden = true;
-  byId("faculty-planning-state").hidden = false;
-  byId("faculty-chat-messages").replaceChildren();
-  appendMessage("assistant", "Tell me the student's intended major, completed coursework, and any scheduling constraints. I’ll ask for anything else needed before drafting a plan.");
-  renderDraft(null);
-  if (changedProgram) apiRequest(root.dataset.resetUrl, { method: "POST" }).catch(() => {});
-  byId("faculty-chat-input").focus();
-}
-
-byId("requirements-upload-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  clearAlert();
-  const form = event.currentTarget;
-  setBusy(form, true, "Extracting…");
-  try {
-    const data = await apiRequest(root.dataset.importUrl, { method: "POST", body: new FormData(form) });
-    reviewRequirements = data.requirements;
-    reviewSourceFilename = data.source_filename || form.elements.file.files[0]?.name || "";
-    renderReview();
-  } catch (error) {
-    showAlert(errorMessage(error), true);
-  } finally {
-    setBusy(form, false);
-  }
-});
-
-byId("requirements-review-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  clearAlert();
-  setBusy(event.currentTarget, true, "Confirming…");
-  try {
-    await confirmRequirements(false);
-  } catch (error) {
-    if (error.status === 409 && error.data?.existing) {
-      const existing = error.data.existing;
-      byId("overwrite-summary").textContent = `${existing.program_name} (${existing.catalog_year}) has ${existing.course_count} courses across ${existing.category_count} categories. It was last updated ${new Date(existing.updated_at).toLocaleString()}.`;
-      byId("overwrite-warning").hidden = false;
-    } else {
-      showAlert(errorMessage(error), true);
-    }
-  } finally {
-    setBusy(event.currentTarget, false);
-  }
-});
-
-byId("overwrite-requirements").addEventListener("click", async event => {
-  event.currentTarget.disabled = true;
-  try {
-    await confirmRequirements(true);
-  } catch (error) {
-    showAlert(errorMessage(error), true);
-  } finally {
-    event.currentTarget.disabled = false;
-  }
-});
-
-byId("add-requirement-category").addEventListener("click", () => {
-  reviewRequirements = collectReview();
-  reviewRequirements.categories.push({ name: "", credits_required: 0, courses: [] });
-  renderReview();
-});
-
-byId("cancel-requirements-review").addEventListener("click", () => {
-  reviewRequirements = null;
-  byId("requirements-review").hidden = true;
-});
-
-byId("faculty-chat-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  if (!selectedProgram) return;
-  const inputControl = byId("faculty-chat-input");
-  const message = inputControl.value.trim();
-  if (!message) return;
-  inputControl.value = "";
-  appendMessage("user", message);
-  setBusy(event.currentTarget, true, "Thinking…");
-  try {
-    const data = await apiRequest(root.dataset.chatUrl, {
-      method: "POST",
-      body: JSON.stringify({ program_requirement_id: selectedProgram.requirement_id, message }),
-    });
-    appendMessage("assistant", data.reply);
-    if (data.draft_plan) renderDraft(data.draft_plan);
-  } catch (error) {
-    showAlert(errorMessage(error), true);
-    inputControl.value = message;
-  } finally {
-    setBusy(event.currentTarget, false);
-    inputControl.focus();
-  }
-});
-
-byId("new-student").addEventListener("click", async () => {
-  try {
-    await apiRequest(root.dataset.resetUrl, { method: "POST" });
-    byId("faculty-chat-messages").replaceChildren();
-    appendMessage("assistant", "Ready for a new student. Share their intended major, completed coursework, and scheduling constraints.");
-    renderDraft(null);
-    showAlert("The previous student's session details were cleared.");
-  } catch (error) {
-    showAlert(errorMessage(error), true);
-  }
-});
-
-byId("download-plan").addEventListener("click", async event => {
-  if (!currentDraft) return;
-  event.currentTarget.disabled = true;
-  try {
-    const response = await fetch(root.dataset.exportUrl, {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "X-CSRFToken": getCsrfToken(), "Accept": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" },
-    });
-    if (!response.ok) {
-      const data = (response.headers.get("content-type") || "").includes("application/json") ? await response.json() : null;
-      throw new Error(data?.detail || `Download failed with status ${response.status}.`);
-    }
-    const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    const disposition = response.headers.get("content-disposition") || "";
-    const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1];
-    link.download = filename || "academic-plan.docx";
-    document.body.append(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(link.href);
-  } catch (error) {
-    showAlert(errorMessage(error), true);
-  } finally {
-    event.currentTarget.disabled = false;
-  }
-});
-
-const uploadInput = byId("requirements-upload-form").elements.file;
-const dropzone = uploadInput.closest(".materials-dropzone");
-uploadInput.addEventListener("change", () => {
-  document.querySelector(".materials-dropzone-filename").textContent = uploadInput.files[0]?.name || "";
-});
-["dragenter", "dragover"].forEach(type => dropzone.addEventListener(type, event => {
-  event.preventDefault();
-  dropzone.classList.add("materials-dropzone-active");
-}));
-["dragleave", "drop"].forEach(type => dropzone.addEventListener(type, event => {
-  event.preventDefault();
-  dropzone.classList.remove("materials-dropzone-active");
-}));
-dropzone.addEventListener("drop", event => {
-  const workbook = [...event.dataTransfer.files].find(file => file.name.toLowerCase().endsWith(".xlsx"));
-  if (!workbook) {
-    showAlert("Choose an XLSX workbook.", true);
+function renderRequirements(container) {
+  if (!selectedProgram) {
+    container.innerHTML = '<p class="faculty-plan-text">No confirmed curriculum is available yet. Add program requirements before generating a grounded plan.</p>';
     return;
   }
-  const transfer = new DataTransfer();
-  transfer.items.add(workbook);
-  uploadInput.files = transfer.files;
-  uploadInput.dispatchEvent(new Event("change"));
+  const heading = document.createElement("h3"); heading.className = "faculty-plan-text"; heading.textContent = `${selectedProgram.program_name} · ${selectedProgram.catalog_year}`; container.append(heading);
+  (selectedProgram.requirements?.categories || []).forEach(category => {
+    const section = document.createElement("section"); section.className = "faculty-plan-semester";
+    const header = document.createElement("header");
+    const label = document.createElement("strong"); label.textContent = category.name;
+    const credits = document.createElement("span"); credits.textContent = `${category.credits_required || 0} credits`;
+    header.append(label, credits);
+    const list = document.createElement("ul");
+    (category.courses || []).forEach(course => { const item = document.createElement("li"); item.textContent = `${course.code} — ${course.title}`; list.append(item); });
+    section.append(header, list); container.append(section);
+  });
+}
+
+function renderPlan() {
+  const draft = facultySession.generatedPlan;
+  byId("faculty-plan-empty").hidden = Boolean(draft);
+  byId("faculty-plan-content").hidden = !draft;
+  byId("faculty-plan-actions").hidden = !draft;
+  one("[data-plan-badge]").hidden = !draft || !facultySession.activeFile;
+  setText("#faculty-plan-subtitle", draft?.student_major || "");
+  if (!draft) return;
+  const content = byId("faculty-plan-content"); content.replaceChildren();
+  if (activePlanTab === "requirements") renderRequirements(content);
+  else if (activePlanTab === "notes") {
+    const notes = document.createElement("p"); notes.className = "faculty-plan-text"; notes.textContent = draft.notes || "No additional notes for this plan."; content.append(notes);
+  } else renderPlanView(content, draft);
+}
+
+async function clearChat() {
+  facultySession.chatMessages = [];
+  facultySession.generatedPlan = null;
+  writeSession(); renderMessages(); renderPlan();
+  try { await apiRequest(root.dataset.resetUrl, { method: "POST" }); }
+  catch (error) { showAlert(errorMessage(error), true); }
+}
+
+async function clearSession() {
+  facultySession = emptySession();
+  sessionStorage.removeItem(storageKey);
+  renderSession(); renderMessages(); renderPlan();
+  try { await apiRequest(root.dataset.resetUrl, { method: "POST" }); }
+  catch (error) { showAlert(errorMessage(error), true); }
+}
+
+all("[data-prompt]").forEach(button => button.addEventListener("click", () => {
+  byId("faculty-chat-input").value = button.dataset.prompt;
+  byId("faculty-chat-input").focus();
+}));
+
+all("[data-workflow]").forEach(button => button.addEventListener("click", () => {
+  if (button.hasAttribute("data-requires-file") && !facultySession.activeFile) {
+    showAlert("Upload an advising file before using student-specific analysis.", true);
+    return;
+  }
+  byId("faculty-chat-input").value = button.dataset.workflow;
+  byId("faculty-chat-input").focus();
+}));
+
+all("[data-plan-tab]").forEach(button => button.addEventListener("click", () => {
+  activePlanTab = button.dataset.planTab;
+  all("[data-plan-tab]").forEach(tab => tab.setAttribute("aria-selected", String(tab === button)));
+  renderPlan();
+}));
+
+one("[data-remove-file]")?.addEventListener("click", () => {
+  facultySession.activeFile = null; facultySession.detectedColumns = []; facultySession.majors = []; facultySession.rowCount = 0; facultySession.generatedPlan = null;
+  writeSession(); renderSession(); renderPlan();
+});
+one("[data-clear-chat]")?.addEventListener("click", clearChat);
+one("[data-clear-session]")?.addEventListener("click", clearSession);
+one("[data-clear-selected-template]")?.addEventListener("click", () => {
+  sessionStorage.removeItem(selectedTemplateKey);
+  renderSelectedTemplate();
 });
 
-renderLibrary();
+byId("faculty-chat-form")?.addEventListener("submit", async event => {
+  event.preventDefault();
+  const input = byId("faculty-chat-input");
+  const message = input.value.trim();
+  if (!message) return;
+  appendMessage("user", message); input.value = "";
+  if (!selectedProgram) {
+    appendMessage("assistant", "I need a confirmed program curriculum before I can give grounded academic guidance. Please add program requirements from the faculty workflow first.");
+    return;
+  }
+  const submit = event.currentTarget.querySelector("button[type='submit']"); submit.disabled = true;
+  try {
+    const data = await apiRequest(root.dataset.chatUrl, { method: "POST", body: JSON.stringify({ program_requirement_id: selectedProgram.requirement_id, message }) });
+    appendMessage("assistant", data.reply);
+    if (data.draft_plan) { facultySession.generatedPlan = data.draft_plan; writeSession(); renderPlan(); }
+  } catch (error) { appendMessage("assistant", errorMessage(error)); }
+  finally { submit.disabled = false; input.focus(); }
+});
+
+one("[data-copy-plan]")?.addEventListener("click", async () => {
+  const draft = facultySession.generatedPlan;
+  if (!draft) return;
+  const summary = (draft.semesters || []).map(semester => `${semester.label}: ${(semester.courses || []).map(course => course.code || course.title).join(", ")}`).join("\n");
+  await navigator.clipboard.writeText(summary);
+  showAlert("Plan summary copied.");
+});
+
+one("[data-export-plan]")?.addEventListener("click", async () => {
+  try {
+    const response = await fetch(root.dataset.exportUrl, { method: "POST", headers: { "X-CSRFToken": getCsrfToken() }, credentials: "same-origin" });
+    if (!response.ok) throw new Error("Create a plan before exporting it.");
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob); const link = document.createElement("a");
+    link.href = url; link.download = "academic-plan.docx"; link.click(); URL.revokeObjectURL(url);
+  } catch (error) { showAlert(errorMessage(error), true); }
+});
+
+renderSession(); renderMessages(); renderPlan(); renderSelectedTemplate();

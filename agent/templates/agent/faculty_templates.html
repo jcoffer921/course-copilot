@@ -1,0 +1,93 @@
+{% extends "agent/app_base.html" %}
+
+{% block page_content %}
+<div class="faculty-page faculty-templates-page">
+  <header class="faculty-page-header faculty-templates-header">
+    <div class="faculty-heading-mark faculty-template-mark"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg></div>
+    <div class="faculty-page-title">
+      <h1>Plan Templates</h1>
+      <p>Start faster with reusable academic planning templates for advising sessions.</p>
+    </div>
+    <div class="faculty-header-actions">
+      <span class="faculty-avatar" aria-label="Signed in as {{ display_name }}">{{ user_initials }}</span>
+    </div>
+  </header>
+
+  <div class="faculty-template-controls">
+    <label class="faculty-template-search" for="template-search"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-search"/></svg><span class="sr-only">Search templates</span><input id="template-search" type="search" autocomplete="off" placeholder="Search templates by name, description, or tag..."></label>
+    <div class="faculty-template-filters" role="group" aria-label="Filter templates">
+      <button type="button" class="is-active" data-template-filter="all" aria-pressed="true">All Templates</button>
+      <button type="button" data-template-filter="4-year-plan" aria-pressed="false">4-Year Plans</button>
+      <button type="button" data-template-filter="transfer" aria-pressed="false">Transfer</button>
+      <button type="button" data-template-filter="major-exploration" aria-pressed="false">Major Exploration</button>
+      <button type="button" data-template-filter="graduation-check" aria-pressed="false">Graduation Check</button>
+      <button type="button" data-template-filter="advising-notes" aria-pressed="false">Advising Notes</button>
+    </div>
+    <button type="button" class="faculty-template-create" data-open-template-builder><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-plus"/></svg>Create template</button>
+  </div>
+
+  <section class="faculty-template-banner" aria-labelledby="template-privacy-title">
+    <span><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg></span>
+    <div><h2 id="template-privacy-title">Templates store reusable structure only</h2><p>Templates help you create consistent academic plans for advising sessions. They do not store any student-specific data.</p></div>
+    <a href="{% url 'privacy-page' %}">Learn more about templates <span aria-hidden="true">→</span></a>
+  </section>
+
+  <div class="faculty-template-workspace">
+    <section aria-label="Template library">
+      <div id="template-library" class="faculty-template-library">
+        <article class="faculty-template-card is-selected" data-template-card="four-year-plan">
+          <div class="faculty-template-icon faculty-template-icon-purple"><svg class="ot-icon"><use href="#ot-icon-study"/></svg></div><div class="faculty-template-card-copy"><h2>4-Year Plan Template</h2><p>Traditional degree path with semester-by-semester course planning.</p><div class="faculty-template-tags"><span>4-Year Plan</span><span>Undergraduate</span><span>Core</span></div><small>Updated Aug 28, 2026</small></div>
+          <div class="faculty-template-card-actions"><button type="button" data-use-template="four-year-plan"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use template</button><button type="button" data-preview-template="four-year-plan"><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview</button><button type="button" class="faculty-template-more" data-template-menu="four-year-plan" aria-label="More actions for 4-Year Plan Template" aria-expanded="false"><svg class="ot-icon"><use href="#ot-icon-more"/></svg></button></div>
+        </article>
+        <article class="faculty-template-card" data-template-card="transfer-student">
+          <div class="faculty-template-icon faculty-template-icon-green"><svg class="ot-icon"><use href="#ot-icon-trend"/></svg></div><div class="faculty-template-card-copy"><h2>Transfer Student Template</h2><p>Degree plan for transfer students with flexible course mapping.</p><div class="faculty-template-tags"><span>Transfer</span><span>Course Mapping</span><span>Flexible</span></div><small>Updated Aug 20, 2026</small></div>
+          <div class="faculty-template-card-actions"><button type="button" data-use-template="transfer-student"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use template</button><button type="button" data-preview-template="transfer-student"><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview</button><button type="button" class="faculty-template-more" data-template-menu="transfer-student" aria-label="More actions for Transfer Student Template" aria-expanded="false"><svg class="ot-icon"><use href="#ot-icon-more"/></svg></button></div>
+        </article>
+        <article class="faculty-template-card" data-template-card="major-exploration">
+          <div class="faculty-template-icon faculty-template-icon-blue"><svg class="ot-icon"><use href="#ot-icon-cora"/></svg></div><div class="faculty-template-card-copy"><h2>Major Exploration Template</h2><p>Help students explore majors with sample course pathways.</p><div class="faculty-template-tags"><span>Exploration</span><span>Multiple Majors</span><span>Guidance</span></div><small>Updated Aug 15, 2026</small></div>
+          <div class="faculty-template-card-actions"><button type="button" data-use-template="major-exploration"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use template</button><button type="button" data-preview-template="major-exploration"><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview</button><button type="button" class="faculty-template-more" data-template-menu="major-exploration" aria-label="More actions for Major Exploration Template" aria-expanded="false"><svg class="ot-icon"><use href="#ot-icon-more"/></svg></button></div>
+        </article>
+        <article class="faculty-template-card" data-template-card="graduation-check">
+          <div class="faculty-template-icon faculty-template-icon-green"><svg class="ot-icon"><use href="#ot-icon-check"/></svg></div><div class="faculty-template-card-copy"><h2>Graduation Check Template</h2><p>Track remaining degree requirements and outstanding courses.</p><div class="faculty-template-tags"><span>Graduation</span><span>Requirements</span><span>Audit</span></div><small>Updated Aug 12, 2026</small></div>
+          <div class="faculty-template-card-actions"><button type="button" data-use-template="graduation-check"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use template</button><button type="button" data-preview-template="graduation-check"><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview</button><button type="button" class="faculty-template-more" data-template-menu="graduation-check" aria-label="More actions for Graduation Check Template" aria-expanded="false"><svg class="ot-icon"><use href="#ot-icon-more"/></svg></button></div>
+        </article>
+        <article class="faculty-template-card faculty-template-card-wide" data-template-card="advising-notes">
+          <div class="faculty-template-icon faculty-template-icon-purple"><svg class="ot-icon"><use href="#ot-icon-assignment"/></svg></div><div class="faculty-template-card-copy"><h2>Semester Advising Notes</h2><p>Structured notes for advising sessions with action items and follow-ups.</p><div class="faculty-template-tags"><span>Advising Notes</span><span>Checklists</span><span>Follow-up</span></div><small>Updated Aug 10, 2026</small></div>
+          <div class="faculty-template-card-actions"><button type="button" data-use-template="advising-notes"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use template</button><button type="button" data-preview-template="advising-notes"><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview</button><button type="button" class="faculty-template-more" data-template-menu="advising-notes" aria-label="More actions for Semester Advising Notes" aria-expanded="false"><svg class="ot-icon"><use href="#ot-icon-more"/></svg></button></div>
+        </article>
+      </div>
+      <div id="template-empty" class="faculty-template-empty" hidden><div><svg class="ot-icon"><use href="#ot-icon-search"/></svg></div><h2>No templates found</h2><p>Try changing your search or create a new template for your advising workflow.</p><div><button type="button" data-clear-template-filters>Clear filters</button><button type="button" data-open-template-builder>Create template</button></div></div>
+    </section>
+
+    <aside id="template-detail" class="faculty-template-detail" aria-label="Selected template details" tabindex="-1">
+      <header><div class="faculty-template-icon faculty-template-icon-purple"><svg class="ot-icon"><use href="#ot-icon-study"/></svg></div><div><div class="faculty-template-detail-title"><h2 data-detail-name>4-Year Plan Template</h2><span data-detail-featured>Featured</span></div><p data-detail-description>Traditional degree path with semester-by-semester course planning.</p><div class="faculty-template-tags" data-detail-tags><span>4-Year Plan</span><span>Undergraduate</span><span>Core</span></div></div></header>
+      <div class="faculty-template-meta"><span><svg class="ot-icon"><use href="#ot-icon-calendar"/></svg><span data-detail-updated>Updated Aug 28, 2026</span></span><span><svg class="ot-icon"><use href="#ot-icon-profile"/></svg><span data-detail-owner>Created by OnTrack Team</span></span></div>
+      <div class="faculty-template-tabs" role="tablist"><button type="button" role="tab" aria-selected="true" aria-controls="template-structure-panel" data-detail-tab="structure">Template structure</button><button type="button" role="tab" aria-selected="false" aria-controls="template-about-panel" data-detail-tab="about">About this template</button></div>
+      <div id="template-structure-panel" role="tabpanel" class="faculty-template-panel"><h3>Sample template structure</h3><p data-structure-summary>This template includes 8 semesters with core courses, major requirements, and electives.</p><div data-template-terms class="faculty-template-terms"></div></div>
+      <div id="template-about-panel" role="tabpanel" class="faculty-template-panel faculty-template-about" hidden><h3>Reusable, privacy-conscious planning</h3><p data-detail-about>This system template provides a generic planning scaffold. Apply it in Cora, then add temporary advising context for the current session.</p><div><svg class="ot-icon"><use href="#ot-icon-shield"/></svg><span><strong>Templates may persist. Student context does not.</strong><small>No student names, IDs, GPAs, or academic history are saved in this template.</small></span></div></div>
+      <footer><button type="button" data-use-selected><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use this template</button><button type="button" data-preview-selected><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview template</button></footer>
+    </aside>
+  </div>
+</div>
+
+<div id="template-builder" class="faculty-template-modal" hidden>
+  <section role="dialog" aria-modal="true" aria-labelledby="template-builder-title">
+    <header><div><span>Reusable structure</span><h2 id="template-builder-title">Create a plan template</h2><p>Build a generic planning scaffold. Do not include student information.</p></div><button type="button" data-close-template-builder aria-label="Close template builder"><svg class="ot-icon"><use href="#ot-icon-close"/></svg></button></header>
+    <form id="template-form">
+      <div class="faculty-template-form-grid">
+        <label>Template name<input name="name" maxlength="80" required placeholder="e.g. First-year engineering plan"></label>
+        <label>Template type<select name="category" required><option value="4-year-plan">4-Year Plan</option><option value="transfer">Transfer</option><option value="major-exploration">Major Exploration</option><option value="graduation-check">Graduation Check</option><option value="advising-notes">Advising Notes</option></select></label>
+        <label class="faculty-template-field-wide">Description<textarea name="description" maxlength="240" rows="3" required placeholder="Describe when faculty should use this structure"></textarea></label>
+        <label>Tags<input name="tags" maxlength="120" placeholder="Major Requirements, Electives"></label>
+        <label>Number of terms<input name="termCount" type="number" min="1" max="16" value="8" required></label>
+        <label>Minimum credits<input name="creditMin" type="number" min="0" max="30" value="12" required></label>
+        <label>Maximum credits<input name="creditMax" type="number" min="0" max="30" value="16" required></label>
+        <label class="faculty-template-field-wide">Structural sections<textarea name="sections" rows="3" required>Major Requirements, General Education, Electives, Support Courses, Capstone</textarea></label>
+        <label class="faculty-template-field-wide">Optional placeholder categories<textarea name="placeholders" rows="2" placeholder="Advising Notes, Follow-up actions"></textarea></label>
+      </div>
+      <p class="faculty-template-form-note"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg>This form stores template structure only. Student data belongs in the temporary Cora session.</p>
+      <footer><button type="button" data-close-template-builder>Cancel</button><button type="submit">Create template</button></footer>
+    </form>
+  </section>
+</div>
+{% endblock %}

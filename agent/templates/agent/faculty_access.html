@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Faculty access · OnTrack</title>
+  <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
+  <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
+  <link rel="stylesheet" href="{% static 'agent/css/auth.css' %}?v=20260925-1">
+</head>
+<body class="auth-page faculty-access-page">
+  <main class="faculty-access-shell">
+    <section class="faculty-access-panel">
+      <div class="faculty-access-wrap">
+        <a class="public-brand" href="{% url 'ontrack' %}" aria-label="OnTrack home"><img src="{% static 'agent/images/ontrack-icon.png' %}" alt=""><span>OnTrack</span></a>
+        <a class="auth-back" href="{% url 'signup-page' %}"><span aria-hidden="true">←</span> Back to account options</a>
+
+        <div class="faculty-access-heading">
+          <span class="faculty-access-mark" aria-hidden="true">✓</span>
+          <p class="auth-eyebrow">Faculty workspace</p>
+          <h1>Faculty access</h1>
+          <p>Enter the access code provided by your institution, then continue securely with your verified Google account.</p>
+        </div>
+
+        {% if error %}<div class="auth-message" role="alert"><span aria-hidden="true">!</span><p>{{ error }}</p></div>{% endif %}
+
+        {% if faculty_demo_code %}
+        <div class="faculty-demo-code">
+          <span>Local test code</span>
+          <strong>{{ faculty_demo_code }}</strong>
+          <small>Shown only in local development mode.</small>
+        </div>
+        {% endif %}
+
+        <form class="auth-form faculty-access-form" method="post">
+          {% csrf_token %}
+          <label class="auth-field" for="faculty-access-code">
+            <span>Faculty access code</span>
+            <input id="faculty-access-code" name="access_code" type="text" maxlength="100" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" required autofocus placeholder="Enter your access code">
+          </label>
+          <button type="submit" class="google-auth-button faculty-access-submit">
+            <svg width="19" height="19" viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.9 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.7-.4-3.5z"/><path fill="#FF3D00" d="m6.3 14.7 6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.9 1.2 8 3.1l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.3 0-9.7-3.1-11.3-7.8l-6.5 5C9.6 39.6 16.3 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.2-4.1 5.6l6.2 5.2C40.9 36 44 30.9 44 24c0-1.3-.1-2.7-.4-3.5z"/></svg>
+            <span>{% if user.is_authenticated %}Unlock faculty workspace{% else %}Continue with Google{% endif %}</span>
+          </button>
+        </form>
+
+        <p class="faculty-access-help">Need a code? Contact your OnTrack administrator. Access codes grant faculty tools but never change how temporary student context is handled.</p>
+      </div>
+    </section>
+    <aside class="faculty-access-visual" aria-label="Faculty planning workspace preview">
+      <div class="faculty-access-visual-copy"><span>Plan with confidence</span><h2>Reusable structure.<br>Temporary context.</h2><p>Build grounded academic plans without turning OnTrack into a student-record system.</p></div>
+      <div class="faculty-access-preview" aria-hidden="true">
+        <div class="faculty-access-preview-head"><i></i><span><b></b><b></b></span></div>
+        <div class="faculty-access-preview-row"><strong>Year 1 — Fall</strong><span></span><small>12–16 credits</small></div>
+        <div class="faculty-access-preview-row"><strong>Year 1 — Spring</strong><span></span><small>12–16 credits</small></div>
+        <div class="faculty-access-preview-row"><strong>Year 2 — Fall</strong><span></span><small>12–16 credits</small></div>
+        <div class="faculty-access-preview-note">Student context clears with the advising session.</div>
+      </div>
+    </aside>
+  </main>
+</body>
+</html>

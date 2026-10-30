@@ -1,111 +1,100 @@
 {% extends "agent/app_base.html" %}
 {% block page_content %}
-<div class="faculty-planner-page materials-page"
-     data-import-url="/api/faculty/requirements/import/"
-     data-confirm-url="/api/faculty/requirements/confirm/"
+<div class="faculty-page faculty-cora-page"
+     data-session-storage-key="ontrack.facultySession"
+     data-requirements-import-url="/api/faculty/requirements/import/"
+     data-requirements-confirm-url="/api/faculty/requirements/confirm/"
      data-chat-url="/api/faculty/plan/chat/"
      data-reset-url="/api/faculty/plan/reset/"
      data-export-url="/api/faculty/plan/export/">
-  <header class="faculty-planner-header">
-    <div>
-      <p class="faculty-planner-kicker">Faculty workspace</p>
-      <h1>Academic plan builder</h1>
-      <p>Import curriculum requirements, verify every course, then work with Cora on a grounded student plan.</p>
-    </div>
+  <header class="faculty-page-header faculty-cora-header">
+    <div class="faculty-heading-mark faculty-cora-mark"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-sparkle"/></svg></div>
+    <div class="faculty-page-title"><h1>Cora Advising Assistant</h1><p>Ask Cora to analyze uploaded advising data and generate academic planning guidance for this session.</p></div>
+    <div class="faculty-session-badge"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-shield"/></svg><span><strong>No student data is stored</strong><small>Files are processed temporarily and cleared after this session.</small></span></div>
+    <div class="faculty-header-actions"><button class="faculty-notification" type="button" aria-label="Notifications"><svg class="ot-icon"><use href="#ot-icon-bell"/></svg><span>3</span></button><span class="faculty-avatar">{{ user_initials }}</span></div>
   </header>
 
-  <div id="faculty-planner-alert" class="materials-alert" role="status" aria-live="polite" hidden></div>
+  <div id="faculty-cora-alert" class="faculty-cora-alert" role="status" aria-live="polite" hidden></div>
+  <div id="faculty-template-selection" class="faculty-template-selection" hidden>
+    <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg>
+    <span><strong data-selected-template-name></strong><small>Selected as the reusable scaffold for this temporary advising session.</small></span>
+    <a href="{% url 'faculty-templates' %}">Change template</a>
+    <button type="button" data-clear-selected-template aria-label="Clear selected template"><svg class="ot-icon"><use href="#ot-icon-close"/></svg></button>
+  </div>
 
-  <div class="materials-body-split faculty-planner-layout">
-    <div class="materials-body-main">
-      <section class="card elev-sm materials-upload-card-unified" aria-labelledby="requirements-upload-title">
-        <div class="materials-section-heading">
-          <div>
-            <p class="faculty-step-label">Step 1</p>
-            <h2 id="requirements-upload-title">Import program requirements</h2>
-          </div>
+  <div class="faculty-cora-workspace">
+    <aside class="faculty-cora-left" aria-label="Current advising session">
+      <section class="faculty-card faculty-session-card">
+        <header class="faculty-panel-heading"><span class="faculty-panel-icon"><svg class="ot-icon"><use href="#ot-icon-archive"/></svg></span><h2>Current session</h2><span class="faculty-status-badge" data-file-badge>No active file</span></header>
+        <div data-empty-state class="faculty-file-empty">
+          <svg class="ot-icon"><use href="#ot-icon-material"/></svg><strong>No advising file uploaded yet</strong>
+          <p>Upload an Excel or CSV file on the Import Data page to begin.</p>
+          <a class="faculty-button faculty-button-primary" href="{% url 'faculty-import' %}"><svg class="ot-icon"><use href="#ot-icon-upload"/></svg>Go to Import Data</a>
         </div>
-        <p class="faculty-section-copy">Upload an Excel workbook. Nothing is saved until you review and confirm the extracted curriculum.</p>
-        <form id="requirements-upload-form">
-          <div class="materials-dropzone" data-dropzone-for="requirements-upload-form">
-            <svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-upload"/></svg>
-            <p>Drag and drop a workbook here, or</p>
-            <label class="btn btn-secondary">Choose Excel file<input class="sr-only" name="file" type="file" accept=".xlsx" required></label>
-            <span class="materials-dropzone-filename" aria-live="polite"></span>
-          </div>
-          <p class="materials-formats">Supported: XLSX</p>
-          <button class="btn btn-primary" type="submit">Extract for review</button>
+        <div data-active-state class="faculty-active-file" hidden>
+          <span class="faculty-file-icon"><svg class="ot-icon"><use href="#ot-icon-material"/></svg></span><span><strong data-session-filename></strong><small data-session-uploaded></small></span>
+          <button type="button" data-remove-file aria-label="Remove file"><svg class="ot-icon"><use href="#ot-icon-close"/></svg></button>
+        </div>
+        <div class="faculty-session-context">
+          <h3>Session context <span data-active-state hidden>(detected)</span></h3>
+          <dl>
+            <div><dt><svg class="ot-icon"><use href="#ot-icon-study"/></svg><span>Majors in file<small data-majors-copy>Will appear after upload</small></span></dt><dd data-majors-count>—</dd></div>
+            <div><dt><svg class="ot-icon"><use href="#ot-icon-users"/></svg><span>Total students<small data-students-copy>Will appear after upload</small></span></dt><dd data-student-count>—</dd></div>
+            <div><dt><svg class="ot-icon"><use href="#ot-icon-assignment"/></svg><span>Columns detected<small data-columns-copy>Will appear after upload</small></span></dt><dd data-column-count>—</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="faculty-card faculty-workflow-card">
+        <header class="faculty-panel-heading"><span class="faculty-panel-icon"><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg></span><h2>Try these workflows</h2></header>
+        <div class="faculty-workflow-list">
+          <button type="button" data-workflow="Generate an academic plan for a student" data-requires-file><svg class="ot-icon"><use href="#ot-icon-archive"/></svg><span><strong>Generate plan</strong><small>Create an academic plan for a student</small></span><b>›</b></button>
+          <button type="button" data-workflow="Find students with missing degree requirements" data-requires-file><svg class="ot-icon"><use href="#ot-icon-check"/></svg><span><strong>Find missing requirements</strong><small>Identify what requirements are still needed</small></span><b>›</b></button>
+          <button type="button" data-workflow="Compare Computer Science and Data Science degree requirements"><svg class="ot-icon"><use href="#ot-icon-material"/></svg><span><strong>Compare majors</strong><small>Compare degree requirements across majors</small></span><b>›</b></button>
+          <button type="button" data-workflow="Analyze this cohort for advising patterns" data-requires-file><svg class="ot-icon"><use href="#ot-icon-trend"/></svg><span><strong>Analyze cohort</strong><small>Get insights on the whole uploaded file</small></span><b>›</b></button>
+          <button type="button" data-workflow="What should I know about course prerequisites and sequencing?"><svg class="ot-icon"><use href="#ot-icon-chat"/></svg><span><strong>Answer a question</strong><small>Ask about courses, prerequisites, or policies</small></span><b>›</b></button>
+        </div>
+        <div class="faculty-session-privacy"><svg class="ot-icon"><use href="#ot-icon-shield"/></svg><p><strong>Student data is processed only for this session and is not saved.</strong><span>Uploaded files are automatically cleared after you end this session.</span><a href="{% url 'privacy-page' %}">Learn more about our privacy practices →</a></p></div>
+      </section>
+    </aside>
+
+    <section class="faculty-card faculty-chat-shell" aria-label="Cora conversation">
+      <header class="faculty-panel-heading faculty-chat-heading"><span class="faculty-panel-icon"><svg class="ot-icon"><use href="#ot-icon-sparkle"/></svg></span><h2>Cora</h2><span class="faculty-online-dot"></span><small>Online</small><button type="button" class="faculty-clear-button" data-clear-chat><svg class="ot-icon"><use href="#ot-icon-close"/></svg>Clear chat</button></header>
+      <div class="faculty-chat-body">
+        <div id="faculty-chat-empty" class="faculty-chat-empty">
+          <div class="faculty-cora-illustration" aria-hidden="true"><span class="faculty-bot-antenna"></span><div><i></i><i></i><b></b></div><svg class="ot-icon"><use href="#ot-icon-material"/></svg></div>
+          <h2>Hi! I’m Cora, your academic<br>planning assistant.</h2>
+          <p>Upload advising data to get personalized academic plans,<br>or ask a general advising question to get started.</p>
+        </div>
+        <div id="faculty-chat-messages" class="faculty-chat-messages" aria-live="polite" hidden></div>
+      </div>
+      <div class="faculty-composer-wrap">
+        <form id="faculty-chat-form" class="faculty-chat-composer">
+          <a href="{% url 'faculty-import' %}" aria-label="Attach a file"><svg class="ot-icon"><use href="#ot-icon-paperclip"/></svg></a>
+          <label class="sr-only" for="faculty-chat-input">Ask Cora about academic planning</label>
+          <textarea id="faculty-chat-input" rows="1" maxlength="4000" placeholder="Ask Cora about academic planning..." required></textarea>
+          <button class="faculty-send-button" type="submit" aria-label="Send message"><svg class="ot-icon"><use href="#ot-icon-send"/></svg></button>
         </form>
-      </section>
+        <div class="faculty-prompt-chips" aria-label="Suggested prompts">
+          <button type="button" data-prompt="Create a 4-year plan for Computer Science">Create a 4-year plan for Computer Science</button><button type="button" data-prompt="What courses are required for Software Engineering?">What courses are required for Software Engineering?</button><button type="button" data-prompt="Compare CS vs Data Science">Compare CS vs Data Science</button><button type="button" data-prompt="Explain prerequisite sequencing">Explain prerequisite sequencing</button>
+        </div>
+      </div>
+    </section>
 
-      <section class="materials-library faculty-program-library" aria-labelledby="program-library-title">
-        <div class="materials-section-heading">
-          <div>
-            <p class="faculty-step-label">Or continue</p>
-            <h2 id="program-library-title">Program library</h2>
-          </div>
-        </div>
-        <div id="program-library-empty" class="shared-state shared-state-empty" hidden>
-          <h2>No confirmed programs yet</h2>
-          <p>Import and confirm a workbook to begin planning.</p>
-        </div>
-        <div id="program-library-list" class="faculty-program-list"></div>
+    <aside class="faculty-cora-right">
+      <section class="faculty-card faculty-plan-card">
+        <header class="faculty-panel-heading"><span class="faculty-panel-icon"><svg class="ot-icon"><use href="#ot-icon-assignment"/></svg></span><div><h2>Generated academic plan</h2><small id="faculty-plan-subtitle"></small></div><span class="faculty-status-badge faculty-data-badge" data-plan-badge hidden>Based on uploaded data</span></header>
+        <div class="faculty-plan-tabs" role="tablist"><button type="button" role="tab" aria-selected="true" data-plan-tab="plan">Plan view</button><button type="button" role="tab" aria-selected="false" data-plan-tab="requirements">Requirements</button><button type="button" role="tab" aria-selected="false" data-plan-tab="notes">Notes</button></div>
+        <div id="faculty-plan-empty" class="faculty-plan-empty"><div><svg class="ot-icon"><use href="#ot-icon-study"/></svg></div><h3>No academic plan yet</h3><p>Upload a file and ask Cora to generate a plan<br>based on temporary session data.</p><a class="faculty-button faculty-button-primary" href="{% url 'faculty-import' %}"><svg class="ot-icon"><use href="#ot-icon-upload"/></svg>Open Import Data</a><a class="faculty-button faculty-button-secondary" href="{% url 'faculty-templates' %}"><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Browse templates</a></div>
+        <div id="faculty-plan-content" class="faculty-plan-content" hidden></div>
+        <footer id="faculty-plan-actions" class="faculty-plan-actions" hidden><button type="button" class="faculty-button faculty-button-primary" data-export-plan><svg class="ot-icon"><use href="#ot-icon-upload"/></svg>Export plan</button><button type="button" class="faculty-button faculty-button-secondary" data-copy-plan>Copy summary</button><a class="faculty-button faculty-button-secondary" href="{% url 'faculty-dashboard' %}#templates">Use as template</a></footer>
       </section>
-    </div>
-
-    <div class="materials-body-side faculty-planner-side">
-      <section id="requirements-review" class="card elev-sm syllabus-review" aria-labelledby="requirements-review-title" hidden>
-        <div class="materials-section-heading">
-          <div class="review-title-row">
-            <span class="course-card-icon green"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg></span>
-            <div><p class="faculty-step-label">Step 2</p><h2 id="requirements-review-title">Review extraction</h2></div>
-          </div>
-          <span id="requirements-source-name" class="review-source-badge"></span>
-        </div>
-        <p>Correct any extraction errors before confirming. These requirements become Cora's only curriculum source.</p>
-        <form id="requirements-review-form">
-          <div class="faculty-review-basics">
-            <label class="materials-field">Program name<input id="review-program-name" class="input" type="text" maxlength="200" required></label>
-            <label class="materials-field">Catalog year<input id="review-catalog-year" class="input" type="text" maxlength="20" required></label>
-            <label class="materials-field">Total credits<input id="review-total-credits" class="input" type="number" min="0" step="0.5" required></label>
-          </div>
-          <div id="requirements-categories" class="faculty-review-categories"></div>
-          <button id="add-requirement-category" class="review-add-item" type="button">＋ Add category</button>
-          <div id="overwrite-warning" class="faculty-overwrite-warning" role="alert" hidden>
-            <strong>A confirmed version already exists.</strong>
-            <p id="overwrite-summary"></p>
-            <button id="overwrite-requirements" class="btn btn-secondary" type="button">Overwrite confirmed version</button>
-          </div>
-          <div class="page-actions">
-            <button class="btn btn-primary btn-cora" type="submit">Confirm requirements</button>
-            <button id="cancel-requirements-review" class="btn btn-secondary" type="button">Cancel review</button>
-          </div>
-        </form>
+      <section class="faculty-card faculty-insights-card">
+        <header class="faculty-panel-heading"><span class="faculty-panel-icon"><svg class="ot-icon"><use href="#ot-icon-trend"/></svg></span><div><h2>Session insights</h2><small>Key information from your uploaded data</small></div></header>
+        <div class="faculty-insight-grid"><div><svg class="ot-icon"><use href="#ot-icon-users"/></svg><strong data-insight-students>0</strong><span>Students in file</span></div><div><svg class="ot-icon"><use href="#ot-icon-study"/></svg><strong data-insight-majors>0</strong><span>Majors detected</span></div><div><svg class="ot-icon"><use href="#ot-icon-assignment"/></svg><strong data-insight-columns>0</strong><span>Columns analyzed</span></div></div>
+        <button class="faculty-clear-session" type="button" data-clear-session>Clear Session</button>
       </section>
-
-      <section id="faculty-planning-state" class="faculty-planning-state" aria-labelledby="faculty-planning-title" hidden>
-        <header class="faculty-planning-header">
-          <div><p class="faculty-step-label">Step 3</p><h2 id="faculty-planning-title">Plan with Cora</h2><p id="selected-program-label"></p></div>
-          <button id="new-student" class="btn btn-secondary" type="button">New student</button>
-        </header>
-        <div class="faculty-planning-grid">
-          <section class="card faculty-chat-panel" aria-label="Academic planning conversation">
-            <div id="faculty-chat-messages" class="faculty-chat-messages" aria-live="polite"></div>
-            <form id="faculty-chat-form" class="faculty-chat-form">
-              <label class="sr-only" for="faculty-chat-input">Message Cora</label>
-              <textarea id="faculty-chat-input" class="input" rows="3" maxlength="4000" placeholder="Share the student's intended major and completed coursework…" required></textarea>
-              <button class="btn btn-primary btn-cora" type="submit"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-send"/></svg>Send</button>
-            </form>
-            <p class="faculty-privacy-note">Student details and this conversation remain in this browser session and are not added to program records.</p>
-          </section>
-          <section class="card faculty-draft-panel" aria-labelledby="draft-plan-title">
-            <div class="materials-section-heading"><div><h2 id="draft-plan-title">Draft plan</h2></div><button id="download-plan" class="btn btn-secondary" type="button" disabled>Download plan</button></div>
-            <div id="draft-plan-empty" class="shared-state shared-state-empty"><h2>No draft yet</h2><p>Cora will ask for the details needed before proposing a plan.</p></div>
-            <div id="draft-plan-preview" hidden></div>
-          </section>
-        </div>
-      </section>
-    </div>
+    </aside>
   </div>
 </div>
 {{ program_requirements|json_script:"faculty-program-requirements" }}

@@ -5,7 +5,7 @@ import logging
 from django.contrib.auth.decorators import login_required
 from django.conf import settings
 from django.core.cache import cache
-from django.http import Http404
+from django.http import Http404, HttpResponseBadRequest, HttpResponseNotAllowed
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -18,7 +18,7 @@ from .services import support
 from .services.study_sessions import StudySessionNotFoundError
 from .services.storage import COURSE_ID_RE
 from .forms import ContactRequestForm
-from .authentication import is_faculty, is_pilot_owner
+from .authentication import ADMIN_VIEW_CHOICES, ADMIN_VIEW_SESSION_KEY, acts_as_faculty, is_admin, is_pilot_owner
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ PAGE_SCRIPTS = {
     "faculty-dashboard": "agent/js/faculty.js",
     "faculty-import": "agent/js/faculty.js",
     "faculty-planner": "agent/js/faculty_planner.js",
+    "faculty-templates": "agent/js/faculty_templates.js",
 }
 
 
@@ -98,7 +99,7 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
         "calendar", "courses", "cora", "course-detail", "materials", "course-study",
         "course-mastery", "course-grades", "study-dashboard", "exam", "settings", "profile",
         "practice-quiz-setup", "practice-attempt", "interactive-flashcards", "feedback", "analytics",
-        "faculty-dashboard", "faculty-import", "faculty-planner",
+        "faculty-dashboard", "faculty-import", "faculty-planner", "faculty-templates",
     }
     modern_shell = page_name in modern_page_names or (page_name == "study" and initial_tab == "session")
     settings_row = _user_settings_row(request.user)
@@ -120,12 +121,15 @@ def _render_page(request, template_name, *, page_name, page_title, initial_tab, 
                 else "interactive-20260831-4" if page_name in ("practice-attempt", "interactive-flashcards")
                 else "settings-20260901-1" if page_name == "settings"
                 else "profile-20260902-1" if page_name == "profile"
+                else "faculty-cora-20260924-1" if page_name == "faculty-planner"
+                else "faculty-templates-20260924-1" if page_name == "faculty-templates"
                 else ""
             ),
             "course_id": course_id,
             "enabled_features": _enabled_features(settings_row),
             "can_view_pilot_analytics": is_pilot_owner(request.user),
-            "can_view_faculty_planner": is_faculty(request.user, settings_row=settings_row),
+            "can_switch_view": is_admin(request.user),
+            "can_view_faculty_planner": acts_as_faculty(request, settings_row=settings_row),
             **_identity_context(request.user),
             **context,
         },
@@ -200,7 +204,7 @@ def profile_page(request):
 
 @login_required
 def dashboard_page(request):
-    if is_faculty(request.user):
+    if acts_as_faculty(request):
         return redirect("faculty-dashboard")
     hour = timezone.localtime().hour
     greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
@@ -208,6 +212,20 @@ def dashboard_page(request):
         request, "agent/dashboard.html", page_name="dashboard", page_title="Dashboard",
         initial_tab="dashboard", dashboard_greeting=greeting, dashboard_timezone=settings.TIME_ZONE,
     )
+
+
+@login_required
+def switch_view_page(request):
+    """Admin-only, session-scoped toggle between the student and faculty UI."""
+    if not is_admin(request.user):
+        raise Http404()
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    target = request.POST.get("view")
+    if target not in ADMIN_VIEW_CHOICES:
+        return HttpResponseBadRequest("Unknown view.")
+    request.session[ADMIN_VIEW_SESSION_KEY] = target
+    return redirect("faculty-dashboard" if target == "faculty" else "dashboard-page")
 
 
 @login_required
@@ -222,7 +240,7 @@ def analytics_page(request):
 
 @login_required
 def faculty_planner_page(request):
-    if not is_faculty(request.user):
+    if not acts_as_faculty(request):
         raise Http404()
 
     from .models import ProgramRequirement
@@ -241,7 +259,7 @@ def faculty_planner_page(request):
 
 @login_required
 def faculty_dashboard_page(request):
-    if not is_faculty(request.user):
+    if not acts_as_faculty(request):
         raise Http404()
     hour = timezone.localtime().hour
     greeting = "Good morning" if hour < 12 else "Good afternoon" if hour < 18 else "Good evening"
@@ -257,7 +275,7 @@ def faculty_dashboard_page(request):
 
 @login_required
 def faculty_import_page(request):
-    if not is_faculty(request.user):
+    if not acts_as_faculty(request):
         raise Http404()
     return _render_page(
         request,
@@ -265,6 +283,19 @@ def faculty_import_page(request):
         page_name="faculty-import",
         page_title="Import Data",
         initial_tab="faculty-import",
+    )
+
+
+@login_required
+def faculty_templates_page(request):
+    if not acts_as_faculty(request):
+        raise Http404()
+    return _render_page(
+        request,
+        "agent/faculty_templates.html",
+        page_name="faculty-templates",
+        page_title="Plan Templates",
+        initial_tab="faculty-templates",
     )
 
 

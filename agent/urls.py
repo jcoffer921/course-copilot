@@ -44,6 +44,7 @@ urlpatterns = [
         name="material-download",
     ),
     path("courses/<slug:course_id>/saved-sites/", views.SavedSitesView.as_view(), name="saved-sites"),
+    path("courses/<slug:course_id>/saved-sites/<int:site_id>/", views.SavedSiteDetailView.as_view(), name="saved-site-detail"),
     path("courses/<slug:course_id>/domains/suggest/", views.DomainSuggestionsView.as_view(), name="domains-suggest"),
     path("courses/<slug:course_id>/domains/", views.DomainsView.as_view(), name="domains"),
     path("courses/<slug:course_id>/grading/", views.GradingConfigView.as_view(), name="grading-config"),

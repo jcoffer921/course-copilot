@@ -59,6 +59,7 @@
             New to OnTrack? <a href="{% url 'signup-page' %}">Create an account</a>
           {% endif %}
         </p>
+        {% if auth_mode == 'signup' %}<p class="auth-faculty-link">Signing up as faculty? <a href="{% url 'faculty-access' %}">Enter your access code</a></p>{% endif %}
         <p class="auth-legal">By continuing, you acknowledge the <a href="{% url 'privacy-page' %}">pilot privacy notice</a>, including AI processing of content you submit.</p>
       </div>
     </section>
