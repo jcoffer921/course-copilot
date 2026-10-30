@@ -147,3 +147,40 @@ def test_use_in_workspace_links_to_workspace():
     assert 'window.location.assign("/faculty/")' in controller
     assert "faculty/cora" not in controller
     assert "data-ft-tab" in controller
+
+
+# ---- Task 11: export formats UI ----
+
+
+@pytest.mark.django_db
+def test_formats_panel_lists_three_layouts(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-templates")).content.decode()
+
+    for layout in ("term_table", "year_grid", "plan_notes"):
+        assert f'data-format="{layout}"' in html
+    assert html.count("data-set-default-format") >= 3
+    assert "Term-by-term table" in html
+    assert "Year-at-a-glance grid" in html
+    assert "Plan with advising notes" in html
+
+
+def test_workspace_export_sends_format():
+    root = Path(__file__).resolve().parents[2]
+    workspace = (root / "agent/static/agent/js/faculty_workspace.js").read_text(encoding="utf-8")
+
+    assert "ontrack.facultyExportFormat" in workspace
+    assert "JSON.stringify({ format:" in workspace
+    storage_lines = [line for line in workspace.splitlines() if "localStorage" in line]
+    assert storage_lines and all("EXPORT_FORMAT_KEY" in line for line in storage_lines)
+
+
+def test_export_format_preference_is_not_student_data():
+    root = Path(__file__).resolve().parents[2]
+    templates = (root / "agent/static/agent/js/faculty_templates.js").read_text(encoding="utf-8")
+
+    assert "localStorage.setItem(EXPORT_FORMAT_KEY" in templates
+    assert "EXPORT_LAYOUTS.includes" in templates
+    forbidden = next(line for line in templates.splitlines() if line.startswith("const forbiddenStudentFields"))
+    assert "facultyExportFormat" not in forbidden

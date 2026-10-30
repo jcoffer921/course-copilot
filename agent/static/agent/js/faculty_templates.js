@@ -350,3 +350,27 @@ function showFacultyTab(name) {
 }
 ftTabs.forEach(tab => tab.addEventListener("click", () => showFacultyTab(tab.dataset.ftTab)));
 
+// Export format preference (a layout id only; never student data)
+const EXPORT_FORMAT_KEY = "ontrack.facultyExportFormat";
+const EXPORT_LAYOUTS = ["term_table", "year_grid", "plan_notes"];
+function readExportFormat() {
+  try {
+    const stored = localStorage.getItem(EXPORT_FORMAT_KEY);
+    return EXPORT_LAYOUTS.includes(stored) ? stored : "term_table";
+  } catch { return "term_table"; }
+}
+function renderExportFormatDefault() {
+  const current = readExportFormat();
+  document.querySelectorAll("[data-format]").forEach(card => {
+    const isDefault = card.dataset.format === current;
+    card.querySelector("[data-default-chip]").hidden = !isDefault;
+    card.querySelector("[data-set-default-format]").hidden = isDefault;
+  });
+}
+document.querySelectorAll("[data-set-default-format]").forEach(button => button.addEventListener("click", () => {
+  const layout = button.dataset.setDefaultFormat;
+  if (!EXPORT_LAYOUTS.includes(layout)) return;
+  try { localStorage.setItem(EXPORT_FORMAT_KEY, layout); } catch { /* storage unavailable: preference not saved */ }
+  renderExportFormatDefault();
+}));
+renderExportFormatDefault();

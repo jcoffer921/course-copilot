@@ -11,6 +11,15 @@ const requirements = program?.requirements || null;
 
 const one = selector => root?.querySelector(selector);
 
+const EXPORT_FORMAT_KEY = "ontrack.facultyExportFormat";
+const EXPORT_LAYOUTS = ["term_table", "year_grid", "plan_notes"];
+function preferredExportFormat() {
+  try {
+    const stored = localStorage.getItem(EXPORT_FORMAT_KEY);
+    return EXPORT_LAYOUTS.includes(stored) ? stored : "term_table";
+  } catch { return "term_table"; }
+}
+
 function el(tag, { className, text, attrs } = {}, children = []) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -297,7 +306,8 @@ if (root && program) {
     try {
       const response = await fetch(root.dataset.exportUrl, {
         method: "POST",
-        headers: { "X-CSRFToken": getCsrfToken() },
+        headers: { "X-CSRFToken": getCsrfToken(), "Content-Type": "application/json" },
+        body: JSON.stringify({ format: preferredExportFormat() }),
         credentials: "same-origin",
       });
       if (!response.ok) throw new Error("Create a draft plan before exporting it.");

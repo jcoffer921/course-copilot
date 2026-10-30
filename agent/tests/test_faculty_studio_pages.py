@@ -227,7 +227,8 @@ def test_workspace_script_uses_module_exports():
     source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
 
     assert "./faculty_plan_model.js" in source
-    assert "localStorage" not in source
+    # Student state never touches localStorage; only the export-layout preference may.
+    assert all("EXPORT_FORMAT_KEY" in line for line in source.splitlines() if "localStorage" in line)
     assert "innerHTML" not in source
 
 
