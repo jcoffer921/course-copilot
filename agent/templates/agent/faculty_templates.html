@@ -5,10 +5,17 @@
   <header class="faculty-page-header faculty-templates-header">
     <div class="faculty-heading-mark faculty-template-mark"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-material"/></svg></div>
     <div class="faculty-page-title">
-      <h1>Plan Templates</h1>
-      <p>Start faster with reusable academic planning templates for advising sessions.</p>
+      <h2>Plan Templates</h2>
+      <p>Start faster with reusable academic planning templates for advising sessions. <span class="fs-chip">Structure only</span></p>
     </div>
   </header>
+
+  <div class="fs-seg" role="tablist" aria-label="Template type">
+    <button type="button" role="tab" id="ft-tab-skeletons" aria-selected="true" aria-controls="ft-panel-skeletons" data-ft-tab="skeletons">Plan skeletons</button>
+    <button type="button" role="tab" id="ft-tab-formats" aria-selected="false" aria-controls="ft-panel-formats" data-ft-tab="formats">Export formats</button>
+  </div>
+
+  <div id="ft-panel-skeletons" role="tabpanel" aria-labelledby="ft-tab-skeletons" data-ft-panel="skeletons">
 
   <div class="faculty-template-controls">
     <label class="faculty-template-search" for="template-search"><svg class="ot-icon" aria-hidden="true"><use href="#ot-icon-search"/></svg><span class="sr-only">Search templates</span><input id="template-search" type="search" autocomplete="off" placeholder="Search templates by name, description, or tag..."></label>
@@ -64,6 +71,11 @@
       <div id="template-about-panel" role="tabpanel" class="faculty-template-panel faculty-template-about" hidden><h3>Reusable, privacy-conscious planning</h3><p data-detail-about>This system template provides a generic planning scaffold. Apply it in Cora, then add temporary advising context for the current session.</p><div><svg class="ot-icon"><use href="#ot-icon-shield"/></svg><span><strong>Templates may persist. Student context does not.</strong><small>No student names, IDs, GPAs, or academic history are saved in this template.</small></span></div></div>
       <footer><button type="button" data-use-selected><svg class="ot-icon"><use href="#ot-icon-material"/></svg>Use this template</button><button type="button" data-preview-selected><svg class="ot-icon"><use href="#ot-icon-search"/></svg>Preview template</button></footer>
     </aside>
+  </div>
+
+  <div id="ft-panel-formats" role="tabpanel" aria-labelledby="ft-tab-formats" data-ft-panel="formats" hidden>
+    <p class="fw-muted">Choose how the exported DOCX plan is laid out.</p>
+    <div class="ft-formats" data-ft-formats></div>
   </div>
 </div>
 

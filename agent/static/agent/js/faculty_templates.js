@@ -340,3 +340,13 @@ document.addEventListener("click", event => { if (!event.target.closest("[data-t
 systemTemplates.forEach(template => { template.isSystem = true; });
 renderLibrary();
 renderDetail();
+
+// Plan skeletons / Export formats tabs
+const ftTabs = [...document.querySelectorAll("[data-ft-tab]")];
+const ftPanels = [...document.querySelectorAll("[data-ft-panel]")];
+function showFacultyTab(name) {
+  ftTabs.forEach(tab => tab.setAttribute("aria-selected", String(tab.dataset.ftTab === name)));
+  ftPanels.forEach(panel => { panel.hidden = panel.dataset.ftPanel !== name; });
+}
+ftTabs.forEach(tab => tab.addEventListener("click", () => showFacultyTab(tab.dataset.ftTab)));
+

@@ -7,7 +7,6 @@
   <link rel="icon" type="image/png" href="{% static 'agent/images/ontrack-icon.png' %}">
   <link rel="stylesheet" href="{% static 'agent/_ds/organic-c88e3875-74a6-464a-a40a-c20107e2cc25/styles.css' %}">
   <link rel="stylesheet" href="{% static 'agent/css/app.css' %}{% if page_asset_version %}?v={{ page_asset_version }}{% endif %}">
-  {% if page_name == "faculty-templates" %}<link rel="stylesheet" href="{% static 'agent/css/faculty.css' %}?v=20260924-3">{% endif %}
   <link rel="stylesheet" href="{% static 'agent/css/faculty_studio.css' %}?v=20261030-1">
   <script>
     window.CURRENT_USERNAME = "{{ user.username|escapejs }}";

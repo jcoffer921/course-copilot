@@ -115,3 +115,35 @@ def test_faculty_templates_runtime_supports_search_filters_selection_and_safe_bu
         "studentGPA",
     ):
         assert contract in controller
+
+
+@pytest.mark.django_db
+def test_templates_page_has_structure_only_chip_and_single_h1(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-templates")).content.decode()
+
+    assert "Structure only" in html
+    assert html.count("<h1") == 1
+
+
+@pytest.mark.django_db
+def test_templates_page_has_two_tabs_and_panels(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-templates")).content.decode()
+
+    for tab in ("skeletons", "formats"):
+        assert f'data-ft-tab="{tab}"' in html
+        assert f'data-ft-panel="{tab}"' in html
+    assert 'role="tablist"' in html
+    assert "faculty.css" not in html
+
+
+def test_use_in_workspace_links_to_workspace():
+    root = Path(__file__).resolve().parents[2]
+    controller = (root / "agent/static/agent/js/faculty_templates.js").read_text(encoding="utf-8")
+
+    assert 'window.location.assign("/faculty/")' in controller
+    assert "faculty/cora" not in controller
+    assert "data-ft-tab" in controller
