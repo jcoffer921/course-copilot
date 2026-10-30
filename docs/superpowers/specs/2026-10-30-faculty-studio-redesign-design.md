@@ -59,7 +59,7 @@ Three panels in a grid (`270px | 1fr | 340px`; collapses to stacked tabs below ~
 
 Empty state (no program loaded): the center panel becomes the home screen, with a large drop zone and a list of the faculty member's recent programs. This replaces the old dashboard.
 
-Header actions: New session (existing reset), Export DOCX (existing export), Save as template (writes structure only, see 3.3).
+Header actions: New session (existing reset) and Export DOCX (existing export; honors the default export format). "Save as template" was dropped during implementation: a template built from one student's draft plan would carry student-derived content, contradicting "templates never hold student data". Skeletons are created on the Templates tab.
 
 Behavior is unchanged from today's planner: `POST /api/faculty/plan/chat/`, `.../plan/reset/`, `.../plan/export/`, with all student-specific state in `request.session["faculty_plan_session"]` and the browser's `sessionStorage`. The redesign changes layout and presentation, and adds a structured render of the draft plan (summary strip, prerequisite flags). Prerequisite flags are derived from the grounded `ProgramRequirement` data already available to the planner, not from model output. A course is flagged only when one of its listed prerequisites is itself in the draft plan in the same or a later term (a definite conflict). A prerequisite absent from the draft is never flagged, because the student may already have completed it.
 

@@ -2,6 +2,7 @@ import { apiRequest } from "./core/api.js";
 import { confirmDialog } from "./core/dialogs.js";
 import { showToast } from "./core/toast.js";
 import { runImportFlow } from "./faculty_import_flow.js";
+import { pluralize } from "./faculty_plan_model.js";
 
 const root = document.getElementById("fp-root");
 
@@ -29,11 +30,11 @@ if (root) {
       const groups = program.categories.length;
       const courses = program.categories.reduce((sum, category) => sum + category.course_count, 0);
       root.querySelector("[data-fp-meta]").textContent =
-        `${program.source_filename || "Imported file"} · ${groups} groups · ${courses} courses`;
+        `${program.source_filename || "Imported file"} · ${pluralize(groups, "group")} · ${pluralize(courses, "course")}`;
       const list = root.querySelector("[data-fp-categories]");
       list.replaceChildren(...program.categories.map(category => {
         const item = el("li");
-        item.append(el("strong", { text: category.name || "Unnamed group" }), el("span", { text: ` ${category.credits_required} credits, ${category.course_count} courses` }));
+        item.append(el("strong", { text: category.name || "Unnamed group" }), el("span", { text: ` ${category.credits_required} credits, ${pluralize(category.course_count, "course")}` }));
         return item;
       }));
       if (!program.categories.length) list.append(el("li", { className: "fs-empty", text: "This program has no requirement groups." }));

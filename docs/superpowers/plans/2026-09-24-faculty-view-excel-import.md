@@ -1,3 +1,5 @@
+> **Status (2026-10-30):** the faculty UI described below was redesigned into the Workspace / Programs / Templates studio. See `docs/superpowers/specs/2026-10-30-faculty-studio-redesign-design.md`. The backend tasks here still stand.
+
 # Faculty View — Excel Import + AI Academic Planning
 
 **Status doc**, not a pre-work plan — this records what was actually built

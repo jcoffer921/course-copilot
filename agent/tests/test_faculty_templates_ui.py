@@ -184,3 +184,34 @@ def test_export_format_preference_is_not_student_data():
     assert "EXPORT_LAYOUTS.includes" in templates
     forbidden = next(line for line in templates.splitlines() if line.startswith("const forbiddenStudentFields"))
     assert "facultyExportFormat" not in forbidden
+
+
+@pytest.mark.django_db
+def test_tab_panels_are_siblings_not_nested(client, faculty_user):
+    from html.parser import HTMLParser
+
+    client.force_login(faculty_user)
+    html = client.get(reverse("faculty-templates")).content.decode()
+
+    class Tree(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.stack = []
+            self.ancestors = {}
+
+        def handle_starttag(self, tag, attrs):
+            attrs = dict(attrs)
+            if tag == "div":
+                if "data-ft-panel" in attrs:
+                    self.ancestors[attrs["data-ft-panel"]] = [d.get("data-ft-panel") for d in self.stack if d.get("data-ft-panel")]
+                self.stack.append(attrs)
+
+        def handle_endtag(self, tag):
+            if tag == "div" and self.stack:
+                self.stack.pop()
+
+    tree = Tree()
+    tree.feed(html)
+
+    assert tree.ancestors == {"skeletons": [], "formats": []}
+    assert tree.stack == [], "unbalanced <div> tags in the templates page"

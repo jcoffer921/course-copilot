@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 
 const source = await readFile(new URL("../../static/agent/js/faculty_plan_model.js", import.meta.url), "utf8");
-const { courseCategoryMap, categoryCoverage, prerequisiteConflicts, planSummary } = await import(
+const { courseCategoryMap, categoryCoverage, prerequisiteConflicts, planSummary, pluralize } = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString("base64")}`
 );
 
@@ -77,4 +77,12 @@ test("all functions accept a program with no categories and an empty semesters l
   assert.deepEqual(planSummary(emptyDraft, emptyProgram), { plannedCredits: 0, termCount: 0, programCredits: 0, issueCount: 0 });
   assert.deepEqual(courseCategoryMap(null), {});
   assert.deepEqual(planSummary(null, null), { plannedCredits: 0, termCount: 0, programCredits: 0, issueCount: 0 });
+});
+
+test("pluralize uses the singular only for exactly one", () => {
+  assert.equal(pluralize(1, "course"), "1 course");
+  assert.equal(pluralize(0, "course"), "0 courses");
+  assert.equal(pluralize(2, "course"), "2 courses");
+  assert.equal(pluralize(1, "group"), "1 group");
+  assert.equal(pluralize(3, "category", "categories"), "3 categories");
 });

@@ -1,4 +1,5 @@
 import { apiRequest } from "./core/api.js";
+import { pluralize } from "./faculty_plan_model.js";
 
 function el(tag, { className, text, attrs } = {}, children = []) {
   const node = document.createElement(tag);
@@ -47,7 +48,7 @@ function reviewBody(requirements) {
   const list = el("ul", { className: "fs-dialog-list" }, categories.map(category =>
     el("li", {}, [
       el("strong", { text: category.name || "Unnamed group" }),
-      el("span", { text: ` ${category.credits_required || 0} credits required, ${(category.courses || []).length} courses` }),
+      el("span", { text: ` ${category.credits_required || 0} credits required, ${pluralize((category.courses || []).length, "course")}` }),
     ])));
   return el("div", { className: "fs-dialog-body" }, [
     el("p", { text: "Review what was read from the file. Cora plans only from these requirements." }),
@@ -62,7 +63,7 @@ function reviewBody(requirements) {
 
 function conflictBody(existing) {
   return el("div", { className: "fs-dialog-body" }, [
-    el("p", { text: `A program named "${existing.program_name}" for catalog year ${existing.catalog_year || "(none)"} already exists with ${existing.category_count} groups and ${existing.course_count} courses.` }),
+    el("p", { text: `A program named "${existing.program_name}" for catalog year ${existing.catalog_year || "(none)"} already exists with ${pluralize(existing.category_count, "group")} and ${pluralize(existing.course_count, "course")}.` }),
     el("p", { text: "Overwriting replaces its requirements with the file you just imported." }),
   ]);
 }

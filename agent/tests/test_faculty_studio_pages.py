@@ -313,3 +313,98 @@ def test_programs_page_exposes_hooks(client, faculty_user):
     source = (STATIC_JS / "faculty_programs.js").read_text(encoding="utf-8")
     assert "./faculty_import_flow.js" in source
     assert "innerHTML" not in source
+
+
+# ---- Task 12: privacy regression and retired pages ----
+
+import json
+
+from django.apps import apps
+from django.contrib.sessions.models import Session
+from django.core import serializers
+from rest_framework.test import APIClient
+
+
+@pytest.mark.django_db
+def test_chat_and_export_persist_no_student_state_to_application_tables(faculty_user, monkeypatch):
+    secret = "SECRET-STUDENT-ZEBRA-4471"
+    program = make_program(faculty_user)
+
+    async def fake_plan_chat(requirements, student_details, conversation, message, user):
+        return {
+            "reply": f"Noted: {message}",
+            "student_details": {"name": secret},
+            "draft_plan": {
+                "student_major": "Computer Science",
+                "semesters": [{"label": "Fall", "courses": [{"code": "CS 101", "title": "Intro", "credits": 3}]}],
+                "total_credits": 3,
+                "notes": secret,
+            },
+        }
+
+    from agent import views
+
+    monkeypatch.setattr(views.academic_planner, "plan_chat_async", fake_plan_chat)
+    client = APIClient()
+    client.force_authenticate(user=faculty_user)
+
+    chat = client.post(
+        "/api/faculty/plan/chat/",
+        {"program_requirement_id": str(program.requirement_id), "message": f"Student {secret} finished CS 101"},
+        format="json",
+    )
+    export = client.post("/api/faculty/plan/export/", {"format": "plan_notes"}, format="json")
+    assert chat.status_code == 200 and export.status_code == 200
+
+    leaks = []
+    for model in apps.get_models():
+        if model is Session:
+            continue  # session_data is encoded, so this scan cannot see it; see the reset test below
+        dumped = serializers.serialize("json", model.objects.all())
+        if secret in dumped:
+            leaks.append(model.__name__)
+    assert leaks == []
+
+
+def test_removed_pages_have_no_template_or_script_references():
+    root = Path(__file__).resolve().parents[1]
+    retired = ("faculty_dashboard.html", "faculty_import.html", "faculty_planner.html",
+               "faculty_planner.js", "faculty.css", "faculty.js")
+    offenders = []
+    for path in root.rglob("*"):
+        if (not path.is_file() or "tests" in path.relative_to(root).parts or "__pycache__" in path.parts
+                or path.suffix not in {".py", ".html", ".js", ".css"}):
+            continue
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for name in retired:
+            # "faculty.js" / "faculty.css" must match as whole file names, not as a suffix of faculty_templates.js etc.
+            if re.search(r"(?<![A-Za-z0-9_])" + re.escape(name), text):
+                offenders.append((str(path.relative_to(root)), name))
+    assert offenders == []
+    for name in retired:
+        assert not list(root.rglob(name)), name
+
+
+@pytest.mark.django_db
+def test_new_session_purges_student_state_from_the_session_store(faculty_user, monkeypatch):
+    secret = "SECRET-STUDENT-OTTER-9920"
+    program = make_program(faculty_user)
+
+    async def fake_plan_chat(requirements, student_details, conversation, message, user):
+        return {"reply": "ok", "student_details": {"name": secret}, "draft_plan": None}
+
+    from agent import views
+
+    monkeypatch.setattr(views.academic_planner, "plan_chat_async", fake_plan_chat)
+    client = APIClient()
+    client.force_authenticate(user=faculty_user)
+    client.post(
+        "/api/faculty/plan/chat/",
+        {"program_requirement_id": str(program.requirement_id), "message": "hello"},
+        format="json",
+    )
+    assert secret in json.dumps([s.get_decoded() for s in Session.objects.all()])
+
+    assert client.post("/api/faculty/plan/reset/").status_code == 204
+
+    assert secret not in json.dumps([s.get_decoded() for s in Session.objects.all()])

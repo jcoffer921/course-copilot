@@ -73,3 +73,8 @@ export function planSummary(draft, program) {
     issueCount: prerequisiteConflicts(draft, program).length,
   };
 }
+
+export function pluralize(count, singular, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+

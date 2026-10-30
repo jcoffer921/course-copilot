@@ -223,3 +223,17 @@ body[data-area="faculty"] textarea:focus-visible{outline:3px solid var(--accent-
 .ft-thumb .g i{height:56px;background:var(--accent-soft)}
 [data-default-chip][hidden],[data-set-default-format][hidden]{display:none}
 @media (max-width:1000px){.ft-formats{grid-template-columns:1fr}}
+
+/* Refinements from the browser walkthrough */
+body[data-area="faculty"]{--font-heading:var(--font-body,inherit)}
+body[data-area="faculty"] :is(h1,h2,h3,h4){font-family:inherit;font-weight:700;letter-spacing:0}
+.fw-term table{table-layout:fixed}
+.fw-term th:nth-child(1){width:16%}
+.fw-term th:nth-child(3){width:22%}
+.fw-term th:nth-child(4){width:84px}
+.fw-term th:last-child,.fw-term td.fw-num{text-align:right}
+@media (max-width:760px){
+  .fs-main{grid-template-rows:auto minmax(0,1fr)}
+  .fs-top-actions{margin-left:0;width:100%;order:3}
+  .fs-account{margin-left:auto}
+}
