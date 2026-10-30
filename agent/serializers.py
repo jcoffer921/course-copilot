@@ -467,6 +467,18 @@ class UpdateGradeItemRequestSerializer(serializers.Serializer):
     date = serializers.CharField(required=False, allow_blank=True, allow_null=True, default=None)
 
 
+class ExportHeaderRequestSerializer(serializers.Serializer):
+    # JSONField, not CharField: CharField would quietly turn the number 5 into "5".
+    export_header_line = serializers.JSONField()
+
+    def validate_export_header_line(self, value):
+        if not isinstance(value, str):
+            raise serializers.ValidationError("Must be a string.")
+        if len(value) > 2000:
+            raise serializers.ValidationError("Too long.")
+        return value
+
+
 class DeleteRequirementRequestSerializer(serializers.Serializer):
     confirm = serializers.BooleanField()
 

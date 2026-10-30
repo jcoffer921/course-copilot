@@ -8,6 +8,7 @@ urlpatterns = [
     path("profile/", views.UserProfileView.as_view(), name="profile"),
     path("profile/export/", views.AccountExportView.as_view(), name="profile-export"),
     path("feedback/", views.PilotFeedbackView.as_view(), name="pilot-feedback"),
+    path("faculty/export-header/", views.FacultyExportHeaderView.as_view(), name="faculty-export-header"),
     path("faculty/requirements/", views.FacultyRequirementsListView.as_view(), name="faculty-requirements-list"),
     path("faculty/requirements/<uuid:requirement_id>/", views.FacultyRequirementDetailView.as_view(), name="faculty-requirement-detail"),
     path("faculty/requirements/import/", views.FacultyRequirementsImportView.as_view(), name="faculty-requirements-import"),

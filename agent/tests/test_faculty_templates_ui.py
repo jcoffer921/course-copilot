@@ -173,7 +173,7 @@ def test_workspace_export_sends_format():
     assert "ontrack.facultyExportFormat" in workspace
     assert "JSON.stringify({ format:" in workspace
     storage_lines = [line for line in workspace.splitlines() if "localStorage" in line]
-    assert storage_lines and all("EXPORT_FORMAT_KEY" in line for line in storage_lines)
+    assert storage_lines and all(("EXPORT_FORMAT_KEY" in line or "CHAT_WIDE_KEY" in line) for line in storage_lines)
 
 
 def test_export_format_preference_is_not_student_data():

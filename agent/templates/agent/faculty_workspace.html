@@ -4,7 +4,15 @@
 {% block faculty_actions %}
 {% if active_program %}
 <button type="button" class="fs-btn" data-fw-reset>New session</button>
-<button type="button" class="fs-btn is-primary" data-fw-export>Export DOCX</button>
+<div class="fs-export" data-fw-export-menu>
+  <button type="button" class="fs-btn is-primary" data-fw-export aria-haspopup="menu" aria-expanded="false" aria-controls="fw-export-menu">Export</button>
+  <div id="fw-export-menu" class="fs-export-menu" role="menu" aria-label="Export format" hidden>
+    <button type="button" role="menuitem" data-fw-export-type="docx">Word document (.docx)</button>
+    <button type="button" role="menuitem" data-fw-export-type="pdf">PDF (.pdf)</button>
+    <div class="fs-menu-sep" role="separator"></div>
+    <button type="button" role="menuitem" data-fw-export-header>Header line…</button>
+  </div>
+</div>
 {% endif %}
 {% endblock %}
 
@@ -15,6 +23,7 @@
      data-export-url="/api/faculty/plan/export/"
      data-import-url="/api/faculty/requirements/import/"
      data-confirm-url="/api/faculty/requirements/confirm/"
+     data-export-header-url="/api/faculty/export-header/"
      data-state-ttl="{{ state_ttl_seconds }}"
      data-session-key="ontrack.facultySession"
      data-template-key="ontrack.selectedFacultyTemplate">
@@ -61,25 +70,42 @@
     </section>
 
     <section class="fs-panel fw-cora" data-fw="cora" aria-label="Cora planning assistant">
-      <header class="fs-panel-head"><span class="fw-cora-dot" aria-hidden="true">C</span><h2>Cora · Planning assistant</h2></header>
+      <header class="fs-panel-head"><span class="fw-cora-dot" aria-hidden="true">C</span><h2>Cora · Planning assistant</h2><button type="button" class="fs-btn fw-expand" data-fw-expand aria-pressed="false" aria-label="Expand chat">Expand</button></header>
+      <p class="sr-only" data-fw-status role="status" aria-live="polite"></p>
       <div class="fw-template-banner" data-fw-template-banner hidden>
         <span>Template: <strong data-fw-template-name></strong></span>
         <button type="button" class="fs-btn" data-fw-template-clear>Clear</button>
       </div>
       <div class="fw-chat" data-fw-chat aria-live="polite"></div>
       <div class="fw-issues" data-fw-issues hidden></div>
-      <div class="fw-chips" aria-label="Suggested prompts">
-        <button type="button" data-fw-prompt="Create a 4-year plan for a first-year student">4-year plan</button>
-        <button type="button" data-fw-prompt="Which courses are still required after the courses already completed?">What is still required</button>
-        <button type="button" data-fw-prompt="Explain the prerequisite sequencing in this plan">Explain prerequisites</button>
-      </div>
+      <div class="fw-chips" data-fw-suggestions aria-label="Suggested prompts"></div>
       <form class="fw-composer" data-fw-chat-form>
         <label class="sr-only" for="fw-chat-input">Ask Cora about this plan</label>
         <textarea id="fw-chat-input" rows="2" maxlength="4000" placeholder="Ask Cora about this plan..." required></textarea>
         <button type="submit" class="fs-btn is-primary">Send</button>
       </form>
+      <p class="fw-composer-hint">Enter to send · Shift+Enter for a new line</p>
     </section>
   </div>
+
+  <dialog id="fw-header-dialog" class="fs-dialog" aria-labelledby="fw-header-title">
+    <h2 id="fw-header-title">Header line</h2>
+    <p class="fw-header-help">A line in your own words printed above the title of exported plans, for example your institution and department. Plain text only: logos and marks aren't added, and nothing is written on your behalf.</p>
+    <label class="fw-header-label" for="fw-header-input">Header line</label>
+    <input id="fw-header-input" class="fw-header-input" type="text" maxlength="160" autocomplete="off" placeholder="Institution · Department">
+    <p class="fw-header-count" data-fw-header-count></p>
+    <div class="fw-header-preview" aria-label="Preview of the exported title block">
+      <small data-fw-header-preview></small>
+      <strong>Academic Plan</strong>
+      <span>Computer Science</span>
+    </div>
+    <p class="fs-progress-error" role="alert" data-fw-header-error hidden></p>
+    <footer class="fs-dialog-actions">
+      <button type="button" class="fs-btn" data-fw-header-clear>Clear</button>
+      <button type="button" class="fs-btn" data-fw-header-cancel>Cancel</button>
+      <button type="button" class="fs-btn is-primary" data-fw-header-save>Save</button>
+    </footer>
+  </dialog>
   {% else %}
   <div class="fw-home" data-fw="home">
     <div class="fw-home-inner">

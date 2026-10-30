@@ -228,7 +228,7 @@ def test_workspace_script_uses_module_exports():
 
     assert "./faculty_plan_model.js" in source
     # Student state never touches localStorage; only the export-layout preference may.
-    assert all("EXPORT_FORMAT_KEY" in line for line in source.splitlines() if "localStorage" in line)
+    assert all(("EXPORT_FORMAT_KEY" in line or "CHAT_WIDE_KEY" in line) for line in source.splitlines() if "localStorage" in line)
     assert "innerHTML" not in source
 
 
@@ -257,7 +257,7 @@ def test_import_flow_module_contract():
 
     assert "export async function runImportFlow" in source
     assert "showModal" in source
-    assert "overwrite: true" in source
+    assert "overwrite = true" in source
     assert "innerHTML" not in source
 
 
@@ -418,3 +418,157 @@ def test_workspace_expires_its_browser_copy_with_the_same_ttl():
     assert "stateTtl" in source
     assert "savedAt" in source
     assert "Date.now()" in source
+
+
+# ---- Progress and failure feedback ----
+
+
+@pytest.mark.django_db
+def test_workspace_has_a_polite_status_region_for_announcements(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)}).content.decode()
+
+    assert 'data-fw-status' in html
+    assert 'role="status"' in html
+
+
+def test_chat_shows_a_working_state_and_a_retry():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    assert "./faculty_progress.js" in source
+    assert "workingMessage" in source
+    assert "data-fw-thinking" in source
+    assert "Sending" in source
+    assert "Retry" in source
+    assert "innerHTML" not in source
+
+
+def test_export_shows_a_busy_state():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    assert "Preparing" in source
+
+
+def test_import_flow_reports_progress_and_keeps_failures_visible():
+    source = (STATIC_JS / "faculty_import_flow.js").read_text(encoding="utf-8")
+
+    for needle in ("./faculty_progress.js", "fileProblem", "describeImportError", "XMLHttpRequest", "AbortController",
+                   "Uploading", "Reading requirements", "Saving", "Try again", "Choose another file", "aria-busy",
+                   "onChooseAnother", "formatBytes"):
+        assert needle in source, needle
+    assert "innerHTML" not in source
+
+
+def test_pages_hand_the_file_picker_to_the_import_flow_and_drop_the_extension_toast():
+    for name in ("faculty_workspace.js", "faculty_programs.js"):
+        source = (STATIC_JS / name).read_text(encoding="utf-8")
+        assert "onChooseAnother" in source, name
+        assert "Choose an Excel file" not in source, name
+
+
+def test_motion_respects_reduced_motion_preference():
+    css = (STATIC_JS.parent / "css/faculty_studio.css").read_text(encoding="utf-8")
+
+    assert "prefers-reduced-motion" in css
+
+
+# ---- PDF export menu ----
+
+
+@pytest.mark.django_db
+def test_export_is_a_menu_with_word_and_pdf(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)}).content.decode()
+
+    assert 'aria-haspopup="menu"' in html
+    assert 'role="menu"' in html
+    assert html.count('role="menuitem"') == 3
+    assert 'data-fw-export-type="docx"' in html
+    assert 'data-fw-export-type="pdf"' in html
+    assert "Word document (.docx)" in html
+    assert "Export DOCX" not in html
+
+
+def test_export_menu_is_keyboard_operable_and_sends_the_file_type():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    for needle in ("file_type", "aria-expanded", "ArrowDown", "ArrowUp", "Escape", "Content-Disposition", "setTimeout"):
+        assert needle in source, needle
+    assert "innerHTML" not in source
+
+
+@pytest.mark.django_db
+def test_templates_page_says_layouts_apply_to_word_and_pdf(client, faculty_user):
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-templates")).content.decode()
+
+    assert html.count("DOCX · PDF") >= 3
+    assert "both Word and PDF" in html
+
+
+# ---- Export header line ----
+
+
+@pytest.mark.django_db
+def test_export_menu_offers_a_header_line_dialog(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)}).content.decode()
+
+    assert "data-fw-export-header" in html
+    assert "Header line…" in html
+    assert 'data-export-header-url="/api/faculty/export-header/"' in html
+    assert 'id="fw-header-dialog"' in html
+    assert 'maxlength="160"' in html
+    assert "data-fw-header-preview" in html
+    assert "Plain text only" in html
+    assert "logos" in html
+
+
+def test_header_dialog_saves_through_the_api_and_never_uses_innerhtml():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    for needle in ("exportHeaderUrl", "normalizeHeaderLine", "showModal", '"PUT"', "export_header_line", "Saving"):
+        assert needle in source, needle
+    assert "innerHTML" not in source
+
+
+# ---- Chat UI: readable replies, roomier layout, smart follow-ups ----
+
+
+@pytest.mark.django_db
+def test_chat_header_has_an_expand_toggle_and_the_composer_has_a_hint(client, faculty_user):
+    mine = make_program(faculty_user)
+    client.force_login(faculty_user)
+
+    html = client.get(reverse("faculty-workspace"), {"program": str(mine.requirement_id)}).content.decode()
+
+    assert "data-fw-expand" in html
+    assert 'aria-pressed="false"' in html
+    assert "data-fw-suggestions" in html
+    assert "Shift+Enter for a new line" in html
+    assert "data-fw-prompt" not in html  # the fixed chips are replaced by plan-aware ones
+
+
+def test_assistant_replies_render_as_markdown_and_user_text_stays_plain():
+    source = (STATIC_JS / "faculty_workspace.js").read_text(encoding="utf-8")
+
+    assert 'from "./core/markdown.js"' in source
+    assert "renderMarkdown(" in source
+    assert "suggestFollowUps" in source
+    assert "autoGrow" in source
+    assert "ontrack.facultyChatWide" in source
+    assert "innerHTML" not in source
+
+
+def test_chat_styles_cover_markdown_wide_mode_and_narrow_screens():
+    css = (STATIC_JS.parent / "css/faculty_studio.css").read_text(encoding="utf-8")
+
+    for needle in (".fw-md", ".is-chat-wide", ".fw-expand", ".fw-composer-hint", "max-height"):
+        assert needle in css, needle

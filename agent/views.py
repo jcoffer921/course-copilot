@@ -26,6 +26,7 @@ from .serializers import (
     ConfirmRequirementsRequestSerializer,
     CourseDeleteSerializer,
     DeleteRequirementRequestSerializer,
+    ExportHeaderRequestSerializer,
     CourseArchiveSerializer,
     CreateCourseDraftRequestSerializer,
     CreateCustomEventRequestSerializer,
@@ -64,7 +65,7 @@ from .serializers import (
     UpdateGradeItemRequestSerializer,
     UserProfileUpdateSerializer,
 )
-from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, plan_export, plan_state, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
+from .services import academic_planner, accounts, analytics, calendar_events, calendar_sync, citations, course_catalog, course_overview, custom_events, dashboard, domain_suggestions, exams, export_header, grades, interactive_study, llm_usage, mastery, mastery_analyzer, material_files, materials, metrics, notifications, plan_export, plan_state, program_requirements, quiz, recommendations, reminders, requirements_extraction, sessions, storage, study_planner, study_sessions
 from .services.ask import CourseNotFoundError, ask_async, confirm_deadline_actions
 
 logger = logging.getLogger(__name__)
@@ -303,6 +304,28 @@ class FacultyRequirementsConfirmView(APIView):
         )
 
 
+class FacultyExportHeaderView(APIView):
+    """
+    GET /api/faculty/export-header/ — the signed-in faculty member's export header line.
+    PUT the same path with {"export_header_line": "..."} — saves it (normalized to one plain-text line;
+    an empty string clears it). The export endpoint reads the saved line itself and never trusts one
+    sent by the browser.
+    """
+
+    permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
+
+    async def get(self, request):
+        line = await sync_to_async(export_header.get_for_user)(request.user)
+        return Response({"export_header_line": line})
+
+    async def put(self, request):
+        serializer = ExportHeaderRequestSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        saved = await sync_to_async(export_header.set_for_user)(request.user, serializer.validated_data["export_header_line"])
+        return Response({"export_header_line": saved})
+
+
 class FacultyRequirementsListView(APIView):
     """GET /api/faculty/requirements/ — the signed-in faculty member's confirmed programs."""
 
@@ -429,7 +452,7 @@ class FacultyPlanResetView(APIView):
 
 
 class FacultyPlanExportView(APIView):
-    """Stream only the draft plan from the current session as a DOCX."""
+    """Stream only the draft plan from the current session as a DOCX or PDF download."""
 
     permission_classes = [IsAuthenticated, ActiveAccessPermission, FacultyPermission]
 
@@ -463,13 +486,17 @@ class FacultyPlanExportView(APIView):
         # unknown name) falls back to the default layout inside render_plan_docx.
         requested = request.data.get("format") if hasattr(request.data, "get") else None
         layout = requested if isinstance(requested, str) else plan_export.DEFAULT_LAYOUT
+        requested_type = request.data.get("file_type") if hasattr(request.data, "get") else None
+        file_type = requested_type if requested_type in plan_export.FILE_TYPES else plan_export.DEFAULT_FILE_TYPE
 
-        output = await sync_to_async(plan_export.render_plan_docx)(draft_plan, layout)
+        # The header line is read from the signed-in faculty member's saved setting, never from the request.
+        institution_line = await sync_to_async(export_header.get_for_user)(request.user)
+        output = await sync_to_async(plan_export.render_plan)(draft_plan, layout, file_type, institution_line)
         response = FileResponse(
             output,
-            content_type=plan_export.DOCX_CONTENT_TYPE,
+            content_type=plan_export.content_type_for(file_type),
             as_attachment=True,
-            filename=plan_export.plan_filename(draft_plan),
+            filename=plan_export.plan_filename(draft_plan, file_type),
         )
         response["Cache-Control"] = "private, no-store"
         return response

@@ -44,6 +44,7 @@ def export_account_data(user) -> dict:
             "display_name": user.get_full_name(), "username": user.username, "email": user.email,
             "bio": preferences.bio, "university": preferences.university,
             "major": preferences.major, "graduation_year": preferences.graduation_year,
+            "export_header_line": preferences.export_header_line,
         },
         "preferences": {
             "notifications_enabled": preferences.notifications_enabled,

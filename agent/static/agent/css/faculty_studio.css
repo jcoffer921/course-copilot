@@ -237,3 +237,88 @@ body[data-area="faculty"] :is(h1,h2,h3,h4){font-family:inherit;font-weight:700;l
   .fs-top-actions{margin-left:0;width:100%;order:3}
   .fs-account{margin-left:auto}
 }
+
+/* Progress and failure feedback */
+.fs-dialog:focus{outline:none}
+.fs-dialog:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.fs-progress{width:min(460px,92vw)}
+.fs-progress-file{margin:0 0 12px;color:var(--muted);font-size:12px;word-break:break-all}
+.fs-stages{list-style:none;margin:0 0 12px;padding:0;display:grid;gap:8px}
+.fs-stages li{display:flex;align-items:center;gap:10px;color:var(--muted)}
+.fs-stages li[data-state="active"]{color:var(--ink);font-weight:600}
+.fs-stages li[data-state="done"]{color:var(--ink)}
+.fs-stages li[data-state="failed"]{color:var(--bad);font-weight:600}
+.fs-stage-mark{width:18px;height:18px;flex:none;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;font-size:11px;line-height:1;box-sizing:border-box}
+[data-state="active"]>.fs-stage-mark{border-color:var(--accent-line);border-top-color:var(--accent);animation:fs-spin .8s linear infinite}
+[data-state="done"]>.fs-stage-mark{background:var(--ok);border-color:var(--ok);color:#fff}
+[data-state="done"]>.fs-stage-mark::before{content:"\2713"}
+[data-state="failed"]>.fs-stage-mark{background:var(--bad);border-color:var(--bad);color:#fff}
+[data-state="failed"]>.fs-stage-mark::before{content:"\2715"}
+.fs-progress-status{margin:0 0 4px;min-height:1.2em;color:var(--muted);font-size:12px}
+.fs-progress-error{margin:4px 0 0;padding:10px 12px;border-radius:10px;background:var(--bad-soft);color:var(--bad);font-weight:600}
+.fs-progress-error[hidden]{display:none}
+@keyframes fs-spin{to{transform:rotate(360deg)}}
+
+.fw-msg.is-thinking{display:flex;align-items:center;gap:10px;color:var(--muted)}
+.fw-dots{display:inline-flex;gap:4px}
+.fw-dots i{width:6px;height:6px;border-radius:50%;background:var(--cora);opacity:.35;animation:fw-pulse 1.2s ease-in-out infinite}
+.fw-dots i:nth-child(2){animation-delay:.2s}
+.fw-dots i:nth-child(3){animation-delay:.4s}
+@keyframes fw-pulse{0%,80%,100%{opacity:.35;transform:scale(.85)}40%{opacity:1;transform:scale(1)}}
+.fw-msg-actions{margin-top:8px}
+.fw-retry{background:#fff}
+
+@media (prefers-reduced-motion: reduce){
+  [data-state="active"]>.fs-stage-mark{animation:none;border-top-color:var(--accent-line);background:var(--accent-line)}
+  .fw-dots i{animation:none;opacity:.8}
+}
+
+/* Export menu */
+.fs-export{position:relative}
+.fs-export-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;min-width:210px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(0,30,68,.16);padding:6px;display:grid}
+.fs-export-menu[hidden]{display:none}
+.fs-export-menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 10px;border-radius:7px;color:var(--ink);font:inherit;cursor:pointer}
+.fs-export-menu button:hover,.fs-export-menu button:focus-visible{background:var(--accent-soft)}
+
+/* Header line dialog */
+.fs-menu-sep{height:1px;margin:4px 6px;background:var(--line)}
+.fw-header-help{margin:0 0 12px;color:var(--muted)}
+.fw-header-label{display:block;font-weight:600;margin-bottom:4px}
+.fw-header-input{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit}
+.fw-header-count{margin:4px 0 12px;color:var(--muted);font-size:11px;text-align:right}
+.fw-header-preview{display:grid;gap:2px;justify-items:center;text-align:center;border:1px solid var(--line);border-radius:10px;background:#f6f8fb;padding:14px 12px;margin-bottom:10px}
+.fw-header-preview small{font-size:11px;color:var(--accent);min-height:1.2em;word-break:break-word}
+.fw-header-preview small.is-empty{color:var(--muted);font-style:italic}
+.fw-header-preview strong{font-size:18px;color:var(--accent-ink)}
+.fw-header-preview span{font-size:12px;color:var(--muted)}
+
+/* Chat: readable replies, roomier layout, composer */
+.fw-md{white-space:normal}
+.fw-md>*:first-child{margin-top:0}
+.fw-md>*:last-child{margin-bottom:0}
+.fw-md p{margin:0 0 8px}
+.fw-md ul,.fw-md ol{margin:0 0 8px;padding-left:20px}
+.fw-md li{margin:2px 0}
+.fw-md h1,.fw-md h2,.fw-md h3,.fw-md h4{font-size:13px;margin:10px 0 4px}
+.fw-md code{background:#e6e0f7;border-radius:4px;padding:1px 4px;font-size:.92em}
+.fw-md pre{background:#1d1738;color:#fff;border-radius:8px;padding:8px 10px;overflow:auto;margin:0 0 8px}
+.fw-md pre code{background:none;padding:0;color:inherit}
+.fw-md blockquote{margin:0 0 8px;padding-left:10px;border-left:3px solid var(--accent-line);color:var(--muted)}
+.fw-md table{border-collapse:collapse;margin:0 0 8px;font-size:12px}
+.fw-md th,.fw-md td{border:1px solid var(--line);padding:3px 6px;text-align:left}
+.fw-md a{color:var(--accent);text-decoration:underline}
+
+.fw-cora .fs-panel-head .fw-expand{margin-left:auto;padding:4px 10px}
+.fw-studio.is-chat-wide{grid-template-columns:minmax(0,1fr) minmax(480px,46%)}
+.fw-studio.is-chat-wide .fw-sources{display:none}
+.fw-studio.is-chat-wide .fw-msg{max-width:84%;font-size:13.5px}
+.fw-studio.is-chat-wide .fw-chat{padding:16px 20px;gap:12px}
+
+.fw-composer textarea{max-height:132px;overflow-y:auto;line-height:1.4}
+.fw-composer-hint{margin:0;padding:0 14px 10px;font-size:11px;color:var(--muted)}
+
+@media (max-width:1100px){
+  .fw-expand{display:none}
+  .fw-studio.is-chat-wide{grid-template-columns:1fr}
+  .fw-studio.is-chat-wide .fw-sources{display:flex}
+}

@@ -74,6 +74,8 @@ class UserSettings(models.Model):
     bio = models.TextField(blank=True, default="")
     university = models.CharField(max_length=150, blank=True, default="")
     major = models.CharField(max_length=150, blank=True, default="")
+    # One plain-text line printed above the title of a faculty member's exported plans (agent/services/export_header.py).
+    export_header_line = models.CharField(max_length=160, blank=True, default="")
     graduation_year = models.PositiveSmallIntegerField(null=True, blank=True)
     notifications_enabled = models.BooleanField(default=False)
     email_notifications_enabled = models.BooleanField(default=False)

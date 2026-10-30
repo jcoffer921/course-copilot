@@ -24,6 +24,9 @@ if (root) {
   async function selectRow(row) {
     rows.forEach(item => item.classList.toggle("is-selected", item === row));
     selected = { id: row.dataset.requirementId, name: row.dataset.programName };
+    detailEmpty.textContent = "Loading program…";
+    detailEmpty.hidden = false;
+    detailBody.hidden = true;
     try {
       const { program } = await apiRequest(`${apiBase}${selected.id}/`);
       root.querySelector("[data-fp-name]").textContent = program.program_name || "Unnamed program";
@@ -43,6 +46,7 @@ if (root) {
       detailEmpty.hidden = true;
       detailBody.hidden = false;
     } catch (error) {
+      detailEmpty.textContent = "Could not load that program. Select it again to retry.";
       showToast(error.message || "Could not load that program.", "error");
     }
   }
@@ -60,12 +64,13 @@ if (root) {
 
   async function startImport(file) {
     if (!file) return;
-    if (!/\.(xlsx|xlsm)$/i.test(file.name)) {
-      showToast("Choose an Excel file (.xlsx or .xlsm).", "error");
-      return;
-    }
     try {
-      const confirmed = await runImportFlow({ file, importUrl: root.dataset.importUrl, confirmUrl: root.dataset.confirmUrl });
+      const confirmed = await runImportFlow({
+        file,
+        importUrl: root.dataset.importUrl,
+        confirmUrl: root.dataset.confirmUrl,
+        onChooseAnother: () => importInput.click(),
+      });
       if (confirmed) {
         showToast(`Saved ${confirmed.program_name || "program"}.`, "success");
         window.location.reload();
